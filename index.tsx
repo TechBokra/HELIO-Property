@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import { ThemeProvider } from './components/shared/ThemeContext';
+import './index.css'; // Ensure CSS is imported
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

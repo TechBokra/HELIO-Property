@@ -31,7 +31,7 @@
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
     
-    <!-- Tailwind CSS (Dev only, Production uses built CSS) -->
+    <!-- Tailwind CSS (CDN kept as a fallback for styling safety, but build will use PostCSS) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -53,19 +53,15 @@
                 700: '#b45309',
                 800: '#92400e',
                 900: '#78350f',
-                950: '#451a03',
-              }
-            },
-            animation: {
-              'fadeIn': 'fadeIn 0.5s ease-out forwards',
-              'slideInUp': 'slideInUp 0.6s ease-out forwards',
+              },
             }
           }
         }
       }
     </script>
-    <link rel="stylesheet" href="index.css" />
+    
     <script>
+      // Immediate theme application to prevent FOUC
       try {
         const savedTheme = localStorage.getItem('onlyhelio-theme');
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -80,6 +76,8 @@
         document.documentElement.dir = savedLang === 'ar' ? 'rtl' : 'ltr';
       } catch (e) { console.log('Theme init error', e) }
     </script>
+
+    <!-- REMOVED IMPORTMAP to prevent conflicts on Vercel -->
 <script type="importmap">
 {
   "imports": {
@@ -109,6 +107,6 @@
 </head>
   <body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-200 overflow-x-hidden">
     <div id="root"></div>
-    <script type="module" src="index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
