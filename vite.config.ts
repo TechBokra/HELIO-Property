@@ -28,7 +28,7 @@ export default defineConfig({
                 manualChunks: {
                     vendor: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query'],
                     charts: ['chart.js', 'react-chartjs-2'],
-                    utils: ['date-fns', 'zod', 'jspdf', 'jspdf-autotable']
+                    utils: ['zod', 'jspdf', 'jspdf-autotable']
                 }
             }
         }
