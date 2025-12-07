@@ -1,5 +1,4 @@
-
-import { forwardRef, type HTMLAttributes, type ThHTMLAttributes, type TdHTMLAttributes, type HTMLTableCaptionElement, type HTMLTableElement, type HTMLTableSectionElement, type HTMLTableRowElement, type HTMLTableCellElement } from 'react';
+import { forwardRef, type HTMLAttributes, type ThHTMLAttributes, type TdHTMLAttributes } from 'react';
 
 const cn = (...classes: (string | undefined | false)[]) => classes.filter(Boolean).join(' ');
 
@@ -28,7 +27,7 @@ const TableFooter = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTable
     ({ className, ...props }, ref) => (
         <tfoot
             ref={ref}
-            className={cn('bg-amber-500 font-medium text-gray-50', className)}
+            className={cn('bg-amber-50 font-medium text-gray-50', className)}
             {...props}
         />
     ),
