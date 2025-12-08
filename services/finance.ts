@@ -25,7 +25,10 @@ export const getAllTransactions = async (): Promise<Transaction[]> => {
         .select('*')
         .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+        console.error('Error fetching transactions:', error);
+        return [];
+    }
     return data.map(mapTransactionFromDb);
 };
 
@@ -36,12 +39,16 @@ export const getTransactionsByUserId = async (userId: string): Promise<Transacti
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+        console.error('Error fetching user transactions:', error);
+        return [];
+    }
     return data.map(mapTransactionFromDb);
 };
 
 export const getFinanceStats = async (): Promise<FinanceStats> => {
-    // In a real app, use database aggregation functions (SUM, COUNT)
+    // Fetch all transactions to calculate stats
+    // In a larger app, we would use a Postgres View or RPC for this
     const transactions = await getAllTransactions();
     
     return transactions.reduce((acc, curr) => {
@@ -112,14 +119,16 @@ export const updateTransactionStatus = async (id: string, status: TransactionSta
     const txn = mapTransactionFromDb(data);
     
     // Notify User
-    await addNotification({
-        userId: txn.userId,
-        message: {
-            ar: `تم تحديث حالة الدفع الخاصة بك إلى: ${status}`,
-            en: `Your payment status has been updated to: ${status}`,
-        },
-        link: '/dashboard/finance',
-    });
+    if (txn && txn.userId) {
+        await addNotification({
+            userId: txn.userId,
+            message: {
+                ar: `تم تحديث حالة الدفع الخاصة بك إلى: ${status}`,
+                en: `Your payment status has been updated to: ${status}`,
+            },
+            link: '/dashboard/finance',
+        });
+    }
 
     return txn;
 };

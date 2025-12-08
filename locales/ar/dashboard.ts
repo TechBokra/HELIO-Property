@@ -12,7 +12,8 @@ export const dashboard = {
             "subscription": "الاشتراك والباقة",
             "profile": "ملفي الشخصي",
             "analytics": "التحليلات",
-            "team": "فريقي"
+            "team": "فريقي",
+            "finance": "المالية"
         },
         "propertiesTitle": "إدارة العقارات",
         "addProperty": "إضافة عقار جديد",

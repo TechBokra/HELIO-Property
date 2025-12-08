@@ -42,17 +42,17 @@ const ServicePackageCard: React.FC<{
     };
 
     return (
-        <Card className="flex flex-col h-full p-0 border-2 border-transparent hover:border-amber-500/30 transition-all duration-300 shadow-sm hover:shadow-lg">
+        <Card className="flex flex-col h-full p-0 border-2 border-transparent hover:border-amber-500/30 transition-all duration-300 shadow-sm hover:shadow-lg overflow-hidden group">
             <CardContent className="p-8 flex flex-col flex-grow relative">
                  <button onClick={handleFavoriteClick} className="absolute top-4 right-4 p-2 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors z-10" aria-label={isFav ? t.favoritesPage.removeFromFavorites : t.favoritesPage.addToFavorites}>
-                    {isFav ? <HeartIconSolid className="w-6 h-6 text-red-500" /> : <HeartIcon className="w-6 h-6 text-gray-500" />}
+                    {isFav ? <HeartIconSolid className="w-5 h-5 text-red-500" /> : <HeartIcon className="w-5 h-5 text-gray-500" />}
                 </button>
-                <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mb-4">{titleLocalized}</h3>
-                <p className="text-gray-600 dark:text-gray-400 flex-grow mb-8 leading-relaxed text-sm md:text-base">{descLocalized}</p>
+                <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mb-4 group-hover:text-amber-500">{titleLocalized}</h3>
+                <p className="text-gray-600 dark:text-gray-300 flex-grow mb-8 leading-relaxed text-sm md:text-base">{descLocalized}</p>
 
                 <div className="space-y-4">
                     {(service.pricingTiers || []).map((tier: PricingTier, index: number) => (
-                        <div key={index} className="flex flex-col sm:flex-row sm:justify-between sm:items-center p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 gap-4 transition-colors hover:border-amber-200">
+                        <div key={index} className="flex flex-col sm:flex-row sm:justify-between sm:items-center p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 gap-4 transition-colors hover:border-amber-200 dark:hover:border-amber-800">
                             <div>
                                 <p className="font-bold text-gray-800 dark:text-gray-200 text-sm md:text-base">{tier.unitType?.[language]}</p>
                                 <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">{tier.areaRange?.[language]}</p>
@@ -64,7 +64,7 @@ const ServicePackageCard: React.FC<{
                                 <Button 
                                     size="sm" 
                                     onClick={() => onBookTier(titleLocalized, tier)}
-                                    className="whitespace-nowrap bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold"
+                                    className="whitespace-nowrap bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold shadow-md hover:shadow-lg"
                                 >
                                     {language === 'ar' ? 'حجز الآن' : 'Book Now'}
                                 </Button>
@@ -86,21 +86,29 @@ const PartnerCompanyCard: React.FC<{ partner: AdminPartner; t: any }> = ({ partn
 
     return (
         <Link to={`/partners/${partner.id}`} className="block h-full">
-            <Card className="transform hover:-translate-y-2 transition-transform duration-300 group h-full flex flex-col overflow-hidden p-0 card-glow">
-                <picture>
-                     <source
-                        type="image/webp"
-                        srcSet={`${partner.imageUrl_small || partner.imageUrl}&fm=webp`}
-                    />
-                    <img
-                        src={partner.imageUrl}
-                        alt={name}
-                        className="w-full h-48 object-cover"
-                        loading="lazy"
-                    />
-                </picture>
-                <CardContent className="p-6 flex flex-col flex-grow">
-                    <h3 className="text-xl font-bold text-amber-500 mb-2 group-hover:text-amber-400 transition-colors">
+            <Card className="transform hover:-translate-y-2 transition-transform duration-300 group h-full flex flex-col overflow-hidden p-0 card-glow border border-gray-100 dark:border-gray-700">
+                <div className="relative overflow-hidden h-48">
+                    <picture>
+                         <source
+                            type="image/webp"
+                            srcSet={`${partner.imageUrl_small || partner.imageUrl}&fm=webp`}
+                        />
+                        <img
+                            src={partner.imageUrl}
+                            alt={name}
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            loading="lazy"
+                        />
+                    </picture>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60"></div>
+                </div>
+                <CardContent className="p-6 flex flex-col flex-grow relative">
+                     <div className="-mt-10 mb-3 relative">
+                        <div className="bg-white dark:bg-gray-800 p-1 rounded-lg inline-block shadow-md">
+                             <img src={partner.imageUrl} alt="Logo" className="w-12 h-12 rounded object-cover" />
+                        </div>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 group-hover:text-amber-500 transition-colors">
                         {name}
                     </h3>
                     <p className="text-gray-600 dark:text-gray-400 text-sm flex-grow line-clamp-3">
@@ -119,14 +127,17 @@ const ServiceProviderCard: React.FC<{ partner: AdminPartner; onRequest: (title: 
     const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || '';
 
     return (
-        <Card className="p-6 flex flex-col sm:flex-row justify-between items-center hover:shadow-md transition-shadow">
-            <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{name}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{desc}</p>
+        <Card className="p-6 flex flex-col sm:flex-row justify-between items-center hover:shadow-md transition-shadow border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-4 mb-4 sm:mb-0">
+                 <img src={partner.imageUrl} alt={name} className="w-16 h-16 rounded-full object-cover border-2 border-gray-200 dark:border-gray-600" />
+                <div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">{name}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 max-w-md">{desc}</p>
+                </div>
             </div>
             <Button 
                 onClick={() => onRequest(t.partnerProfilePage.serviceRequestFor + ' ' + name, partner.id)} 
-                className="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0"
+                className="flex-shrink-0"
                 variant="outline"
             >
                 {buttonText}
@@ -193,7 +204,6 @@ const FinishingPage: React.FC = () => {
         }
     };
 
-
     const services = useMemo(() => {
         return siteContent?.finishingServices || [];
     }, [siteContent]);
@@ -203,9 +213,9 @@ const FinishingPage: React.FC = () => {
         
         const allFinishingPartners = partners.filter((p) => p.type === 'finishing' && p.status === 'active');
         
-        // Categorize based on subscription plan
+        // Categorize based on subscription plan from DB
         const companies = allFinishingPartners.filter(p => p.subscriptionPlan === 'professional' || p.subscriptionPlan === 'elite');
-        const providers = allFinishingPartners.filter(p => p.subscriptionPlan === 'commission');
+        const providers = allFinishingPartners.filter(p => p.subscriptionPlan === 'commission' || p.subscriptionPlan === 'basic');
 
         return { companyPartners: companies, serviceProviders: providers };
     }, [partners]);
@@ -228,15 +238,15 @@ const FinishingPage: React.FC = () => {
             >
                 <div className="absolute top-0 left-0 w-full h-full bg-black/70 z-10"></div>
                 <div className="relative z-20 px-4 container mx-auto text-white">
-                    <h1 className="text-4xl md:text-6xl font-extrabold">{content.heroTitle}</h1>
-                    <p className="max-w-3xl mx-auto text-lg md:text-xl text-gray-200 mt-4">
+                    <h1 className="text-4xl md:text-6xl font-extrabold text-shadow">{content.heroTitle}</h1>
+                    <p className="max-w-3xl mx-auto text-lg md:text-xl text-gray-200 mt-4 text-shadow">
                         {content.heroSubtitle}
                     </p>
                      <div className="mt-6">
                         <Button
                             onClick={handleShare}
                             variant="secondary"
-                            className="bg-white/20 text-white border-white/50 hover:bg-white/30"
+                            className="bg-white/20 text-white border-white/50 hover:bg-white/30 backdrop-blur-sm"
                         >
                             <ShareIcon className="w-5 h-5 mr-2" />
                             {t.sharing.share}
@@ -316,7 +326,7 @@ const FinishingPage: React.FC = () => {
                 </section>
             )}
 
-            {/* Free Tier Service Providers */}
+            {/* Service Providers */}
             {serviceProviders.length > 0 && (
                 <section className="py-20">
                     <div className="container mx-auto px-6">

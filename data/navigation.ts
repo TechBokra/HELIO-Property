@@ -25,7 +25,8 @@ export const partnerNavLinks: NavLinkItem[] = [
     { name: t => t.nav.projects, href: '/dashboard/projects', icon: CubeIcon, group: 'Partner', permission: Permission.MANAGE_OWN_PROJECTS },
     { name: t => t.nav.portfolio, href: '/dashboard/portfolio', icon: PhotoIcon, group: 'Partner', permission: Permission.MANAGE_OWN_PORTFOLIO },
     { name: t => t.nav.leads, href: '/dashboard/leads', icon: InboxIcon, group: 'Partner', permission: Permission.VIEW_OWN_LEADS },
-    { name: t => t.nav.subscription, href: '/dashboard/subscription', icon: BanknotesIcon, group: 'Partner', permission: Permission.MANAGE_OWN_SUBSCRIPTION },
+    { name: t => t.nav.subscription, href: '/dashboard/subscription', icon: ClipboardDocumentListIcon, group: 'Partner', permission: Permission.MANAGE_OWN_SUBSCRIPTION },
+    { name: t => t.nav.finance, href: '/dashboard/finance', icon: BanknotesIcon, group: 'Partner', permission: Permission.MANAGE_OWN_SUBSCRIPTION },
     { name: t => t.nav.team, href: '/dashboard/team', icon: UsersIcon, group: 'Partner', permission: Permission.MANAGE_TEAM },
 ];
 
@@ -44,6 +45,7 @@ export const adminNavLinks: NavLinkItem[] = [
     
     { name: t => t.adminDashboard.nav.forms, href: '/admin/forms', icon: ListIcon, permission: Permission.MANAGE_FORMS, group: 'System' },
     { name: t => t.adminDashboard.nav.users, href: '/admin/users', icon: UsersIcon, permission: Permission.MANAGE_USERS, group: 'System' },
+    { name: t => t.adminDashboard.nav.finance, href: '/admin/finance', icon: BanknotesIcon, permission: Permission.MANAGE_SETTINGS, group: 'System' },
     { name: t => t.adminDashboard.nav.automationRules, href: '/admin/automation', icon: AdjustmentsHorizontalIcon, permission: Permission.MANAGE_AUTOMATION, group: 'System' },
     { name: t => t.adminDashboard.nav.rolesAndPermissions, href: '/admin/roles', icon: ShieldCheckIcon, permission: Permission.MANAGE_ROLES_PERMISSIONS, group: 'System' },
     { name: t => t.adminDashboard.nav.settings, href: '/admin/settings', icon: CogIcon, permission: Permission.MANAGE_SETTINGS, group: 'System' },

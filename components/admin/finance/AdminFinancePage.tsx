@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAllTransactions, getFinanceStats, updateTransactionStatus } from '../../../services/finance';
 import { useAdminTable } from '../../hooks/useAdminTable';
@@ -37,7 +37,7 @@ const TransactionDetailsModal: React.FC<{ txn: Transaction; onClose: () => void 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <span className="text-sm text-gray-500 block">{language === 'ar' ? 'رقم المعاملة' : 'Transaction ID'}</span>
-                        <span className="font-mono font-medium">{txn.id}</span>
+                        <span className="font-mono font-medium text-xs break-all">{txn.id}</span>
                     </div>
                     <div>
                          <span className="text-sm text-gray-500 block">{language === 'ar' ? 'الرقم المرجعي' : 'Reference No'}</span>
@@ -49,7 +49,7 @@ const TransactionDetailsModal: React.FC<{ txn: Transaction; onClose: () => void 
                     </div>
                     <div>
                          <span className="text-sm text-gray-500 block">{language === 'ar' ? 'التاريخ' : 'Date'}</span>
-                        <span className="">{new Date(txn.createdAt).toLocaleString()}</span>
+                        <span className="">{new Date(txn.createdAt).toLocaleDateString()}</span>
                     </div>
                 </div>
                 <div className="border-t pt-4 mt-4">
@@ -89,6 +89,7 @@ const AdminFinancePage: React.FC = () => {
             showToast(language === 'ar' ? 'تم تحديث المعاملة' : 'Transaction updated', 'success');
             queryClient.invalidateQueries({ queryKey: ['allTransactions'] });
             queryClient.invalidateQueries({ queryKey: ['financeStats'] });
+            setDetailsTxn(null);
         }
     });
 
@@ -108,7 +109,6 @@ const AdminFinancePage: React.FC = () => {
         searchFn: (t: Transaction, term: string) => 
             t.id.toLowerCase().includes(term) || 
             t.userName.toLowerCase().includes(term) || 
-            t.userId.toLowerCase().includes(term) || 
             (t.referenceNumber || '').toLowerCase().includes(term),
         filterFns: {
             status: (t, v) => t.status === v,
@@ -124,7 +124,6 @@ const AdminFinancePage: React.FC = () => {
         }
     });
     
-    // Trigger re-filter when dates change
     React.useEffect(() => {
         setFilter('dateRange', 'trigger');
     }, [dateRange, setFilter]);
@@ -148,8 +147,7 @@ const AdminFinancePage: React.FC = () => {
                         <TableRow key={txn.id}>
                             <TableCell className="font-medium">
                                 <div>{txn.userName}</div>
-                                <div className="text-xs text-gray-500">{txn.userId}</div>
-                                <div className="text-[10px] text-gray-400 font-mono mt-1">{txn.id}</div>
+                                <div className="text-[10px] text-gray-400 font-mono mt-1 truncate w-20" title={txn.userId}>{txn.userId}</div>
                             </TableCell>
                             <TableCell className="max-w-xs truncate cursor-pointer hover:text-amber-600" title={txn.description} onClick={() => setDetailsTxn(txn)}>
                                 {txn.description}
@@ -168,14 +166,10 @@ const AdminFinancePage: React.FC = () => {
                                         {language === 'ar' ? 'تفاصيل' : 'Details'}
                                     </Button>
                                     {txn.status === 'reviewing' && (
-                                        <>
-                                            <Button size="sm" variant="success" onClick={() => updateMutation.mutate({ id: txn.id, status: 'paid' })} className="px-2 py-1 h-auto text-xs">
-                                                ✓
-                                            </Button>
-                                            <Button size="sm" variant="danger" onClick={() => updateMutation.mutate({ id: txn.id, status: 'failed' })} className="px-2 py-1 h-auto text-xs">
-                                                ✕
-                                            </Button>
-                                        </>
+                                        <div className="flex gap-1">
+                                            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 h-auto text-xs" onClick={() => updateMutation.mutate({ id: txn.id, status: 'paid' })}>✓</Button>
+                                            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 h-auto text-xs" onClick={() => updateMutation.mutate({ id: txn.id, status: 'failed' })}>✕</Button>
+                                        </div>
                                     )}
                                 </div>
                             </TableCell>

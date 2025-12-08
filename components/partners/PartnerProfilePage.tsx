@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import type { Language, PortfolioItem, Property, AdminPartner, Project } from '../../types';
+import type { PortfolioItem, AdminPartner } from '../../types';
 import Lightbox from '../shared/Lightbox';
 import PropertyCard from '../properties/PropertyCard';
 import { getPortfolioByPartnerId } from '../../services/portfolio';
@@ -9,7 +9,7 @@ import { getPropertiesByPartnerId } from '../../services/properties';
 import { useQuery } from '@tanstack/react-query';
 import { getPartnerById } from '../../services/partners';
 import { useLanguage } from '../shared/LanguageContext';
-import { WhatsAppIcon, ShareIcon } from '../ui/Icons';
+import { WhatsAppIcon, ShareIcon, PhoneIcon } from '../ui/Icons';
 import { useToast } from '../shared/ToastContext';
 import { Button } from '../ui/Button';
 
@@ -44,24 +44,40 @@ const PartnerProfilePage: React.FC = () => {
     const navigate = useNavigate();
     const { showToast } = useToast();
 
-    const { data: partnerInfo, isLoading: isLoadingPartner } = useQuery({ queryKey: [`partner-${partnerId}`], queryFn: () => getPartnerById(partnerId!), enabled: !!partnerId });
-    const { data: partnerPortfolio, isLoading: isLoadingPortfolio } = useQuery({ queryKey: [`partnerPortfolio-${partnerId}`], queryFn: () => getPortfolioByPartnerId(partnerId!), enabled: !!partnerId });
-    const { data: partnerProperties, isLoading: isLoadingProperties } = useQuery({ queryKey: [`partnerProperties-${partnerId}`], queryFn: () => getPropertiesByPartnerId(partnerId!), enabled: !!partnerId });
+    // Fetch partner data from DB
+    const { data: partnerInfo, isLoading: isLoadingPartner } = useQuery({ 
+        queryKey: [`partner-${partnerId}`], 
+        queryFn: () => getPartnerById(partnerId!), 
+        enabled: !!partnerId 
+    });
+
+    // Fetch portfolio (for finishing partners)
+    const { data: partnerPortfolio, isLoading: isLoadingPortfolio } = useQuery({ 
+        queryKey: [`partnerPortfolio-${partnerId}`], 
+        queryFn: () => getPortfolioByPartnerId(partnerId!), 
+        enabled: !!partnerId 
+    });
+
+    // Fetch properties (for developers/agencies)
+    const { data: partnerProperties, isLoading: isLoadingProperties } = useQuery({ 
+        queryKey: [`partnerProperties-${partnerId}`], 
+        queryFn: () => getPropertiesByPartnerId(partnerId!), 
+        enabled: !!partnerId 
+    });
 
     const loading = isLoadingPartner || isLoadingPortfolio || isLoadingProperties;
 
-    // Use DB data first, fall back to local translation keys if needed for system partners
     const displayPartner = useMemo(() => {
         if (!partnerInfo) return null;
         
-        // Cast to access potential DB fields from AdminPartner interface
         const p = partnerInfo as AdminPartner;
         
         return {
             name: (language === 'ar' ? p.nameAr : p.name) || p.name,
             description: (language === 'ar' ? p.descriptionAr : p.description) || p.description,
             imageUrl: p.imageUrl,
-            type: p.type
+            type: p.type,
+            contactMethods: p.contactMethods
         };
     }, [partnerInfo, language]);
 
@@ -89,6 +105,7 @@ const PartnerProfilePage: React.FC = () => {
             state: {
                 serviceTitle,
                 partnerId: partnerInfo.id,
+                serviceType: partnerInfo.type === 'finishing' ? 'finishing' : 'property' // Default guess
             }
         });
     };
@@ -130,6 +147,9 @@ const PartnerProfilePage: React.FC = () => {
         );
     }
     
+    // Check if partner accepts calls directly
+    const showCallButton = displayPartner.contactMethods?.phone?.enabled && displayPartner.contactMethods.phone.number;
+    
     return (
         <div className="bg-white dark:bg-gray-900">
             {lightboxState.isOpen && (
@@ -162,7 +182,7 @@ const PartnerProfilePage: React.FC = () => {
                 <div className="container mx-auto px-6 text-center">
                     <img src={displayPartner.imageUrl} alt={displayPartner.name} className="w-32 h-32 rounded-full object-cover mx-auto mb-6 border-4 border-white dark:border-gray-700 shadow-lg"/>
                     <h1 className="text-4xl md:text-5xl font-bold text-amber-500">{displayPartner.name}</h1>
-                    <p className="max-w-3xl mx-auto text-lg text-gray-600 dark:text-gray-400 mt-4 whitespace-pre-line">{displayPartner.description}</p>
+                    <p className="max-w-3xl mx-auto text-lg text-gray-600 dark:text-gray-400 mt-4 whitespace-pre-line leading-relaxed">{displayPartner.description}</p>
                     <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
                         <Button
                             onClick={handleRequestService}
@@ -171,6 +191,12 @@ const PartnerProfilePage: React.FC = () => {
                         >
                             {t.partnerProfilePage.requestService}
                         </Button>
+                        {showCallButton && (
+                            <a href={`tel:${displayPartner.contactMethods?.phone?.number}`} className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:text-lg">
+                                <PhoneIcon className="w-5 h-5 mr-2" />
+                                {language === 'ar' ? 'اتصال' : 'Call'}
+                            </a>
+                        )}
                         <Button
                             onClick={() => setShareModalOpen(true)}
                             size="lg"
@@ -194,8 +220,8 @@ const PartnerProfilePage: React.FC = () => {
                         {(partnerPortfolio && partnerPortfolio.length > 0) ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                 {partnerPortfolio.map((img, index) => (
-                                    <div key={index} className="group relative overflow-hidden rounded-lg shadow-lg aspect-w-1 aspect-h-1 bg-gray-100 dark:bg-gray-800">
-                                        <img src={img.imageUrl} alt={img.alt} className="w-full h-80 object-cover transform transition-transform duration-300 group-hover:scale-105" loading="lazy" />
+                                    <div key={index} className="group relative overflow-hidden rounded-lg shadow-lg aspect-w-1 aspect-h-1 bg-gray-100 dark:bg-gray-800 hover:shadow-xl transition-all">
+                                        <img src={img.imageUrl} alt={img.alt} className="w-full h-80 object-cover transform transition-transform duration-500 group-hover:scale-110" loading="lazy" />
                                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
                                             <button 
                                                 onClick={() => openLightbox(partnerPortfolio, index)}
@@ -205,7 +231,7 @@ const PartnerProfilePage: React.FC = () => {
                                             {language === 'ar' ? 'عرض' : 'View'}
                                             </button>
                                         </div>
-                                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
+                                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
                                             <h3 className="text-white font-semibold">{img.title[language]}</h3>
                                             <p className="text-gray-300 text-xs">{img.category[language]}</p>
                                         </div>
@@ -245,7 +271,6 @@ const PartnerProfilePage: React.FC = () => {
                     </div>
                 </section>
             )}
-
         </div>
     );
 };

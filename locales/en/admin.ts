@@ -47,7 +47,8 @@ export const admin = {
             "rolesAndPermissions": "Roles & Permissions",
             "settings": "General Settings",
             "externalSettings": "External Settings",
-            "forms": "Forms"
+            "forms": "Forms",
+            "finance": "Finance"
         },
         "filter": {
             "search": "Search...",

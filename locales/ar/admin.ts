@@ -47,7 +47,8 @@ export const admin = {
             "rolesAndPermissions": "الأدوار والصلاحيات",
             "settings": "الإعدادات العامة",
             "externalSettings": "الإعدادات الخارجية",
-            "forms": "النماذج"
+            "forms": "النماذج",
+            "finance": "المالية"
         },
         "filter": {
             "search": "بحث...",

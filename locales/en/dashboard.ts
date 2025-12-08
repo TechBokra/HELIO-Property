@@ -12,7 +12,8 @@ export const dashboard = {
             "subscription": "Subscription & Plan",
             "profile": "My Profile",
             "analytics": "Analytics",
-            "team": "My Team"
+            "team": "My Team",
+            "finance": "Financials"
         },
         "propertiesTitle": "Manage Properties",
         "addProperty": "Add New Property",

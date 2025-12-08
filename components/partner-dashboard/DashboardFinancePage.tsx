@@ -15,7 +15,7 @@ const DashboardFinancePage: React.FC = () => {
     
     const { data: transactions, isLoading } = useQuery({
         queryKey: ['userTransactions', currentUser?.id],
-        queryFn: () => getTransactionsByUserId(currentUser!.id),
+        queryFn: () => currentUser ? getTransactionsByUserId(currentUser.id) : Promise.resolve([]),
         enabled: !!currentUser
     });
 
@@ -23,7 +23,7 @@ const DashboardFinancePage: React.FC = () => {
 
     const stats = (transactions || []).reduce((acc, curr) => {
         if (curr.status === 'paid') acc.totalSpent += curr.amount;
-        if (curr.status === 'reviewing') acc.pendingReview += curr.amount;
+        if (curr.status === 'reviewing' || curr.status === 'pending') acc.pendingReview += curr.amount;
         return acc;
     }, { totalSpent: 0, pendingReview: 0 });
 
