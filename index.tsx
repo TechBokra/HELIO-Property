@@ -1,6 +1,6 @@
 
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, HashRouter } from 'react-router-dom';
 import App from './App';
 import { ToastProvider } from './components/shared/ToastContext';
 import { LanguageProvider } from './components/shared/LanguageContext';
@@ -29,10 +29,16 @@ const queryClient = new QueryClient({
     }
 });
 
+// Determine which router to use based on the hostname.
+// Use BrowserRouter for Vercel/Production for clean URLs.
+// Use HashRouter for local preview/development to prevent routing errors.
+const isProduction = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('onlyhelio.com');
+const Router = isProduction ? BrowserRouter : HashRouter;
+
 const root = createRoot(rootElement);
 root.render(
     <ErrorBoundary>
-        <BrowserRouter>
+        <Router>
             <QueryClientProvider client={queryClient}>
                 <ThemeProvider>
                     <ToastProvider>
@@ -43,6 +49,6 @@ root.render(
                 </ThemeProvider>
                 <ReactQueryDevtools initialIsOpen={false} />
             </QueryClientProvider>
-        </BrowserRouter>
+        </Router>
     </ErrorBoundary>
 );
