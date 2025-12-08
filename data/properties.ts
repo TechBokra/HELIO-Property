@@ -1,6 +1,5 @@
 
 
-
 import type { Property } from '../types';
 
 // Data is now mutable to simulate a database
@@ -44,7 +43,7 @@ export let propertiesData: Property[] = [
       installmentsAvailable: true,
       isInCompound: true,
       realEstateFinanceAvailable: true,
-      delivery: { isImmediate: false, date: '2025-12' },
+      delivery: { isImmediate: false, date: '2025-12-01' },
       installments: { downPayment: 850000, monthlyInstallment: 63750, years: 10 },
       location: { lat: 30.138, lng: 31.679 },
       listingStartDate: '2024-06-01',
@@ -386,7 +385,7 @@ export let propertiesData: Property[] = [
       installmentsAvailable: true,
       isInCompound: true,
       realEstateFinanceAvailable: true,
-      delivery: { isImmediate: false, date: '2025-06' },
+      delivery: { isImmediate: false, date: '2025-06-01' },
        installments: { downPayment: 1360000, monthlyInstallment: 45333, years: 10 },
       location: { lat: 30.128, lng: 31.678 },
       listingStartDate: '2024-05-28',

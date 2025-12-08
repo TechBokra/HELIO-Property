@@ -1,5 +1,6 @@
 
 
+
 import { supabase } from '../lib/supabase';
 import { partnersData } from '../data/partners';
 import { projectsData } from '../data/projects';
@@ -54,6 +55,15 @@ const getFallbackPlans = () => {
             }
         },
     };
+};
+
+const formatDateForDb = (dateStr: string | undefined | null) => {
+    if (!dateStr) return null;
+    // Fix: Postgres requires YYYY-MM-DD. If we get YYYY-MM, append -01
+    if (/^\d{4}-\d{2}$/.test(dateStr)) {
+        return `${dateStr}-01`;
+    }
+    return dateStr;
 };
 
 export const migrateDataToSupabase = async (onProgress: (msg: string) => void) => {
@@ -138,7 +148,7 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
             installments_available: p.installmentsAvailable,
             finance_available: p.realEstateFinanceAvailable,
             delivery_immediate: p.delivery.isImmediate,
-            delivery_date: p.delivery.date,
+            delivery_date: formatDateForDb(p.delivery.date),
             installments_info: p.installments,
             listing_status: p.listingStatus,
             contact_method: p.contactMethod,
