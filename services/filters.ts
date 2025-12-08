@@ -1,83 +1,98 @@
 
-import { propertyTypesData as initialPropertyTypes, finishingStatusesData as initialFinishingStatuses, amenitiesData as initialAmenities } from '../data/filterOptions';
+import { supabase } from '../lib/supabase';
 import type { FilterOption } from '../types';
 
-// Create mutable, in-memory copies of the data to simulate a database.
-let propertyTypesData: FilterOption[] = [...initialPropertyTypes];
-let finishingStatusesData: FilterOption[] = [...initialFinishingStatuses];
-let amenitiesData: FilterOption[] = [...initialAmenities];
+// Helper to map DB row to FilterOption
+const mapOptionFromDb = (row: any): FilterOption => ({
+    id: row.id,
+    en: row.name_en,
+    ar: row.name_ar,
+    applicableTo: row.applicable_to || undefined
+});
 
-const SIMULATED_DELAY = 100;
+// --- Getters ---
 
-// Getters
-export const getAllPropertyTypes = (): Promise<FilterOption[]> => new Promise(res => setTimeout(() => res([...propertyTypesData]), SIMULATED_DELAY));
-export const getAllFinishingStatuses = (): Promise<FilterOption[]> => new Promise(res => setTimeout(() => res([...finishingStatusesData]), SIMULATED_DELAY));
-export const getAllAmenities = (): Promise<FilterOption[]> => new Promise(res => setTimeout(() => res([...amenitiesData]), SIMULATED_DELAY));
-
-// Generic Mutator
-const mutateOptions = (
-    dataType: 'propertyType' | 'finishingStatus' | 'amenity',
-    operation: 'add' | 'update' | 'delete',
-    item?: FilterOption | Omit<FilterOption, 'id'>,
-    itemId?: string
-) => {
-    let dataArray: FilterOption[];
-    switch (dataType) {
-        case 'propertyType': dataArray = propertyTypesData; break;
-        case 'finishingStatus': dataArray = finishingStatusesData; break;
-        case 'amenity': dataArray = amenitiesData; break;
-    }
-
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            switch (operation) {
-                case 'add':
-                    // Ensure item is present and treat as Omit<FilterOption, 'id'>
-                    if (item) {
-                         const newItem: FilterOption = { ...(item as Omit<FilterOption, 'id'>), id: `${dataType}-${Date.now()}` } as FilterOption;
-                         dataArray.push(newItem);
-                         resolve(newItem);
-                    } else {
-                        resolve(null); // Should handle error better
-                    }
-                    break;
-                case 'update':
-                    if (item && 'id' in item) {
-                        const index = dataArray.findIndex(i => i.id === (item as FilterOption).id);
-                        if (index > -1) {
-                            dataArray[index] = item as FilterOption;
-                            resolve(dataArray[index]);
-                        } else {
-                            resolve(null);
-                        }
-                    } else {
-                         resolve(null);
-                    }
-                    break;
-                case 'delete':
-                    const initialLength = dataArray.length;
-                    const updatedArray = dataArray.filter(i => i.id !== itemId);
-                    if (updatedArray.length < initialLength) {
-                        // Re-assign the local array variable
-                        if (dataType === 'propertyType') propertyTypesData = updatedArray;
-                        if (dataType === 'finishingStatus') finishingStatusesData = updatedArray;
-                        if (dataType === 'amenity') amenitiesData = updatedArray;
-                        resolve(true);
-                    } else {
-                        resolve(false);
-                    }
-                    break;
-            }
-        }, SIMULATED_DELAY);
-    });
+export const getAllPropertyTypes = async (): Promise<FilterOption[]> => {
+    const { data, error } = await supabase.from('property_types').select('*');
+    if (error) throw error;
+    return data.map(mapOptionFromDb);
 };
 
-export const addFilterOption = (dataType: 'propertyType' | 'finishingStatus' | 'amenity', item: Omit<FilterOption, 'id'>): Promise<FilterOption> => {
-    return mutateOptions(dataType, 'add', item) as Promise<FilterOption>;
+export const getAllFinishingStatuses = async (): Promise<FilterOption[]> => {
+    const { data, error } = await supabase.from('finishing_statuses').select('*');
+    if (error) throw error;
+    return data.map(mapOptionFromDb);
 };
-export const updateFilterOption = (dataType: 'propertyType' | 'finishingStatus' | 'amenity', item: FilterOption): Promise<FilterOption | null> => {
-    return mutateOptions(dataType, 'update', item) as Promise<FilterOption | null>;
+
+export const getAllAmenities = async (): Promise<FilterOption[]> => {
+    const { data, error } = await supabase.from('amenities').select('*');
+    if (error) throw error;
+    return data.map(mapOptionFromDb);
 };
-export const deleteFilterOption = (dataType: 'propertyType' | 'finishingStatus' | 'amenity', itemId: string): Promise<boolean> => {
-    return mutateOptions(dataType, 'delete', undefined, itemId) as Promise<boolean>;
+
+// --- Mutations ---
+
+export const addFilterOption = async (
+    dataType: 'propertyType' | 'finishingStatus' | 'amenity', 
+    item: Omit<FilterOption, 'id'>
+): Promise<FilterOption> => {
+    const tableName = 
+        dataType === 'propertyType' ? 'property_types' : 
+        dataType === 'finishingStatus' ? 'finishing_statuses' : 'amenities';
+
+    const dbPayload = {
+        name_en: item.en,
+        name_ar: item.ar,
+        applicable_to: item.applicableTo
+    };
+
+    const { data, error } = await supabase
+        .from(tableName)
+        .insert(dbPayload)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return mapOptionFromDb(data);
+};
+
+export const updateFilterOption = async (
+    dataType: 'propertyType' | 'finishingStatus' | 'amenity', 
+    item: FilterOption
+): Promise<FilterOption | null> => {
+    const tableName = 
+        dataType === 'propertyType' ? 'property_types' : 
+        dataType === 'finishingStatus' ? 'finishing_statuses' : 'amenities';
+
+    const dbUpdates = {
+        name_en: item.en,
+        name_ar: item.ar,
+        applicable_to: item.applicableTo
+    };
+
+    const { data, error } = await supabase
+        .from(tableName)
+        .update(dbUpdates)
+        .eq('id', item.id)
+        .select()
+        .single();
+
+    if (error) return null;
+    return mapOptionFromDb(data);
+};
+
+export const deleteFilterOption = async (
+    dataType: 'propertyType' | 'finishingStatus' | 'amenity', 
+    itemId: string
+): Promise<boolean> => {
+    const tableName = 
+        dataType === 'propertyType' ? 'property_types' : 
+        dataType === 'finishingStatus' ? 'finishing_statuses' : 'amenities';
+
+    const { error } = await supabase
+        .from(tableName)
+        .delete()
+        .eq('id', itemId);
+
+    return !error;
 };

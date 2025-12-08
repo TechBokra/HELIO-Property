@@ -1,6 +1,5 @@
 
 import { supabase } from '../lib/supabase';
-import { formsData as initialData } from '../data/forms';
 import type { FormDefinition } from '../types';
 
 export const getAllForms = async (): Promise<FormDefinition[]> => {
@@ -10,7 +9,8 @@ export const getAllForms = async (): Promise<FormDefinition[]> => {
         .eq('key', 'forms_config')
         .single();
     
-    if (error || !data) return initialData;
+    // Return empty array if not found, implying migration/seed is needed
+    if (error || !data) return [];
     return data.content as FormDefinition[];
 };
 

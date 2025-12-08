@@ -1,10 +1,10 @@
 
+import { supabase } from '../lib/supabase';
 import type { SubscriptionPlan, SubscriptionPlanDetails, PlanCategory } from '../types';
 import { arTranslations, enTranslations } from '../data/translations';
 
-const SIMULATED_DELAY = 300;
-
-const getPlansFromTranslations = () => {
+// Helper to get fallback plans from local translations if DB is empty
+const getFallbackPlans = () => {
     const arPlans = arTranslations.subscriptionPlans;
     const enPlans = enTranslations.subscriptionPlans;
 
@@ -34,26 +34,64 @@ const getPlansFromTranslations = () => {
                 commission: { ar: arPlans?.individual?.rent?.commission, en: enPlans?.individual?.rent?.commission },
             }
         },
-    } as any; // Cast to avoid deep type checking for this mock
+    } as Record<PlanCategory, any>;
 };
-
 
 export const getPlans = async (): Promise<Record<PlanCategory, any>> => {
-    const plans = getPlansFromTranslations();
-    return new Promise((resolve) => {
-        // Return a deep copy to prevent direct mutation from outside
-        setTimeout(() => resolve(JSON.parse(JSON.stringify(plans))), SIMULATED_DELAY);
-    });
+    try {
+        const { data, error } = await supabase
+            .from('site_content')
+            .select('content')
+            .eq('key', 'subscription_plans')
+            .single();
+
+        if (error || !data) {
+            // Fallback to local data if not found in DB
+            return getFallbackPlans();
+        }
+
+        return data.content;
+    } catch (e) {
+        console.error("Failed to fetch plans", e);
+        return getFallbackPlans();
+    }
 };
 
+export const updatePlan = async (
+    planType: PlanCategory, 
+    planKey: SubscriptionPlan, 
+    updates: { ar: Partial<SubscriptionPlanDetails>, en: Partial<SubscriptionPlanDetails> }, 
+    subCategory?: 'sale' | 'rent'
+): Promise<boolean> => {
+    const currentPlans = await getPlans();
+    
+    // Deep clone to avoid mutation issues before saving
+    const newPlans = JSON.parse(JSON.stringify(currentPlans));
+    
+    // Locate the specific plan
+    let targetPlanGroup;
+    if (planType === 'individual' && subCategory) {
+        targetPlanGroup = newPlans[planType][subCategory];
+    } else {
+        targetPlanGroup = newPlans[planType];
+    }
 
-export const updatePlan = (planType: PlanCategory, planKey: SubscriptionPlan, updates: { ar: Partial<SubscriptionPlanDetails>, en: Partial<SubscriptionPlanDetails> }, subCategory?: 'sale' | 'rent'): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            // This is a limitation of the mock setup. In a real app, this would be a POST/PUT request.
-            // Here we are just resolving true without actually mutating the source `translations.ts` file.
-            console.warn("Mock API: Plan updates are not persisted in this demo.", { planType, subCategory, planKey, updates });
-            resolve(true);
-        }, SIMULATED_DELAY);
-    });
+    if (targetPlanGroup && targetPlanGroup[planKey]) {
+        // Merge updates
+        targetPlanGroup[planKey].ar = { ...targetPlanGroup[planKey].ar, ...updates.ar };
+        targetPlanGroup[planKey].en = { ...targetPlanGroup[planKey].en, ...updates.en };
+        
+        // Save back to DB
+        const { error } = await supabase
+            .from('site_content')
+            .upsert({ key: 'subscription_plans', content: newPlans });
+
+        if (error) {
+            console.error("Error updating plan:", error);
+            return false;
+        }
+        return true;
+    }
+    
+    return false;
 };

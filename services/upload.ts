@@ -1,3 +1,4 @@
+
 // Safely access environment variables
 const getEnv = () => {
     try {

@@ -1,3 +1,4 @@
+
 import { supabase } from '../lib/supabase';
 import { partnersData } from '../data/partners';
 import { projectsData } from '../data/projects';
@@ -5,10 +6,12 @@ import { propertiesData } from '../data/properties';
 import { portfolioData } from '../data/portfolio';
 import { requestsData } from '../data/requests';
 import { leadsData } from '../data/leads';
-import { transactionsData } from '../data/finance';
 import { siteContentData } from '../data/content';
 import { bannersData } from '../data/banners';
+import { routingRulesData } from '../data/routingRules';
+import { formsData } from '../data/forms';
 import { arTranslations, enTranslations } from '../data/translations';
+import { aiEstimatorConfigData } from '../data/aiConfig';
 
 // Helper to get localized names for partners
 const getPartnerInfo = (id: string) => {
@@ -17,6 +20,39 @@ const getPartnerInfo = (id: string) => {
     // @ts-ignore
     const en = enTranslations.partnerInfo?.[id] || {};
     return { ar, en };
+};
+
+const getFallbackPlans = () => {
+    const arPlans = arTranslations.subscriptionPlans;
+    const enPlans = enTranslations.subscriptionPlans;
+
+    return {
+        developer: {
+            basic: { ar: arPlans?.developer?.basic, en: enPlans?.developer?.basic },
+            professional: { ar: arPlans?.developer?.professional, en: enPlans?.developer?.professional },
+            elite: { ar: arPlans?.developer?.elite, en: enPlans?.developer?.elite },
+        },
+        agency: {
+             basic: { ar: arPlans?.agency?.basic, en: enPlans?.agency?.basic },
+            professional: { ar: arPlans?.agency?.professional, en: enPlans?.agency?.professional },
+            elite: { ar: arPlans?.agency?.elite, en: enPlans?.agency?.elite },
+        },
+        finishing: {
+            commission: { ar: arPlans?.finishing?.commission, en: enPlans?.finishing?.commission },
+            professional: { ar: arPlans?.finishing?.professional, en: enPlans?.finishing?.professional },
+            elite: { ar: arPlans?.finishing?.elite, en: enPlans?.finishing?.elite },
+        },
+        individual: {
+            sale: {
+                paid_listing: { ar: arPlans?.individual?.sale?.paid_listing, en: enPlans?.individual?.sale?.paid_listing },
+                commission: { ar: arPlans?.individual?.sale?.commission, en: enPlans?.individual?.sale?.commission },
+            },
+            rent: {
+                paid_listing: { ar: arPlans?.individual?.rent?.paid_listing, en: enPlans?.individual?.rent?.paid_listing },
+                commission: { ar: arPlans?.individual?.rent?.commission, en: enPlans?.individual?.rent?.commission },
+            }
+        },
+    };
 };
 
 export const migrateDataToSupabase = async (onProgress: (msg: string) => void) => {
@@ -150,12 +186,18 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
         const { error: errReq } = await supabase.from('requests').upsert(allRequests);
         if (errReq) throw new Error(`Requests Error: ${errReq.message}`);
 
-        // 6. Site Content & Banners
-        onProgress("Migrating site content...");
-        // Store banners as a separate key in site_content or its own table. 
-        // For simplicity in this script, we'll assume a 'banners' key in site_content table.
+        // 6. Site Content, Banners, Rules, Forms
+        onProgress("Migrating site content and configuration...");
+        
         await supabase.from('site_content').upsert({ key: 'banners', content: bannersData });
         await supabase.from('site_content').upsert({ key: 'main_content', content: siteContentData });
+        await supabase.from('site_content').upsert({ key: 'automation_rules', content: routingRulesData });
+        await supabase.from('site_content').upsert({ key: 'forms_config', content: formsData });
+        
+        // Migrate Plans & AI Config
+        const plansData = getFallbackPlans();
+        await supabase.from('site_content').upsert({ key: 'subscription_plans', content: plansData });
+        await supabase.from('site_content').upsert({ key: 'ai_config', content: aiEstimatorConfigData });
 
         onProgress("Migration Completed Successfully!");
         return true;
