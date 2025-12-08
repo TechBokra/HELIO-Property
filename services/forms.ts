@@ -1,17 +1,24 @@
 
 import { supabase } from '../lib/supabase';
 import type { FormDefinition } from '../types';
+import { formsData as fallbackForms } from '../data/forms';
 
 export const getAllForms = async (): Promise<FormDefinition[]> => {
-    const { data, error } = await supabase
-        .from('site_content')
-        .select('content')
-        .eq('key', 'forms_config')
-        .single();
-    
-    // Return empty array if not found, implying migration/seed is needed
-    if (error || !data) return [];
-    return data.content as FormDefinition[];
+    try {
+        const { data, error } = await supabase
+            .from('site_content')
+            .select('content')
+            .eq('key', 'forms_config')
+            .single();
+        
+        if (error || !data) {
+            console.warn("Forms config not found in DB, using fallback.");
+            return fallbackForms;
+        }
+        return data.content as FormDefinition[];
+    } catch (e) {
+        return fallbackForms;
+    }
 };
 
 export const getFormById = async (id: string): Promise<FormDefinition | undefined> => {
@@ -30,20 +37,21 @@ export const saveForm = async (form: FormDefinition): Promise<FormDefinition> =>
     const now = new Date().toISOString();
     
     let newForm: FormDefinition;
+    let newFormsList = [...forms];
     
     if (index > -1) {
         // Update existing
         newForm = { ...form, updatedAt: now };
-        forms[index] = newForm;
+        newFormsList[index] = newForm;
     } else {
         // Create new
-        newForm = { ...form, id: `form-${Date.now()}`, createdAt: now, updatedAt: now };
-        forms.push(newForm);
+        newForm = { ...form, id: form.id || `form-${Date.now()}`, createdAt: now, updatedAt: now };
+        newFormsList.push(newForm);
     }
     
     const { error } = await supabase
         .from('site_content')
-        .upsert({ key: 'forms_config', content: forms });
+        .upsert({ key: 'forms_config', content: newFormsList });
 
     if (error) throw error;
     return newForm;

@@ -1,6 +1,4 @@
 
-
-
 import { supabase } from '../lib/supabase';
 import { partnersData } from '../data/partners';
 import { projectsData } from '../data/projects';
@@ -15,6 +13,13 @@ import { formsData } from '../data/forms';
 import { arTranslations, enTranslations } from '../data/translations';
 import { aiEstimatorConfigData } from '../data/aiConfig';
 
+/**
+ * @deprecated
+ * This migration service is deprecated.
+ * We now use direct SQL seeding in Supabase SQL Editor for data integrity and speed.
+ * This file is kept as a reference for data structures but should not be used in production flow.
+ */
+
 // Helper to get localized names for partners
 const getPartnerInfo = (id: string) => {
     // @ts-ignore
@@ -25,7 +30,8 @@ const getPartnerInfo = (id: string) => {
 };
 
 const getFallbackPlans = () => {
-    const arPlans = arTranslations.subscriptionPlans;
+    // ... logic same as before ...
+     const arPlans = arTranslations.subscriptionPlans;
     const enPlans = enTranslations.subscriptionPlans;
 
     return {
@@ -59,7 +65,6 @@ const getFallbackPlans = () => {
 
 const formatDateForDb = (dateStr: string | undefined | null) => {
     if (!dateStr) return null;
-    // Fix: Postgres requires YYYY-MM-DD. If we get YYYY-MM, append -01
     if (/^\d{4}-\d{2}$/.test(dateStr)) {
         return `${dateStr}-01`;
     }
@@ -67,8 +72,10 @@ const formatDateForDb = (dateStr: string | undefined | null) => {
 };
 
 export const migrateDataToSupabase = async (onProgress: (msg: string) => void) => {
+    console.warn("DEPRECATION WARNING: migrateDataToSupabase is deprecated. Please use the SQL Seed script.");
+    
     try {
-        onProgress("Starting migration...");
+        onProgress("Starting migration (LEGACY MODE)...");
 
         // 1. Partners
         onProgress(`Migrating ${partnersData.length} partners...`);
@@ -113,7 +120,6 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
         const { error: errProjects } = await supabase.from('projects').upsert(projectsPayload);
         if (errProjects) {
             console.error("Projects Migration Failed:", errProjects);
-            // Additional debug info
             if(errProjects.code === '23503') {
                  onProgress("Foreign key error in Projects. Check if all partner IDs exist.");
             }
@@ -179,7 +185,6 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
         if (errPort) throw new Error(`Portfolio Error: ${errPort.message}`);
 
         // 5. Leads & Requests
-        // Merge Leads into Requests table for unified view
         onProgress(`Migrating leads and requests...`);
         const leadsPayload = leadsData.map(l => ({
             id: l.id,
@@ -210,7 +215,7 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
         const { error: errReq } = await supabase.from('requests').upsert(allRequests);
         if (errReq) throw new Error(`Requests Error: ${errReq.message}`);
 
-        // 6. Site Content, Banners, Rules, Forms
+        // 6. Site Content
         onProgress("Migrating site content and configuration...");
         
         await supabase.from('site_content').upsert({ key: 'banners', content: bannersData });
@@ -218,7 +223,6 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
         await supabase.from('site_content').upsert({ key: 'automation_rules', content: routingRulesData });
         await supabase.from('site_content').upsert({ key: 'forms_config', content: formsData });
         
-        // Migrate Plans & AI Config
         const plansData = getFallbackPlans();
         await supabase.from('site_content').upsert({ key: 'subscription_plans', content: plansData });
         await supabase.from('site_content').upsert({ key: 'ai_config', content: aiEstimatorConfigData });

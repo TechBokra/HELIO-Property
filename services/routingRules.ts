@@ -1,20 +1,23 @@
 
 import { supabase } from '../lib/supabase';
 import type { RoutingRule } from '../data/routingRules';
-
-// We prioritize DB content. The initial data logic is moved to the migration script.
-// If the DB is empty, this returns an empty array to indicate 'no rules configured' rather than falling back to hardcoded data,
-// encouraging the user to run the migration/seed script.
+import { routingRulesData as fallbackRules } from '../data/routingRules';
 
 export const getAllRoutingRules = async (): Promise<RoutingRule[]> => {
-    const { data, error } = await supabase
-        .from('site_content')
-        .select('content')
-        .eq('key', 'automation_rules')
-        .single();
-    
-    if (error || !data) return []; // Return empty if not initialized in DB
-    return data.content as RoutingRule[];
+    try {
+        const { data, error } = await supabase
+            .from('site_content')
+            .select('content')
+            .eq('key', 'automation_rules')
+            .single();
+        
+        if (error || !data) {
+            return fallbackRules; 
+        }
+        return data.content as RoutingRule[];
+    } catch (e) {
+        return fallbackRules;
+    }
 };
 
 export const addRoutingRule = async (rule: Omit<RoutingRule, 'id'>): Promise<RoutingRule> => {

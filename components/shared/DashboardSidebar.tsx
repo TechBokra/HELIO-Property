@@ -30,7 +30,7 @@ interface DashboardSidebarProps {
   setIsCollapsed: (isCollapsed: boolean) => void;
 }
 
-const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen' | 'setIsCollapsed'> & {onLinkClick: () => void}> = ({
+const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen' | 'setIsCollapsed'> & {onLinkClick: () => void, isCollapsed: boolean}> = ({
     user,
     navLinks,
     onLogout,
@@ -81,13 +81,13 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
     const partnerName = t.partnerInfo?.[user.id]?.name || user.name;
 
     return (
-        <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-white px-4 py-4 dashboard-sidebar scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-             <div className={`flex h-16 shrink-0 items-center ${isCollapsed ? 'justify-center' : ''}`}>
+        <div className="flex grow flex-col gap-y-5 overflow-y-auto overflow-x-hidden bg-white px-4 py-4 dashboard-sidebar scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent h-full">
+             <div className={`flex h-16 shrink-0 items-center ${isCollapsed ? 'justify-center' : ''} transition-all duration-300`}>
                 <SiteIdentity 
-                    className="text-amber-500" 
+                    className={`text-amber-500 transition-all duration-300 ${isCollapsed ? 'scale-90' : ''}`}
                     logoClassName="h-8 w-auto" 
-                    textClassName={`font-bold text-lg text-gray-800 transition-opacity duration-200 ${isCollapsed ? 'opacity-0 hidden' : 'opacity-100'}`}
-                    showText={!isCollapsed}
+                    textClassName={`font-bold text-lg text-gray-800 whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-3'}`}
+                    showText={true} // Always render text, hide via CSS for transition
                     hideTextOnMobile={false}
                 />
             </div>
@@ -95,20 +95,25 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
             <nav className="flex flex-1 flex-col">
                 <ul role="list" className="flex flex-1 flex-col gap-y-7">
                     <li>
-                         <div className={`text-center space-y-2 ${isCollapsed ? 'px-1' : ''}`}>
-                             <img src={user.imageUrl} alt={partnerName} className={`mx-auto border-2 border-amber-500 object-cover rounded-full transition-all duration-300 ${isCollapsed ? 'w-10 h-10' : 'w-16 h-16'}`} />
-                            <div className={`transition-all duration-200 ${isCollapsed ? 'opacity-0 h-0 overflow-hidden pointer-events-none' : 'opacity-100'}`}>
-                                 <h2 className="text-sm font-bold text-gray-900 truncate" title={partnerName}>{partnerName}</h2>
-                                 <p className="text-xs text-amber-500 capitalize truncate">{user.role === Role.SUPER_ADMIN ? 'Super Admin' : t.adminDashboard.partnerTypes[user.type as keyof typeof t.adminDashboard.partnerTypes]}</p>
+                         <div className={`text-center transition-all duration-300 ${isCollapsed ? 'px-0' : 'px-1 space-y-2'}`}>
+                             <div className={`mx-auto border-2 border-amber-500 rounded-full overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-10 h-10 border-0' : 'w-16 h-16'}`}>
+                                <img src={user.imageUrl} alt={partnerName} className="w-full h-full object-cover" />
+                             </div>
+                            <div className={`transition-all duration-300 overflow-hidden ${isCollapsed ? 'h-0 opacity-0' : 'h-auto opacity-100'}`}>
+                                 <h2 className="text-sm font-bold text-gray-900 truncate px-1" title={partnerName}>{partnerName}</h2>
+                                 <p className="text-xs text-amber-500 capitalize truncate px-1">{user.role === Role.SUPER_ADMIN ? 'Super Admin' : t.adminDashboard.partnerTypes[user.type as keyof typeof t.adminDashboard.partnerTypes]}</p>
                             </div>
                         </div>
                     </li>
                     
                     {linkGroups.map((group, index) => (
                          <li key={group.name}>
-                            <div className={`text-xs font-bold leading-6 text-gray-400 px-2 uppercase tracking-wider mb-1 transition-opacity duration-200 ${isCollapsed ? 'opacity-0 h-0 pointer-events-none' : 'opacity-100'}`}>
+                            <div className={`text-xs font-bold leading-6 text-gray-400 px-2 uppercase tracking-wider mb-1 transition-all duration-300 whitespace-nowrap overflow-hidden ${isCollapsed ? 'h-0 opacity-0' : 'h-6 opacity-100'}`}>
                                 {group.name.replace(/([A-Z])/g, ' $1').trim()}
                             </div>
+                             {/* Separator line when collapsed to distinguish groups */}
+                            {isCollapsed && <div className="h-px bg-gray-100 mx-2 my-2"></div>}
+                            
                             <ul role="list" className="-mx-2 space-y-1">
                                 {group.links.map(link => {
                                     const Icon = link.icon;
@@ -124,14 +129,20 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                                                 to={link.href} 
                                                 end={link.exact} 
                                                 onClick={onLinkClick}
-                                                className={({isActive}) => `group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold transition-colors ${isCollapsed ? 'justify-center' : ''} ${isActive ? 'bg-amber-50 text-amber-600' : 'text-gray-700 hover:text-amber-600 hover:bg-gray-50'}`}
+                                                className={({isActive}) => `group flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold transition-all duration-200 ${isCollapsed ? 'justify-center' : ''} ${isActive ? 'bg-amber-50 text-amber-600' : 'text-gray-700 hover:text-amber-600 hover:bg-gray-50'}`}
                                             >
                                                 <Icon className="h-6 w-6 shrink-0" aria-hidden="true" />
-                                                <span className={`transition-all duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden absolute' : 'opacity-100 w-auto'}`}>{linkName}</span>
-                                            </NavLink>
-                                            {isCollapsed && (
-                                                <div className={`absolute ${isRTL ? 'right-full mr-2' : 'left-full ml-2'} top-1/2 -translate-y-1/2 whitespace-nowrap bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg`}>
+                                                <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
                                                     {linkName}
+                                                </span>
+                                            </NavLink>
+                                            
+                                            {/* Tooltip for collapsed state */}
+                                            {isCollapsed && (
+                                                <div className={`absolute ${isRTL ? 'right-full mr-2' : 'left-full ml-2'} top-1/2 -translate-y-1/2 whitespace-nowrap bg-gray-800 text-white text-xs px-2 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-lg`}>
+                                                    {linkName}
+                                                    {/* Triangle pointer */}
+                                                    <div className={`absolute top-1/2 -translate-y-1/2 border-4 border-transparent ${isRTL ? 'border-l-gray-800 left-full' : 'border-r-gray-800 right-full'}`}></div>
                                                 </div>
                                             )}
                                         </li>
@@ -142,7 +153,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                     ))}
 
                     <li className="mt-auto">
-                        <div className="border-t border-gray-200 pt-4 mt-4 space-y-1">
+                        <div className={`border-t border-gray-200 pt-4 mt-4 space-y-1 transition-all duration-300 ${isCollapsed ? 'px-0' : ''}`}>
                              {/* Return to Website */}
                             <Link 
                                 to="/" 
@@ -151,7 +162,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                                 title={language === 'ar' ? 'العودة للموقع' : 'Return to Website'}
                             >
                                 <GlobeAltIcon className="h-6 w-6 shrink-0 group-hover:text-amber-600" />
-                                <span className={`transition-all duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden absolute' : 'opacity-100 w-auto'}`}>
+                                <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
                                     {language === 'ar' ? 'العودة للموقع' : 'Return to Website'}
                                 </span>
                             </Link>
@@ -163,7 +174,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                                 className={`w-full group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-red-600 hover:bg-red-50 transition-colors ${isCollapsed ? 'justify-center' : ''}`}
                             >
                                 <LogoutIcon className="h-6 w-6 shrink-0 group-hover:text-red-700" />
-                                <span className={`transition-all duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden absolute' : 'opacity-100 w-auto'}`}>{t.auth.logout}</span>
+                                <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>{t.auth.logout}</span>
                             </button>
                         </div>
                     </li>
@@ -187,7 +198,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = (props) => {
         <ErrorBoundary fallback={<div className="w-20 bg-gray-100 h-full flex items-center justify-center text-red-500">!</div>}>
             {/* Mobile sidebar */}
             <div className={`relative z-50 lg:hidden ${isOpen ? 'block' : 'hidden'}`} role="dialog" aria-modal="true">
-                <div className="fixed inset-0 bg-gray-900/80 transition-opacity" onClick={() => setIsOpen(false)} />
+                <div className="fixed inset-0 bg-gray-900/80 transition-opacity backdrop-blur-sm" onClick={() => setIsOpen(false)} />
                 <div className="fixed inset-0 flex">
                     <div className={`relative flex h-full w-full max-w-xs flex-1 transition-transform duration-300 ease-in-out 
                         ${isRTL ? 'ml-auto' : 'mr-auto'} 
@@ -205,13 +216,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = (props) => {
             </div>
 
             {/* Desktop sidebar */}
-            <div className={`hidden lg:fixed lg:inset-y-0 lg:z-40 lg:flex lg:flex-col transition-[width] duration-300 ${isCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
-                <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white shadow-sm">
+            {/* Using min-width and max-width transitions for smoother effect than just width */}
+            <div 
+                className={`hidden lg:fixed lg:inset-y-0 lg:z-40 lg:flex lg:flex-col transition-all duration-300 ease-in-out border-r border-gray-200 bg-white shadow-sm overflow-hidden`}
+                style={{ width: isCollapsed ? '5rem' : '18rem' }}
+            >
+                <div className="flex min-h-0 flex-1 flex-col h-full">
                     <SidebarContent {...props} onLinkClick={() => {}} />
+                    
                     <div className="flex flex-shrink-0 border-t border-gray-200 p-4 bg-gray-50">
                         <button
                             onClick={() => setIsCollapsed(!isCollapsed)}
-                            className="w-full flex items-center justify-center p-1 text-gray-500 hover:text-amber-600 hover:bg-gray-200 rounded-md transition-colors"
+                            className="w-full flex items-center justify-center p-1.5 text-gray-500 hover:text-amber-600 hover:bg-gray-200 rounded-md transition-colors"
                             title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                         >
                             <span className="sr-only">Collapse sidebar</span>
