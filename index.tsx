@@ -1,6 +1,6 @@
 
 import { createRoot } from 'react-dom/client';
-import { HashRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { ToastProvider } from './components/shared/ToastContext';
 import { LanguageProvider } from './components/shared/LanguageContext';
@@ -32,7 +32,7 @@ const queryClient = new QueryClient({
 const root = createRoot(rootElement);
 root.render(
     <ErrorBoundary>
-        <HashRouter>
+        <BrowserRouter>
             <QueryClientProvider client={queryClient}>
                 <ThemeProvider>
                     <ToastProvider>
@@ -43,6 +43,6 @@ root.render(
                 </ThemeProvider>
                 <ReactQueryDevtools initialIsOpen={false} />
             </QueryClientProvider>
-        </HashRouter>
+        </BrowserRouter>
     </ErrorBoundary>
 );
