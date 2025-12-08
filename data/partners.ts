@@ -70,6 +70,17 @@ export let partnersData: (Omit<Partner, 'name' | 'description' | 'role'> & { pas
         contactMethods: { whatsapp: { enabled: false, number: '' }, phone: { enabled: false, number: '' }, form: { enabled: true } },
         createdAt: '2023-05-01T00:00:00Z'
     },
+    // Missing partner added to resolve FK constraint
+    {
+        id: 'alrowad-engineering',
+        imageUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=75&w=2070&auto=format&fit=crop',
+        email: 'alrowad@onlyhelio.com',
+        password: 'password',
+        type: 'developer', status: 'active', subscriptionPlan: 'professional',
+        subscriptionEndDate: '2025-12-31T00:00:00Z', displayType: 'standard',
+        contactMethods: { whatsapp: { enabled: true, number: '+201099887766' }, phone: { enabled: true, number: '+201099887766' }, form: { enabled: true } },
+        createdAt: '2023-06-01T00:00:00Z'
+    },
     // Finishing Companies
     {
         id: 'el-mottaheda-group',
@@ -93,7 +104,7 @@ export let partnersData: (Omit<Partner, 'name' | 'description' | 'role'> & { pas
     },
     {
         id: 'ebdaa-integrated-finishes',
-        imageUrl: 'https://images.unsplash.com/photo-1484154218962-a197022b5858?q=75&w=2074&auto=format&fit=crop',
+        imageUrl: 'https://images.unsplash.com/photo-1449844908441-8829872d2607?q=75&w=2070&auto=format&fit=crop',
         email: 'fin4@onlyhelio.com',
         password: 'password',
         type: 'finishing', status: 'active', subscriptionPlan: 'commission',

@@ -1,8 +1,8 @@
 
 import { supabase } from '../lib/supabase';
-import { getPartnerById } from './partners';
-import { getProjectById } from './projects';
-import type { Property, PropertyFiltersType } from '../types';
+import { getAllPartners } from './partners'; // Use getAllPartners instead of getPartnerById loop
+import { getAllProjects } from './projects';
+import type { Property, PropertyFiltersType, Partner, Project } from '../types';
 import { filterProperties } from '../utils/propertyFilters';
 
 const mapPropertyFromDb = (row: any): Property => {
@@ -71,53 +71,80 @@ const mapPropertyFromDb = (row: any): Property => {
     };
 };
 
-const hydrateProperty = async (prop: Property): Promise<Property> => {
-    const partner = await getPartnerById(prop.partnerId);
-    let projectName = undefined;
-    if (prop.projectId) {
-        const project = await getProjectById(prop.projectId);
-        if (project) projectName = project.name;
-    }
+// Optimization: Batch hydration to avoid N+1 requests
+const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[]> => {
+    if (properties.length === 0) return [];
+
+    // 1. Fetch all partners needed (deduplicated)
+    // In a real optimized scenario, we would use .in('id', ids), but here we leverage existing services for simplicity
+    // Assuming the partner list isn't massive yet, fetching all is cached by React Query anyway.
+    // For better scalability, we fetch all partners once here.
     
-    return {
-        ...prop,
-        partnerName: partner?.name,
-        partnerImageUrl: partner?.imageUrl,
-        projectName: projectName
-    };
+    try {
+        const [allPartners, allProjects] = await Promise.all([
+            getAllPartners(),
+            getAllProjects()
+        ]);
+
+        const partnerMap = new Map<string, Partner>();
+        allPartners.forEach(p => partnerMap.set(p.id, p));
+
+        const projectMap = new Map<string, Project>();
+        allProjects.forEach(p => projectMap.set(p.id, p));
+
+        return properties.map(prop => {
+            const partner = partnerMap.get(prop.partnerId);
+            const project = prop.projectId ? projectMap.get(prop.projectId) : undefined;
+
+            return {
+                ...prop,
+                partnerName: partner?.name,
+                partnerImageUrl: partner?.imageUrl,
+                projectName: project ? project.name : undefined
+            };
+        });
+
+    } catch (e) {
+        console.error("Error hydrating properties:", e);
+        return properties; // Return unhydrated if aux fetch fails
+    }
 };
 
 export const getAllProperties = async (): Promise<Property[]> => {
     const { data, error } = await supabase.from('properties').select('*');
     if (error) throw error;
-    const props = data.map(mapPropertyFromDb);
-    return Promise.all(props.map(hydrateProperty));
+    const rawProperties = data.map(mapPropertyFromDb);
+    return hydratePropertiesBatch(rawProperties);
 };
 
 export const getProperties = async (): Promise<Property[]> => {
     const { data, error } = await supabase.from('properties').select('*').eq('listing_status', 'active');
     if (error) throw error;
-    const props = data.map(mapPropertyFromDb);
-    return Promise.all(props.map(hydrateProperty));
+    const rawProperties = data.map(mapPropertyFromDb);
+    return hydratePropertiesBatch(rawProperties);
 };
 
 export const getPropertiesByPartnerId = async (partnerId: string): Promise<Property[]> => {
     const { data, error } = await supabase.from('properties').select('*').eq('partner_id', partnerId);
     if (error) throw error;
-    return data.map(mapPropertyFromDb);
+    const rawProperties = data.map(mapPropertyFromDb);
+    // Even for a single partner, we use hydration to get project names if needed
+    return hydratePropertiesBatch(rawProperties);
 };
 
 export const getPropertiesByProjectId = async (projectId: string): Promise<Property[]> => {
     const { data, error } = await supabase.from('properties').select('*').eq('project_id', projectId);
     if (error) throw error;
-    return data.map(mapPropertyFromDb);
+    const rawProperties = data.map(mapPropertyFromDb);
+    return hydratePropertiesBatch(rawProperties);
 };
 
 export const getPropertyById = async (id: string): Promise<Property | undefined> => {
     const { data, error } = await supabase.from('properties').select('*').eq('id', id).single();
     if (error) return undefined;
-    const prop = mapPropertyFromDb(data);
-    return hydrateProperty(prop);
+    const rawProp = mapPropertyFromDb(data);
+    const hydratedArray = await hydratePropertiesBatch([rawProp]);
+    return hydratedArray[0];
 };
 
 export const getPaginatedProperties = async (options: {
@@ -126,6 +153,8 @@ export const getPaginatedProperties = async (options: {
   filters: PropertyFiltersType;
   disablePagination?: boolean;
 }): Promise<{ properties: Property[]; total: number }> => {
+    // Note: For large datasets, filtering should happen on DB side. 
+    // Currently implementing client-side filtering on fetched set for flexibility with the mock data structure.
     const allProps = await getProperties();
     const filtered = filterProperties(allProps, options.filters);
     

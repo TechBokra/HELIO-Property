@@ -1,4 +1,5 @@
 
+
 import { supabase } from '../lib/supabase';
 import { partnersData } from '../data/partners';
 import { projectsData } from '../data/projects';
@@ -81,7 +82,10 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
             };
         });
         const { error: errPartners } = await supabase.from('partners').upsert(partnersPayload);
-        if (errPartners) throw new Error(`Partners Error: ${errPartners.message}`);
+        if (errPartners) {
+            console.error("Partners Migration Failed:", errPartners);
+            throw new Error(`Partners Error: ${errPartners.message}`);
+        }
 
         // 2. Projects
         onProgress(`Migrating ${projectsData.length} projects...`);
@@ -97,7 +101,14 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
             created_at: p.createdAt
         }));
         const { error: errProjects } = await supabase.from('projects').upsert(projectsPayload);
-        if (errProjects) throw new Error(`Projects Error: ${errProjects.message}`);
+        if (errProjects) {
+            console.error("Projects Migration Failed:", errProjects);
+            // Additional debug info
+            if(errProjects.code === '23503') {
+                 onProgress("Foreign key error in Projects. Check if all partner IDs exist.");
+            }
+            throw new Error(`Projects Error: ${errProjects.message}`);
+        }
 
         // 3. Properties
         onProgress(`Migrating ${propertiesData.length} properties...`);
@@ -135,7 +146,10 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
             listing_start_date: p.listingStartDate
         }));
         const { error: errProps } = await supabase.from('properties').upsert(propertiesPayload);
-        if (errProps) throw new Error(`Properties Error: ${errProps.message}`);
+        if (errProps) {
+            console.error("Properties Migration Failed:", errProps);
+            throw new Error(`Properties Error: ${errProps.message}`);
+        }
 
         // 4. Portfolio
         onProgress(`Migrating ${portfolioData.length} portfolio items...`);
@@ -203,7 +217,7 @@ export const migrateDataToSupabase = async (onProgress: (msg: string) => void) =
         return true;
 
     } catch (error: any) {
-        console.error(error);
+        console.error("Migration Fatal Error:", error);
         onProgress(`Error: ${error.message}`);
         return false;
     }

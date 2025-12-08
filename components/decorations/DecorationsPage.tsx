@@ -32,7 +32,7 @@ const DecorationsPage: React.FC = () => {
 
     // Dynamic Tabs based on API Data
     const tabs = useMemo(() => (decorationCategories || []).map(cat => ({
-        id: cat.id, // Use ID for stable filtering
+        id: cat.id, 
         name: cat.name[language],
         desc: cat.description[language]
     })), [decorationCategories, language]);
@@ -49,20 +49,23 @@ const DecorationsPage: React.FC = () => {
 
     const activeTabInfo = useMemo(() => tabs.find(t => t.id === activeTabId), [tabs, activeTabId]);
 
-    // Filter works based on category ID mapping
+    // Filter works based on category. 
+    // IMPORTANT: Matching is done by name because PortfolioItems currently store category Name strings in the DB schema, not IDs.
     const filteredWorks = useMemo(() => {
         if (!activeTabId || !allWorks || !decorationCategories) return [];
         
-        // Find the category object to match names if needed, or rely on ID if portfolio item stored category ID (currently stores name)
-        // Since PortfolioItem currently stores category NAME, we match by name.
-        // Ideally, refactor PortfolioItem to store categoryId. For now, we match name.
         const currentCategory = decorationCategories.find(c => c.id === activeTabId);
         if (!currentCategory) return [];
 
-        return allWorks.filter(work => 
-            work.category.en === currentCategory.name.en || 
-            work.category.ar === currentCategory.name.ar
-        );
+        const categoryNameAr = currentCategory.name.ar.trim().toLowerCase();
+        const categoryNameEn = currentCategory.name.en.trim().toLowerCase();
+
+        return allWorks.filter(work => {
+            const workCatAr = (work.category.ar || '').trim().toLowerCase();
+            const workCatEn = (work.category.en || '').trim().toLowerCase();
+            
+            return workCatAr === categoryNameAr || workCatEn === categoryNameEn;
+        });
     }, [allWorks, activeTabId, decorationCategories]);
 
     const openRequestPage = (work: PortfolioItem) => {
@@ -159,13 +162,13 @@ const DecorationsPage: React.FC = () => {
 
             <div className="py-20">
                 <div className="container mx-auto px-6">
-                    <div className="flex justify-center mb-8 border-b border-gray-200 dark:border-gray-700">
-                        <div className="flex flex-wrap -mb-px space-x-2" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                    <div className="flex justify-center mb-8 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+                        <div className="flex flex-nowrap -mb-px space-x-2" dir={language === 'ar' ? 'rtl' : 'ltr'}>
                             {tabs.map((tab) => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTabId(tab.id)}
-                                    className={`px-6 py-3 font-semibold text-xl border-b-4 transition-colors duration-200 ${
+                                    className={`px-6 py-3 font-semibold text-xl border-b-4 transition-colors duration-200 whitespace-nowrap ${
                                         activeTabId === tab.id
                                         ? 'border-amber-500 text-amber-500'
                                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-amber-500 hover:border-amber-500/50'
@@ -178,7 +181,7 @@ const DecorationsPage: React.FC = () => {
                     </div>
 
                     <div className="text-center max-w-4xl mx-auto mb-12 animate-fadeIn">
-                         <p className="text-lg text-gray-600 dark:text-gray-400">
+                         <p className="text-lg text-gray-600 dark:text-gray-400 min-h-[3rem]">
                             {activeTabInfo?.desc}
                         </p>
                         <button
@@ -191,66 +194,66 @@ const DecorationsPage: React.FC = () => {
 
                     <BannerDisplay location="decorations" />
                    
-                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 animate-fadeIn mt-12">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 animate-fadeIn mt-12 min-h-[400px]">
                        {isLoading ? (
                            Array.from({ length: 3 }).map((_, i) => (
                                 <div key={i} className="bg-gray-200 dark:bg-gray-800 rounded-lg aspect-[4/5] animate-pulse"></div>
                            ))
-                       ) : filteredWorks.map((work, index) => {
-                            const isFav = isFavorite(work.id, 'portfolio');
-                            const isBuyNow = work.availability === 'In Stock' && work.price;
-                            
-                            const handleFavoriteClick = (e: React.MouseEvent) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                toggleFavorite(work.id, 'portfolio');
-                                showToast(isFav ? t.favoritesPage.removedFromFavorites : t.favoritesPage.addedToFavorites, 'success');
-                            };
-                            
-                           return (
-                               <div key={`${work.imageUrl}-${index}`} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden flex flex-col transform hover:-translate-y-2 transition-transform duration-300">
-                                   <div className="relative">
-                                       <div className="aspect-[4/5] bg-gray-100 dark:bg-gray-700">
-                                           <picture>
-                                               <source type="image/webp" srcSet={`${work.imageUrl}&fm=webp`} />
-                                               <img src={work.imageUrl} alt={work.alt} className="w-full h-full object-cover" loading="lazy" />
-                                           </picture>
+                       ) : filteredWorks.length > 0 ? (
+                           filteredWorks.map((work, index) => {
+                                const isFav = isFavorite(work.id, 'portfolio');
+                                const isBuyNow = work.availability === 'In Stock' && work.price;
+                                
+                                const handleFavoriteClick = (e: React.MouseEvent) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    toggleFavorite(work.id, 'portfolio');
+                                    showToast(isFav ? t.favoritesPage.removedFromFavorites : t.favoritesPage.addedToFavorites, 'success');
+                                };
+                                
+                               return (
+                                   <div key={`${work.imageUrl}-${index}`} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden flex flex-col transform hover:-translate-y-2 transition-transform duration-300">
+                                       <div className="relative">
+                                           <div className="aspect-[4/5] bg-gray-100 dark:bg-gray-700">
+                                               <picture>
+                                                   <source type="image/webp" srcSet={`${work.imageUrl}&fm=webp`} />
+                                                   <img src={work.imageUrl} alt={work.alt} className="w-full h-full object-cover" loading="lazy" />
+                                               </picture>
+                                           </div>
+                                           {work.availability && (
+                                               <span className={`absolute top-3 ${language === 'ar' ? 'left-3' : 'right-3'} text-xs font-bold px-2 py-1 rounded-full text-white ${work.availability === 'In Stock' ? 'bg-green-600' : 'bg-sky-600'}`}>
+                                                   {work.availability === 'In Stock' ? t_decor_page.inStock : t_decor_page.madeToOrder}
+                                               </span>
+                                           )}
+                                           <button onClick={handleFavoriteClick} className="absolute top-3 left-3 p-2 rounded-full bg-black/50 hover:bg-black/75 transition-colors z-10" aria-label={isFav ? t.favoritesPage.removeFromFavorites : t.favoritesPage.addToFavorites}>
+                                                {isFav ? <HeartIconSolid className="w-5 h-5 text-red-500" /> : <HeartIcon className="w-5 h-5 text-white" />}
+                                            </button>
                                        </div>
-                                       {work.availability && (
-                                           <span className={`absolute top-3 ${language === 'ar' ? 'left-3' : 'right-3'} text-xs font-bold px-2 py-1 rounded-full text-white ${work.availability === 'In Stock' ? 'bg-green-600' : 'bg-sky-600'}`}>
-                                               {work.availability === 'In Stock' ? t_decor_page.inStock : t_decor_page.madeToOrder}
-                                           </span>
-                                       )}
-                                       <button onClick={handleFavoriteClick} className="absolute top-3 left-3 p-2 rounded-full bg-black/50 hover:bg-black/75 transition-colors z-10" aria-label={isFav ? t.favoritesPage.removeFromFavorites : t.favoritesPage.addToFavorites}>
-                                            {isFav ? <HeartIconSolid className="w-5 h-5 text-red-500" /> : <HeartIcon className="w-5 h-5 text-white" />}
-                                        </button>
-                                   </div>
-                                   <div className="p-4 flex flex-col flex-grow">
-                                       <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate mb-2">{work.title[language]}</h3>
-                                       <div className="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mb-4 flex-wrap gap-2">
-                                           {work.price != null && <span className="font-semibold text-amber-500 text-base">{new Intl.NumberFormat(language === 'ar' ? 'ar-EG' : 'en-US', { style: 'currency', currency: 'EGP', minimumFractionDigits: 0 }).format(work.price)}</span>}
-                                           {work.dimensions && <span className="text-xs">{t_decor_page.dimensions}: {work.dimensions}</span>}
+                                       <div className="p-4 flex flex-col flex-grow">
+                                           <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate mb-2">{work.title[language]}</h3>
+                                           <div className="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mb-4 flex-wrap gap-2">
+                                               {work.price != null && <span className="font-semibold text-amber-500 text-base">{new Intl.NumberFormat(language === 'ar' ? 'ar-EG' : 'en-US', { style: 'currency', currency: 'EGP', minimumFractionDigits: 0 }).format(work.price)}</span>}
+                                               {work.dimensions && <span className="text-xs">{t_decor_page.dimensions}: {work.dimensions}</span>}
+                                           </div>
+                                           <button 
+                                               onClick={() => openRequestPage(work)}
+                                               className={`w-full mt-auto font-bold px-4 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${isBuyNow ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-amber-500 hover:bg-amber-600 text-gray-900'}`}
+                                           >
+                                               {isBuyNow && <ShoppingCartIcon className="w-4 h-4" />}
+                                               {isBuyNow ? (language === 'ar' ? 'شراء الآن' : 'Buy Now') : t_decor_page.inquireNow}
+                                           </button>
                                        </div>
-                                       <button 
-                                           onClick={() => openRequestPage(work)}
-                                           className={`w-full mt-auto font-bold px-4 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${isBuyNow ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-amber-500 hover:bg-amber-600 text-gray-900'}`}
-                                       >
-                                           {isBuyNow && <ShoppingCartIcon className="w-4 h-4" />}
-                                           {isBuyNow ? (language === 'ar' ? 'شراء الآن' : 'Buy Now') : t_decor_page.inquireNow}
-                                       </button>
                                    </div>
-                               </div>
-                           )
-                        })}
+                               )
+                           })
+                        ) : (
+                            <div className="col-span-full text-center py-16">
+                                <p className="text-xl text-gray-500 dark:text-gray-400">
+                                    {language === 'ar' ? 'لا توجد أعمال في هذا القسم حاليًا.' : 'No works in this section currently.'}
+                                </p>
+                            </div>
+                        )}
                    </div>
-
-                   { !isLoading && filteredWorks.length === 0 && (
-                        <div className="text-center py-16">
-                            <p className="text-xl text-gray-500 dark:text-gray-400">
-                                {language === 'ar' ? 'لا توجد أعمال في هذا القسم حاليًا.' : 'No works in this section currently.'}
-                            </p>
-                        </div>
-                   )}
 
                 </div>
             </div>

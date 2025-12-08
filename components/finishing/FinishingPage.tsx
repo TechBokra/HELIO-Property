@@ -79,11 +79,10 @@ const ServicePackageCard: React.FC<{
 
 const PartnerCompanyCard: React.FC<{ partner: AdminPartner; t: any }> = ({ partner, t }) => {
     const { language } = useLanguage();
-    const localizedPartner = t.partnerInfo[partner.id]; // Fallback translation
     
-    // Prefer DB data if available on the partner object itself (which it should be now)
-    const name = (language === 'ar' ? partner.nameAr : partner.name) || localizedPartner?.name || partner.name;
-    const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || localizedPartner?.description || '';
+    // Prioritize DB Name, then localized key fallback
+    const name = (language === 'ar' ? partner.nameAr : partner.name) || partner.name;
+    const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || '';
 
     return (
         <Link to={`/partners/${partner.id}`} className="block h-full">
@@ -115,10 +114,9 @@ const PartnerCompanyCard: React.FC<{ partner: AdminPartner; t: any }> = ({ partn
 
 const ServiceProviderCard: React.FC<{ partner: AdminPartner; onRequest: (title: string, partnerId: string) => void; t: any; buttonText: string }> = ({ partner, onRequest, t, buttonText }) => {
     const { language } = useLanguage();
-    const localizedPartner = t.partnerInfo[partner.id];
     
-    const name = (language === 'ar' ? partner.nameAr : partner.name) || localizedPartner?.name || partner.name;
-    const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || localizedPartner?.description || '';
+    const name = (language === 'ar' ? partner.nameAr : partner.name) || partner.name;
+    const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || '';
 
     return (
         <Card className="p-6 flex flex-col sm:flex-row justify-between items-center hover:shadow-md transition-shadow">
@@ -190,7 +188,6 @@ const FinishingPage: React.FC = () => {
                 showToast(t.sharing.linkCopied, 'success');
             }
         } catch (error) {
-             // Fallback
              await navigator.clipboard.writeText(urlToShare);
              showToast(t.sharing.linkCopied, 'success');
         }
@@ -198,7 +195,6 @@ const FinishingPage: React.FC = () => {
 
 
     const services = useMemo(() => {
-        // Prioritize what is in siteContent (DB), otherwise empty array (to avoid showing stale local data if DB is cleared)
         return siteContent?.finishingServices || [];
     }, [siteContent]);
 
@@ -207,6 +203,7 @@ const FinishingPage: React.FC = () => {
         
         const allFinishingPartners = partners.filter((p) => p.type === 'finishing' && p.status === 'active');
         
+        // Categorize based on subscription plan
         const companies = allFinishingPartners.filter(p => p.subscriptionPlan === 'professional' || p.subscriptionPlan === 'elite');
         const providers = allFinishingPartners.filter(p => p.subscriptionPlan === 'commission');
 

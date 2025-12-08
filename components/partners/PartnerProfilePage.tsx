@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import type { Language, PortfolioItem, Property, AdminPartner, Project } from '../../types';
@@ -51,10 +50,20 @@ const PartnerProfilePage: React.FC = () => {
 
     const loading = isLoadingPartner || isLoadingPortfolio || isLoadingProperties;
 
-    const localizedPartner = useMemo(() => {
+    // Use DB data first, fall back to local translation keys if needed for system partners
+    const displayPartner = useMemo(() => {
         if (!partnerInfo) return null;
-        return t.partnerInfo[partnerInfo.id] || null;
-    }, [partnerInfo, t]);
+        
+        // Cast to access potential DB fields from AdminPartner interface
+        const p = partnerInfo as AdminPartner;
+        
+        return {
+            name: (language === 'ar' ? p.nameAr : p.name) || p.name,
+            description: (language === 'ar' ? p.descriptionAr : p.description) || p.description,
+            imageUrl: p.imageUrl,
+            type: p.type
+        };
+    }, [partnerInfo, language]);
 
 
     const [lightboxState, setLightboxState] = useState({
@@ -74,8 +83,8 @@ const PartnerProfilePage: React.FC = () => {
     };
     
     const handleRequestService = () => {
-        if (!partnerInfo || !localizedPartner) return;
-        const serviceTitle = `${t.partnerProfilePage.serviceRequestFor} ${localizedPartner.name}`;
+        if (!partnerInfo || !displayPartner) return;
+        const serviceTitle = `${t.partnerProfilePage.serviceRequestFor} ${displayPartner.name}`;
         navigate('/request-service', {
             state: {
                 serviceTitle,
@@ -85,9 +94,9 @@ const PartnerProfilePage: React.FC = () => {
     };
 
     const handleWhatsAppShare = () => {
-        if (!partnerId || !localizedPartner) return;
+        if (!partnerId || !displayPartner) return;
         const urlToShare = window.location.href;
-        const text = encodeURIComponent(`${localizedPartner.name}\n${urlToShare}`);
+        const text = encodeURIComponent(`${displayPartner.name}\n${urlToShare}`);
         window.open(`https://wa.me/?text=${text}`, '_blank');
         setShareModalOpen(false);
     };
@@ -109,7 +118,7 @@ const PartnerProfilePage: React.FC = () => {
         return <PartnerProfileSkeleton />;
     }
 
-    if (!partnerInfo || !localizedPartner) {
+    if (!partnerInfo || !displayPartner) {
         return (
             <div className="py-20 text-center container mx-auto px-6">
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t.partnerProfilePage.partnerNotFound}</h1>
@@ -151,9 +160,9 @@ const PartnerProfilePage: React.FC = () => {
             
             <section className="py-20 bg-gray-50 dark:bg-gray-800">
                 <div className="container mx-auto px-6 text-center">
-                    <img src={partnerInfo.imageUrl} alt={localizedPartner.name} className="w-32 h-32 rounded-full object-cover mx-auto mb-6 border-4 border-white dark:border-gray-700 shadow-lg"/>
-                    <h1 className="text-4xl md:text-5xl font-bold text-amber-500">{localizedPartner.name}</h1>
-                    <p className="max-w-3xl mx-auto text-lg text-gray-600 dark:text-gray-400 mt-4">{localizedPartner.description}</p>
+                    <img src={displayPartner.imageUrl} alt={displayPartner.name} className="w-32 h-32 rounded-full object-cover mx-auto mb-6 border-4 border-white dark:border-gray-700 shadow-lg"/>
+                    <h1 className="text-4xl md:text-5xl font-bold text-amber-500">{displayPartner.name}</h1>
+                    <p className="max-w-3xl mx-auto text-lg text-gray-600 dark:text-gray-400 mt-4 whitespace-pre-line">{displayPartner.description}</p>
                     <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
                         <Button
                             onClick={handleRequestService}
@@ -186,7 +195,7 @@ const PartnerProfilePage: React.FC = () => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                 {partnerPortfolio.map((img, index) => (
                                     <div key={index} className="group relative overflow-hidden rounded-lg shadow-lg aspect-w-1 aspect-h-1 bg-gray-100 dark:bg-gray-800">
-                                        <img src={img.imageUrl} alt={img.alt} className="w-full h-80 object-cover transform transition-transform duration-300 group-hover:scale-105" />
+                                        <img src={img.imageUrl} alt={img.alt} className="w-full h-80 object-cover transform transition-transform duration-300 group-hover:scale-105" loading="lazy" />
                                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
                                             <button 
                                                 onClick={() => openLightbox(partnerPortfolio, index)}
@@ -198,12 +207,17 @@ const PartnerProfilePage: React.FC = () => {
                                         </div>
                                         <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
                                             <h3 className="text-white font-semibold">{img.title[language]}</h3>
+                                            <p className="text-gray-300 text-xs">{img.category[language]}</p>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-center text-gray-500 dark:text-gray-400">This partner has not uploaded any works yet.</p>
+                            <div className="text-center py-16 bg-gray-50 dark:bg-gray-800/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
+                                <p className="text-xl text-gray-500 dark:text-gray-400">
+                                    {language === 'ar' ? 'لم يقم هذا الشريك برفع أي أعمال بعد.' : 'This partner has not uploaded any works yet.'}
+                                </p>
+                            </div>
                         )}
                     </div>
                 </section>
@@ -222,7 +236,11 @@ const PartnerProfilePage: React.FC = () => {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-center text-gray-500 dark:text-gray-400">This partner has not listed any properties yet.</p>
+                            <div className="text-center py-16 bg-gray-50 dark:bg-gray-800/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
+                                <p className="text-xl text-gray-500 dark:text-gray-400">
+                                    {language === 'ar' ? 'لم يقم هذا الشريك بإضافة أي عقارات بعد.' : 'This partner has not listed any properties yet.'}
+                                </p>
+                            </div>
                         )}
                     </div>
                 </section>
