@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../shared/LanguageContext';
@@ -32,7 +31,7 @@ const CTA: React.FC = () => {
                     </Link>
                     <Link
                         to="/register"
-                        className="w-full sm:w-auto text-amber-500 border border-amber-500 font-semibold px-8 py-4 rounded-lg text-lg hover:bg-amber-500 hover:text-gray-900 transition-colors duration-200"
+                        className="w-full sm:w-auto bg-transparent border-2 border-gray-900 text-gray-900 font-semibold px-8 py-4 rounded-lg text-lg hover:bg-gray-900 hover:text-white transition-colors duration-200"
                     >
                         {t.joinAsPartner}
                     </Link>

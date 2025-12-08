@@ -138,12 +138,13 @@ const LoginPage: React.FC = () => {
                            {t_auth.loginButton}
                         </Button>
                     </div>
+                    
+                    <div className="text-center mt-4">
+                         <Link to="/register" className="text-sm font-medium text-amber-600 hover:text-amber-500 transition-colors">
+                            {t.joinAsPartner}
+                        </Link>
+                    </div>
                 </form>
-                 <div className="text-center">
-                    <Button variant="link" onClick={() => navigate('/register')}>
-                        {t.joinAsPartner}
-                    </Button>
-                </div>
 
                 {/* Quick Login Section for Demo/Testing Purposes */}
                 <div className="border-t border-gray-200 pt-6">

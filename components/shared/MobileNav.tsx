@@ -108,7 +108,7 @@ const MobileNav: React.FC<MobileNavProps> = React.memo(({ isOpen, onClose, ...pr
                        <li>
                            <button onClick={() => { onToggleQuietZone(); onClose(); }} className="flex items-center w-full p-3 rounded-lg transition-colors duration-200 text-lg text-gray-600 hover:bg-gray-100">
                                <LightBulbIcon className="w-6 h-6"/>
-                               <span className="mx-4">{t.wisdomQuotes.title}</span>
+                               <span className="mx-4">{t.marketing?.wisdomQuotes?.title || 'Quiet Zone'}</span>
                            </button>
                        </li>
                     </ul>
@@ -127,11 +127,11 @@ const MobileNav: React.FC<MobileNavProps> = React.memo(({ isOpen, onClose, ...pr
                         </div>
                     ) : (
                         <div className="space-y-2">
+                             <Link to="/register" onClick={onClose} className="w-full flex items-center justify-center p-3 rounded-lg border-2 border-amber-500 text-amber-600 font-bold text-lg hover:bg-amber-50 transition-colors">
+                                {t.joinAsPartner}
+                            </Link>
                              <Link to="/login" onClick={onClose} className="w-full flex items-center justify-center p-3 rounded-lg bg-amber-500 text-gray-900 font-bold text-lg hover:bg-amber-600 transition-colors">
                                 {t.auth.login}
-                            </Link>
-                             <Link to="/register" onClick={onClose} className="w-full flex items-center justify-center p-3 rounded-lg bg-gray-200 text-gray-800 font-bold text-lg hover:bg-gray-300 transition-colors">
-                                {t.joinAsPartner}
                             </Link>
                         </div>
                     )}

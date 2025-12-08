@@ -1,3 +1,5 @@
+
+
 import type { SiteContent } from '../types';
 
 export let siteContentData: SiteContent = {
@@ -22,8 +24,8 @@ export let siteContentData: SiteContent = {
           teamId: ''
       },
       supabase: {
-          url: '',
-          anonKey: '',
+          url: 'https://ygajpxznposoqfjlwtqi.supabase.co',
+          anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnYWpweHpucG9zb3Fmamx3dHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NDA1NjQsImV4cCI6MjA4MDUxNjU2NH0.iYd_ep77Qbp9dXHpFD-t5Xu3hzpN-aSS5YvS1_QfO3k',
           serviceRoleKey: ''
       },
       cloudinary: {
@@ -241,93 +243,4 @@ export let siteContentData: SiteContent = {
               en: "In-depth consultation sessions with our engineers to understand your vision and requirements, translating them into innovative initial interior design concepts with accurate cost estimates and material options." 
           },
           pricingTiers: [
-              { unitType: { ar: "مكالمة استشارية أولية", en: "Initial Consultation Call" }, areaRange: { ar: "جلسة أونلاين (60 دقيقة)", en: "Online Session (60 mins)" }, price: 1500 },
-              { unitType: { ar: "زيارة موقع واستشارة", en: "Site Visit & Consultation" }, areaRange: { ar: "جلسة في الموقع (3 ساعات)", en: "On-site Session (3 hours)" }, price: 4000 },
-              { unitType: { ar: "ورشة عمل وتخطيط", en: "Planning Workshop" }, areaRange: { ar: "يوم كامل (موقع/مكتب)", en: "Full Day (Site/Office)" }, price: 10000 }
-          ]
-      },
-      {
-          title: { ar: "التصميم ثلاثي الأبعاد", en: "3D Design" },
-          description: { 
-              ar: "نحول التصور المبدئي إلى تصميم ثلاثي الأبعاد واقعي وتفاعلي، مما يسمح لك بالتجول افتراضيًا في منزلك المستقبلي وتعديل التفاصيل قبل البدء في أي أعمال تنفيذ.", 
-              en: "We turn the initial concept into a realistic and interactive 3D design, allowing you to virtually tour your future home and adjust details before starting any execution works." 
-          },
-          pricingTiers: [
-              { unitType: { ar: "شقة", en: "Apartment" }, areaRange: { ar: "حتى 150 م²", en: "Up to 150 m²" }, price: 15000 },
-              { unitType: { ar: "شقة", en: "Apartment" }, areaRange: { ar: "151 - 250 م²", en: "151 - 250 m²" }, price: 20000 },
-              { unitType: { ar: "فيلا", en: "Villa" }, areaRange: { ar: "حتى 300 م²", en: "Up to 300 m²" }, price: 30000 },
-              { unitType: { ar: "فيلا", en: "Villa" }, areaRange: { ar: "أكثر من 300 م²", en: "More than 300 m²" }, price: 45000 }
-          ]
-      },
-      {
-          title: { ar: "التنفيذ والتشطيب (Turnkey)", en: "Turnkey Construction" },
-          description: { 
-              ar: "تولي كامل لعملية التنفيذ والتشطيب بأعلى معايير الجودة. نقوم بإدارة الموقع، توريد الخامات، والإشراف الهندسي الكامل لتسليم مفتاح.", 
-              en: "Complete management of the execution and finishing process with the highest quality standards. We handle site management, material supply, and full engineering supervision for a turnkey delivery." 
-          },
-          pricingTiers: [
-              { unitType: { ar: "تشطيب اقتصادي", en: "Economic Finishing" }, areaRange: { ar: "سعر المتر (تقريبي)", en: "Per Meter (Approx)" }, price: 5000 },
-              { unitType: { ar: "تشطيب متميز", en: "Premium Finishing" }, areaRange: { ar: "سعر المتر (تقريبي)", en: "Per Meter (Approx)" }, price: 8500 },
-              { unitType: { ar: "تشطيب فاخر", en: "Luxury Finishing" }, areaRange: { ar: "سعر المتر (تقريبي)", en: "Per Meter (Approx)" }, price: 12000 }
-          ]
-      }
-  ],
-  projectsPage: {
-      ar: { title: 'المشاريع', subtitle: 'تصفح أحدث المشاريع.' },
-      en: { title: 'Projects', subtitle: 'Browse latest projects.' }
-  },
-  finishingPage: {
-      ar: {
-          heroTitle: 'تشطيبات',
-          heroSubtitle: 'خدمات تشطيب متكاملة.',
-          servicesTitle: 'خدماتنا',
-          servicesSubtitle: 'ما نقدمه لك.',
-          servicesIntro: 'نقدم خدمات متنوعة.',
-          partnerCompaniesTitle: 'شركاؤنا',
-          partnerCompaniesSubtitle: 'نعمل مع الأفضل.',
-          serviceProvidersTitle: 'مقدمو الخدمات',
-          serviceProvidersSubtitle: 'تواصل معهم مباشرة.',
-          ctaTitle: 'ابدأ مشروعك',
-          ctaSubtitle: 'تواصل معنا الآن.',
-          ctaButton: 'اتصل بنا'
-      },
-      en: {
-          heroTitle: 'Finishing',
-          heroSubtitle: 'Integrated finishing services.',
-          servicesTitle: 'Our Services',
-          servicesSubtitle: 'What we offer.',
-          servicesIntro: 'We offer diverse services.',
-          partnerCompaniesTitle: 'Our Partners',
-          partnerCompaniesSubtitle: 'We work with the best.',
-          serviceProvidersTitle: 'Service Providers',
-          serviceProvidersSubtitle: 'Contact them directly.',
-          ctaTitle: 'Start Your Project',
-          ctaSubtitle: 'Contact us now.',
-          ctaButton: 'Contact Us'
-      }
-  },
-  decorationsPage: {
-      ar: {
-          heroTitle: 'ديكورات',
-          heroSubtitle: 'أضف لمسة جمالية.',
-          sculptures_desc: 'منحوتات فنية.',
-          paintings_desc: 'لوحات فنية.',
-          antiques_desc: 'تحف وانتيكات.'
-      },
-      en: {
-          heroTitle: 'Decorations',
-          heroSubtitle: 'Add an aesthetic touch.',
-          sculptures_desc: 'Art sculptures.',
-          paintings_desc: 'Art paintings.',
-          antiques_desc: 'Antiques.'
-      }
-  },
-  privacyPolicy: {
-      ar: { title: 'سياسة الخصوصية', lastUpdated: '2024', sections: [] },
-      en: { title: 'Privacy Policy', lastUpdated: '2024', sections: [] }
-  },
-  termsOfUse: {
-      ar: { title: 'شروط الاستخدام', lastUpdated: '2024', sections: [] },
-      en: { title: 'Terms of Use', lastUpdated: '2024', sections: [] }
-  }
-};
+              { unitType: { ar: "مكالمة استشارية أولية",

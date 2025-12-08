@@ -1,54 +1,64 @@
 
+import { supabase } from '../lib/supabase';
 import { formsData as initialData } from '../data/forms';
 import type { FormDefinition } from '../types';
 
-let formsData: FormDefinition[] = [...initialData];
-const SIMULATED_DELAY = 300;
-
-export const getAllForms = (): Promise<FormDefinition[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => resolve([...formsData]), SIMULATED_DELAY);
-    });
+export const getAllForms = async (): Promise<FormDefinition[]> => {
+    const { data, error } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'forms_config')
+        .single();
+    
+    if (error || !data) return initialData;
+    return data.content as FormDefinition[];
 };
 
-export const getFormById = (id: string): Promise<FormDefinition | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(() => resolve(formsData.find(f => f.id === id)), SIMULATED_DELAY);
-    });
+export const getFormById = async (id: string): Promise<FormDefinition | undefined> => {
+    const forms = await getAllForms();
+    return forms.find(f => f.id === id);
 };
 
-export const getFormBySlug = (slug: string): Promise<FormDefinition | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(() => resolve(formsData.find(f => f.slug === slug)), SIMULATED_DELAY);
-    });
+export const getFormBySlug = async (slug: string): Promise<FormDefinition | undefined> => {
+    const forms = await getAllForms();
+    return forms.find(f => f.slug === slug);
 };
 
-export const saveForm = (form: FormDefinition): Promise<FormDefinition> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const index = formsData.findIndex(f => f.id === form.id);
-            const now = new Date().toISOString();
-            
-            if (index > -1) {
-                // Update existing
-                formsData[index] = { ...form, updatedAt: now };
-                resolve(formsData[index]);
-            } else {
-                // Create new
-                const newForm = { ...form, id: `form-${Date.now()}`, createdAt: now, updatedAt: now };
-                formsData.push(newForm);
-                resolve(newForm);
-            }
-        }, SIMULATED_DELAY);
-    });
+export const saveForm = async (form: FormDefinition): Promise<FormDefinition> => {
+    const forms = await getAllForms();
+    const index = forms.findIndex(f => f.id === form.id);
+    const now = new Date().toISOString();
+    
+    let newForm: FormDefinition;
+    
+    if (index > -1) {
+        // Update existing
+        newForm = { ...form, updatedAt: now };
+        forms[index] = newForm;
+    } else {
+        // Create new
+        newForm = { ...form, id: `form-${Date.now()}`, createdAt: now, updatedAt: now };
+        forms.push(newForm);
+    }
+    
+    const { error } = await supabase
+        .from('site_content')
+        .upsert({ key: 'forms_config', content: forms });
+
+    if (error) throw error;
+    return newForm;
 };
 
-export const deleteForm = (id: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const initialLength = formsData.length;
-            formsData = formsData.filter(f => f.id !== id);
-            resolve(formsData.length < initialLength);
-        }, SIMULATED_DELAY);
-    });
+export const deleteForm = async (id: string): Promise<boolean> => {
+    let forms = await getAllForms();
+    const initialLength = forms.length;
+    forms = forms.filter(f => f.id !== id);
+    
+    if (forms.length === initialLength) return false;
+
+    const { error } = await supabase
+        .from('site_content')
+        .upsert({ key: 'forms_config', content: forms });
+
+    return !error;
 };

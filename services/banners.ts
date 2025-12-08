@@ -1,51 +1,66 @@
 
-import { bannersData as initialBannersData } from '../data/banners';
+import { supabase } from '../lib/supabase';
 import type { Banner } from '../types';
 
-let bannersData: Banner[] = [...initialBannersData];
-const SIMULATED_DELAY = 100;
+// Banners are stored in 'site_content' table under key 'banners'
+// This is a simple key-value storage pattern for lists that don't need heavy relational queries
 
-export const getAllBanners = (): Promise<Banner[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve([...bannersData]);
-        }, SIMULATED_DELAY);
-    });
+export const getAllBanners = async (): Promise<Banner[]> => {
+    const { data, error } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'banners')
+        .single();
+    
+    if (error) {
+        // If not found, return empty array
+        return [];
+    }
+    
+    return data.content as Banner[];
 };
 
-export const addBanner = (banner: Omit<Banner, 'id'>): Promise<Banner> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const newBanner: Banner = {
-                ...banner,
-                id: `banner-${Date.now()}`,
-            };
-            bannersData.unshift(newBanner);
-            resolve(newBanner);
-        }, SIMULATED_DELAY);
-    });
+export const addBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> => {
+    const banners = await getAllBanners();
+    const newBanner: Banner = {
+        ...banner,
+        id: `banner-${Date.now()}`,
+    };
+    
+    const newBanners = [newBanner, ...banners];
+    
+    const { error } = await supabase
+        .from('site_content')
+        .upsert({ key: 'banners', content: newBanners });
+
+    if (error) throw error;
+    return newBanner;
 };
 
-export const updateBanner = (bannerId: string, updates: Partial<Banner>): Promise<Banner | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const bannerIndex = bannersData.findIndex(b => b.id === bannerId);
-            if (bannerIndex > -1) {
-                bannersData[bannerIndex] = { ...bannersData[bannerIndex], ...updates };
-                resolve(bannersData[bannerIndex]);
-            } else {
-                resolve(undefined);
-            }
-        }, SIMULATED_DELAY);
-    });
+export const updateBanner = async (bannerId: string, updates: Partial<Banner>): Promise<Banner | undefined> => {
+    const banners = await getAllBanners();
+    const index = banners.findIndex(b => b.id === bannerId);
+    
+    if (index === -1) return undefined;
+    
+    const updatedBanner = { ...banners[index], ...updates };
+    banners[index] = updatedBanner;
+    
+    const { error } = await supabase
+        .from('site_content')
+        .upsert({ key: 'banners', content: banners });
+
+    if (error) throw error;
+    return updatedBanner;
 };
 
-export const deleteBanner = (bannerId: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const initialLength = bannersData.length;
-            bannersData = bannersData.filter(b => b.id !== bannerId);
-            resolve(bannersData.length < initialLength);
-        }, SIMULATED_DELAY);
-    });
+export const deleteBanner = async (bannerId: string): Promise<boolean> => {
+    const banners = await getAllBanners();
+    const filteredBanners = banners.filter(b => b.id !== bannerId);
+    
+    const { error } = await supabase
+        .from('site_content')
+        .upsert({ key: 'banners', content: filteredBanners });
+
+    return !error;
 };

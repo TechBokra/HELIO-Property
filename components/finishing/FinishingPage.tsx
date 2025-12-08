@@ -27,7 +27,11 @@ const ServicePackageCard: React.FC<{
 }> = ({ service, onBookTier, language, t }) => {
     const { isFavorite, toggleFavorite } = useFavorites();
     const { showToast } = useToast();
-    const serviceId = service.title.en;
+    
+    const titleLocalized = service?.title?.[language] || service?.title?.en || 'Service';
+    const descLocalized = service?.description?.[language] || service?.description?.en || '';
+
+    const serviceId = service?.title?.en || 'unknown-service';
     const isFav = isFavorite(serviceId, 'service');
 
     const handleFavoriteClick = (e: React.MouseEvent) => {
@@ -43,23 +47,23 @@ const ServicePackageCard: React.FC<{
                  <button onClick={handleFavoriteClick} className="absolute top-4 right-4 p-2 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors z-10" aria-label={isFav ? t.favoritesPage.removeFromFavorites : t.favoritesPage.addToFavorites}>
                     {isFav ? <HeartIconSolid className="w-6 h-6 text-red-500" /> : <HeartIcon className="w-6 h-6 text-gray-500" />}
                 </button>
-                <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mb-4">{service.title[language]}</h3>
-                <p className="text-gray-600 dark:text-gray-400 flex-grow mb-8 leading-relaxed text-sm md:text-base">{service.description[language]}</p>
+                <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mb-4">{titleLocalized}</h3>
+                <p className="text-gray-600 dark:text-gray-400 flex-grow mb-8 leading-relaxed text-sm md:text-base">{descLocalized}</p>
 
                 <div className="space-y-4">
                     {(service.pricingTiers || []).map((tier: PricingTier, index: number) => (
                         <div key={index} className="flex flex-col sm:flex-row sm:justify-between sm:items-center p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 gap-4 transition-colors hover:border-amber-200">
                             <div>
-                                <p className="font-bold text-gray-800 dark:text-gray-200 text-sm md:text-base">{tier.unitType[language]}</p>
-                                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">{tier.areaRange[language]}</p>
+                                <p className="font-bold text-gray-800 dark:text-gray-200 text-sm md:text-base">{tier.unitType?.[language]}</p>
+                                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">{tier.areaRange?.[language]}</p>
                             </div>
                             <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
                                 <p className="font-bold text-lg text-gray-900 dark:text-white whitespace-nowrap">
-                                    {tier.price.toLocaleString(language)} EGP
+                                    {(tier.price || 0).toLocaleString(language)} EGP
                                 </p>
                                 <Button 
                                     size="sm" 
-                                    onClick={() => onBookTier(service.title[language], tier)}
+                                    onClick={() => onBookTier(titleLocalized, tier)}
                                     className="whitespace-nowrap bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold"
                                 >
                                     {language === 'ar' ? 'حجز الآن' : 'Book Now'}
@@ -75,9 +79,11 @@ const ServicePackageCard: React.FC<{
 
 const PartnerCompanyCard: React.FC<{ partner: AdminPartner; t: any }> = ({ partner, t }) => {
     const { language } = useLanguage();
-    const localizedPartner = t.partnerInfo[partner.id];
-
-    if (!localizedPartner) return null;
+    const localizedPartner = t.partnerInfo[partner.id]; // Fallback translation
+    
+    // Prefer DB data if available on the partner object itself (which it should be now)
+    const name = (language === 'ar' ? partner.nameAr : partner.name) || localizedPartner?.name || partner.name;
+    const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || localizedPartner?.description || '';
 
     return (
         <Link to={`/partners/${partner.id}`} className="block h-full">
@@ -85,24 +91,21 @@ const PartnerCompanyCard: React.FC<{ partner: AdminPartner; t: any }> = ({ partn
                 <picture>
                      <source
                         type="image/webp"
-                        srcSet={`${partner.imageUrl_small}&fm=webp 480w, ${partner.imageUrl_medium}&fm=webp 800w, ${partner.imageUrl_large || partner.imageUrl}&fm=webp 1200w`}
-                        sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
+                        srcSet={`${partner.imageUrl_small || partner.imageUrl}&fm=webp`}
                     />
                     <img
-                        src={partner.imageUrl_large || partner.imageUrl}
-                        srcSet={`${partner.imageUrl_small} 480w, ${partner.imageUrl_medium} 800w, ${partner.imageUrl_large || partner.imageUrl} 1200w`}
-                        sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
-                        alt={localizedPartner.name}
+                        src={partner.imageUrl}
+                        alt={name}
                         className="w-full h-48 object-cover"
                         loading="lazy"
                     />
                 </picture>
                 <CardContent className="p-6 flex flex-col flex-grow">
                     <h3 className="text-xl font-bold text-amber-500 mb-2 group-hover:text-amber-400 transition-colors">
-                        {localizedPartner.name}
+                        {name}
                     </h3>
                     <p className="text-gray-600 dark:text-gray-400 text-sm flex-grow line-clamp-3">
-                        {localizedPartner.description}
+                        {desc}
                     </p>
                 </CardContent>
             </Card>
@@ -111,18 +114,20 @@ const PartnerCompanyCard: React.FC<{ partner: AdminPartner; t: any }> = ({ partn
 };
 
 const ServiceProviderCard: React.FC<{ partner: AdminPartner; onRequest: (title: string, partnerId: string) => void; t: any; buttonText: string }> = ({ partner, onRequest, t, buttonText }) => {
+    const { language } = useLanguage();
     const localizedPartner = t.partnerInfo[partner.id];
-
-    if (!localizedPartner) return null;
+    
+    const name = (language === 'ar' ? partner.nameAr : partner.name) || localizedPartner?.name || partner.name;
+    const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || localizedPartner?.description || '';
 
     return (
         <Card className="p-6 flex flex-col sm:flex-row justify-between items-center hover:shadow-md transition-shadow">
             <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{localizedPartner.name}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{localizedPartner.description}</p>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{name}</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{desc}</p>
             </div>
             <Button 
-                onClick={() => onRequest(t.partnerProfilePage.serviceRequestFor + ' ' + localizedPartner.name, partner.id)} 
+                onClick={() => onRequest(t.partnerProfilePage.serviceRequestFor + ' ' + name, partner.id)} 
                 className="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0"
                 variant="outline"
             >
@@ -144,8 +149,9 @@ const FinishingPage: React.FC = () => {
 
     const isLoading = isLoadingPartners || isLoadingContent;
     
-    // Use dynamic content if available, fallback to translation file
-    const content = siteContent?.finishingPage?.[language] || t.finishingPage;
+    const defaultContent = t.finishingPage;
+    const dynamicContent = siteContent?.finishingPage?.[language];
+    const content = dynamicContent || defaultContent;
 
     const handleRequestService = (serviceTitle: string, partnerId: string = 'admin-user') => {
         navigate('/request-service', {
@@ -158,13 +164,12 @@ const FinishingPage: React.FC = () => {
     };
     
     const handleBookTier = (serviceTitle: string, tier: PricingTier) => {
-        // Redirect to Service Request Page directly with tier info
         navigate('/request-service', {
             state: {
                 serviceTitle,
                 partnerId: 'admin-user',
                 serviceType: 'finishing',
-                tier: tier, // Pass the tier details
+                tier: tier,
                 isBooking: true
             },
         });
@@ -181,22 +186,20 @@ const FinishingPage: React.FC = () => {
             if (navigator.share && navigator.canShare(shareData)) {
                 await navigator.share(shareData);
             } else {
-                throw new Error("Web Share API not supported");
-            }
-        } catch (error) {
-            try {
                 await navigator.clipboard.writeText(urlToShare);
                 showToast(t.sharing.linkCopied, 'success');
-            } catch (err) {
-                showToast(t.sharing.shareFailed, 'error');
             }
+        } catch (error) {
+             // Fallback
+             await navigator.clipboard.writeText(urlToShare);
+             showToast(t.sharing.linkCopied, 'success');
         }
     };
 
 
     const services = useMemo(() => {
-        if (!siteContent?.finishingServices) return [];
-        return siteContent.finishingServices;
+        // Prioritize what is in siteContent (DB), otherwise empty array (to avoid showing stale local data if DB is cleared)
+        return siteContent?.finishingServices || [];
     }, [siteContent]);
 
     const { companyPartners, serviceProviders } = useMemo(() => {
@@ -248,48 +251,50 @@ const FinishingPage: React.FC = () => {
             <BannerDisplay location="finishing" />
 
             {/* Services Packages Section (Tabbed) */}
-            <section className="py-20">
-                <div className="container mx-auto px-6">
-                    <div className="text-center mb-12 max-w-3xl mx-auto">
-                        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">{content.servicesTitle}</h2>
-                        <p className="text-lg text-gray-500 dark:text-gray-400 mt-4">{content.servicesSubtitle}</p>
-                         <p className="text-md text-gray-600 dark:text-gray-300 mt-2">{content.servicesIntro}</p>
-                    </div>
+            {services.length > 0 && (
+                <section className="py-20">
+                    <div className="container mx-auto px-6">
+                        <div className="text-center mb-12 max-w-3xl mx-auto">
+                            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">{content.servicesTitle}</h2>
+                            <p className="text-lg text-gray-500 dark:text-gray-400 mt-4">{content.servicesSubtitle}</p>
+                             <p className="text-md text-gray-600 dark:text-gray-300 mt-2">{content.servicesIntro}</p>
+                        </div>
 
-                    {/* Service Tabs */}
-                    <div className="flex flex-wrap justify-center gap-4 mb-12" role="tablist">
-                        {services.map((service, index) => (
-                            <button
-                                key={index}
-                                role="tab"
-                                aria-selected={activeServiceIndex === index}
-                                onClick={() => setActiveServiceIndex(index)}
-                                className={`px-6 py-3 rounded-full font-bold text-sm md:text-base transition-all duration-200 outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 ${
-                                    activeServiceIndex === index
-                                        ? 'bg-amber-500 text-white shadow-lg transform -translate-y-1'
-                                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                }`}
-                            >
-                                {service.title[language]}
-                            </button>
-                        ))}
-                    </div>
+                        {/* Service Tabs */}
+                        <div className="flex flex-wrap justify-center gap-4 mb-12" role="tablist">
+                            {services.map((service, index) => (
+                                <button
+                                    key={index}
+                                    role="tab"
+                                    aria-selected={activeServiceIndex === index}
+                                    onClick={() => setActiveServiceIndex(index)}
+                                    className={`px-6 py-3 rounded-full font-bold text-sm md:text-base transition-all duration-200 outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 ${
+                                        activeServiceIndex === index
+                                            ? 'bg-amber-500 text-white shadow-lg transform -translate-y-1'
+                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {service.title?.[language] || `Service ${index + 1}`}
+                                </button>
+                            ))}
+                        </div>
 
-                    {/* Active Service Card */}
-                    <div className="max-w-5xl mx-auto min-h-[400px]">
-                        {services[activeServiceIndex] && (
-                             <div key={activeServiceIndex} className="animate-fadeIn">
-                                <ServicePackageCard
-                                    service={services[activeServiceIndex]}
-                                    onBookTier={handleBookTier}
-                                    language={language}
-                                    t={t}
-                                />
-                            </div>
-                        )}
+                        {/* Active Service Card */}
+                        <div className="max-w-5xl mx-auto min-h-[400px]">
+                            {services[activeServiceIndex] && (
+                                 <div key={activeServiceIndex} className="animate-fadeIn">
+                                    <ServicePackageCard
+                                        service={services[activeServiceIndex]}
+                                        onBookTier={handleBookTier}
+                                        language={language}
+                                        t={t}
+                                    />
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
+            )}
 
             {/* Partner Companies Gallery */}
             {companyPartners.length > 0 && (

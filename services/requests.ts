@@ -1,169 +1,52 @@
 
-import { requestsData as initialRequestsData } from '../data/requests';
-import { propertyRequestsData } from '../data/propertyRequests';
-import { partnerRequestsData } from '../data/partnerRequests';
-import { contactRequestsData } from '../data/contactRequests';
-import { propertyInquiriesData } from '../data/propertyInquiries';
+import { supabase } from '../lib/supabase';
 import { RequestType, Role } from '../types';
-import type { Request, Lead, LeadMessage, PartnerRequest, AddPropertyRequest, ContactRequest, PropertyInquiryRequest } from '../types';
+import type { Request, Lead, LeadMessage } from '../types';
 import { addNotification } from './notifications';
-import { getAllRoutingRules } from './routingRules';
 import { getPartnerById } from './partners';
-import { getLeadById, getAllLeads, addLead, updateLead } from './leads';
+import { addLead } from './leads';
 
-// Helpers to map data sources to Request[]
-const mapPropertyRequests = (data: AddPropertyRequest[]): Request[] => data.map(r => ({
-    id: r.id,
-    type: RequestType.PROPERTY_LISTING_REQUEST,
-    requesterInfo: { name: r.customerName, phone: r.customerPhone },
-    payload: { ...r, messages: (r as any).messages || [] }, // Ensure messages array exists
-    status: r.status,
-    createdAt: r.createdAt,
-    assignedTo: r.managerId,
-    updatedAt: r.createdAt
-}));
+// Helper to map DB row to Request object
+const mapRequestFromDb = (row: any): Request => ({
+    id: row.id,
+    type: row.type as RequestType,
+    status: row.status,
+    assignedTo: row.assigned_to,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    requesterInfo: {
+        name: row.requester_name,
+        phone: row.requester_phone,
+        email: row.requester_email,
+    },
+    payload: row.payload || {},
+    assignedToName: row.assigned_to // Will need hydration if name is needed
+});
 
-const mapPartnerRequests = (data: PartnerRequest[]): Request[] => data.map(r => ({
-    id: r.id,
-    type: RequestType.PARTNER_APPLICATION,
-    requesterInfo: { name: r.contactName, phone: r.contactPhone, email: r.contactEmail },
-    payload: r,
-    status: r.status as any, 
-    createdAt: r.createdAt,
-    updatedAt: r.createdAt
-}));
+export const getAllRequests = async (): Promise<Request[]> => {
+    const { data, error } = await supabase
+        .from('requests')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-const mapContactRequests = (data: ContactRequest[]): Request[] => data.map(r => ({
-    id: r.id,
-    type: RequestType.CONTACT_MESSAGE,
-    requesterInfo: { name: r.name, phone: r.phone },
-    payload: r,
-    status: r.status,
-    createdAt: r.createdAt,
-    assignedTo: r.managerId,
-    updatedAt: r.createdAt
-}));
-
-const mapInquiries = (data: PropertyInquiryRequest[]): Request[] => data.map(r => ({
-    id: r.id,
-    type: RequestType.PROPERTY_INQUIRY,
-    requesterInfo: { name: r.customerName, phone: r.customerPhone },
-    payload: r,
-    status: r.status,
-    createdAt: r.createdAt,
-    updatedAt: r.createdAt
-}));
-
-// MERGE ALL INITIAL DATA SOURCES INTO ONE CENTRAL STORE
-let localRequestsData: Request[] = [
-    ...initialRequestsData,
-    ...mapPropertyRequests(propertyRequestsData),
-    ...mapPartnerRequests(partnerRequestsData),
-    ...mapContactRequests(contactRequestsData),
-    ...mapInquiries(propertyInquiriesData)
-];
-
-const SIMULATED_DELAY = 50;
-
-// Helper to access nested properties of an object using a string path
-const getNestedValue = (obj: any, path: string): any => {
-    return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+    if (error) throw error;
+    return data.map(mapRequestFromDb);
 };
 
-const checkCondition = (request: Request, condition: any): boolean => {
-    const value = getNestedValue(request, condition.field);
-    const conditionValue = condition.value;
+export const getRequestById = async (id: string): Promise<Request | undefined> => {
+    const { data, error } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-    switch (condition.operator) {
-        case 'equals': return value == conditionValue;
-        case 'not_equals': return value != conditionValue;
-        case 'contains': return String(value).toLowerCase().includes(String(conditionValue).toLowerCase());
-        case 'greater_than':
-        case 'less_than':
-             const numValue = parseFloat(value);
-             const numConditionValue = parseFloat(conditionValue);
-             if (isNaN(numValue) || isNaN(numConditionValue)) return false;
-             return condition.operator === 'greater_than' ? numValue > numConditionValue : numValue < numConditionValue;
-        default: return false;
-    }
-}
-
-
-export const getAllRequests = (): Promise<Request[]> => {
-    return new Promise((resolve) => {
-        setTimeout(async () => {
-            // 1. Fetch Leads and convert to Requests
-            const leads = await getAllLeads();
-            const leadRequests: Request[] = leads.map(lead => ({
-                id: lead.id, // Use lead ID as request ID
-                type: RequestType.LEAD,
-                status: lead.status === 'new' ? 'new' : (['completed', 'cancelled'].includes(lead.status) ? 'closed' : 'in-progress'), // Approximate Status Mapping
-                assignedTo: lead.assignedTo || lead.managerId || lead.partnerId,
-                assignedToName: lead.partnerName,
-                createdAt: lead.createdAt,
-                updatedAt: lead.updatedAt,
-                requesterInfo: {
-                    name: lead.customerName,
-                    phone: lead.customerPhone,
-                },
-                payload: lead
-            }));
-
-            // 2. Process local requests (non-leads)
-            const populatedRequests = await Promise.all(localRequestsData.map(async (req) => {
-                if (req.assignedTo) {
-                    const partner = await getPartnerById(req.assignedTo);
-                    return { ...req, assignedToName: partner?.name || req.assignedTo };
-                }
-                return req;
-            }));
-
-            // 3. Merge and Sort
-            // Filter out any legacy leads in localRequestsData to avoid duplicates if systems were mixed
-            const nonLeadLocalRequests = populatedRequests.filter(r => r.type !== RequestType.LEAD);
-            
-            const allRequests = [...nonLeadLocalRequests, ...leadRequests].sort((a, b) => 
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-
-            resolve(allRequests);
-        }, SIMULATED_DELAY);
-    });
-};
-
-export const getRequestById = (id: string): Promise<Request | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(async () => {
-            let request = localRequestsData.find(r => r.id === id);
-            
-            // Fallback: if not found in requestsData, look in leadsData
-            if (!request) {
-                const lead = await getLeadById(id);
-                if (lead) {
-                    request = {
-                        id: lead.id,
-                        type: RequestType.LEAD,
-                        status: lead.status === 'new' ? 'new' : 'in-progress',
-                        assignedTo: lead.managerId || lead.partnerId,
-                        createdAt: lead.createdAt,
-                        updatedAt: lead.updatedAt,
-                        requesterInfo: {
-                            name: lead.customerName,
-                            phone: lead.customerPhone,
-                        },
-                        payload: lead
-                    };
-                }
-            }
-            
-            resolve(request);
-        }, SIMULATED_DELAY);
-    });
+    if (error) return undefined;
+    return mapRequestFromDb(data);
 };
 
 export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | 'type' | 'status' | 'createdAt' | 'updatedAt'>): Promise<Request> => {
     
-    // DELEGATION: If it's a LEAD, delegate to addLead service
+    // DELEGATION: If it's a LEAD, delegate to addLead service which handles extra logic
     if (type === RequestType.LEAD) {
         const payload = data.payload as any;
         const lead = await addLead({
@@ -176,10 +59,12 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
             partnerId: payload.partnerId,
             managerId: payload.managerId,
             propertyId: payload.propertyId,
-            referenceImage: payload.referenceImage
+            referenceImage: payload.referenceImage,
+            // Pass through other payload data
+            ...payload
         });
         
-        // Return a Request wrapper for the newly created lead
+        // Return a Request wrapper
         return {
             id: lead.id,
             type: RequestType.LEAD,
@@ -191,181 +76,104 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
         };
     }
 
-    const newRequest: Request = {
-        ...data,
-        id: `req-${Date.now()}`,
+    // Prepare payload for other request types
+    const dbPayload = {
         type,
         status: 'new',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        requester_name: data.requesterInfo.name,
+        requester_phone: data.requesterInfo.phone,
+        requester_email: data.requesterInfo.email,
+        assigned_to: data.assignedTo,
+        payload: data.payload,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
     };
     
-    // Initialize messages if missing (important for property requests)
-    if (newRequest.type === RequestType.PROPERTY_LISTING_REQUEST && !(newRequest.payload as any).messages) {
-        (newRequest.payload as any).messages = [];
-    }
-
-    // --- Dynamic Routing Logic ---
-    const rules = await getAllRoutingRules();
-    const activeRules = rules.filter(r => r.active);
-    
-    for (const rule of activeRules) {
-        const isMatch = rule.conditions.every(condition => checkCondition(newRequest, condition));
-        if (isMatch) {
-            newRequest.assignedTo = rule.action.assignTo;
-            newRequest.status = 'assigned';
-            break; // Apply first matching rule
-        }
-    }
-    // --- End Dynamic Routing Logic ---
-
-    // If no rule matched, assign based on type
-    if (!newRequest.assignedTo) {
+    // Auto-assignment logic based on type if not provided
+    if (!dbPayload.assigned_to) {
         switch(type) {
             case RequestType.PARTNER_APPLICATION:
-                newRequest.assignedTo = 'partner-relations-manager-1';
+                dbPayload.assigned_to = 'partner-relations-manager-1';
                 break;
             case RequestType.PROPERTY_LISTING_REQUEST:
             case RequestType.PROPERTY_INQUIRY:
             case RequestType.CONTACT_MESSAGE:
             default:
-                newRequest.assignedTo = 'customer-relations-manager-1';
+                dbPayload.assigned_to = 'customer-relations-manager-1';
                 break;
         }
     }
+
+    const { data: newReq, error } = await supabase
+        .from('requests')
+        .insert(dbPayload)
+        .select()
+        .single();
+
+    if (error) throw error;
     
-    localRequestsData.unshift(newRequest);
+    const request = mapRequestFromDb(newReq);
 
     // Notification Logic
-    if (newRequest.assignedTo) {
-         const assignee = await getPartnerById(newRequest.assignedTo);
+    if (request.assignedTo) {
+        // We fetch assignee simply to check role for link generation, purely optional optimization
+        // For now, we just send the notification
+        const link = `/dashboard/requests`; // Simplified link
         
-        const assigneeRole = assignee?.role as string | undefined;
-        const isAdminOrManager = (assigneeRole && (assigneeRole.includes('_manager') || assigneeRole === Role.SUPER_ADMIN));
-        
-        addNotification({
-            userId: newRequest.assignedTo,
+        await addNotification({
+            userId: request.assignedTo,
             message: {
                 ar: `لديك طلب جديد من "${data.requesterInfo.name}".`,
                 en: `New ${type.toLowerCase().replace(/_/g, ' ')} from "${data.requesterInfo.name}".`,
             },
-            link: isAdminOrManager ? `/admin/requests/${newRequest.id}` : `/dashboard/leads`,
+            link: link,
         });
     }
 
-    return newRequest;
+    return request;
 };
 
-export const updateRequest = (id: string, updates: Partial<Request>): Promise<Request | undefined> => {
-    return new Promise(async (resolve) => {
-        setTimeout(async () => {
-            // Check if it's a lead (basic ID check or check if not in local array)
-            const isLocal = localRequestsData.some(r => r.id === id);
-            
-            if (!isLocal) {
-                // Assume it's a lead
-                // Map status if provided. 
-                const leadUpdates: any = {};
-                if (updates.status) leadUpdates.status = updates.status;
-                if (updates.assignedTo) leadUpdates.assignedTo = updates.assignedTo;
+export const updateRequest = async (id: string, updates: Partial<Request>): Promise<Request | undefined> => {
+    const dbUpdates: any = {};
+    if (updates.status) dbUpdates.status = updates.status;
+    if (updates.assignedTo) dbUpdates.assigned_to = updates.assignedTo;
+    if (updates.payload) dbUpdates.payload = updates.payload; // Be careful with partial JSON updates
+    
+    dbUpdates.updated_at = new Date().toISOString();
 
-                await updateLead(id, leadUpdates);
-                // Return mocked updated request
-                const updatedLead = await getLeadById(id);
-                if (updatedLead) {
-                    resolve({
-                        id: updatedLead.id,
-                        type: RequestType.LEAD,
-                        status: updatedLead.status as any,
-                        createdAt: updatedLead.createdAt,
-                        requesterInfo: { name: updatedLead.customerName, phone: updatedLead.customerPhone },
-                        payload: updatedLead
-                    } as Request);
-                    return;
-                }
-            }
+    const { data, error } = await supabase
+        .from('requests')
+        .update(dbUpdates)
+        .eq('id', id)
+        .select()
+        .single();
 
-            const requestIndex = localRequestsData.findIndex(r => r.id === id);
-            if (requestIndex > -1) {
-                const req = localRequestsData[requestIndex];
-                // Preserve message history if stored in payload
-                let newPayload = req.payload;
-                if (updates.payload) {
-                    newPayload = { ...req.payload, ...(updates.payload as any) };
-                }
-
-                localRequestsData[requestIndex] = { 
-                    ...req, 
-                    ...updates, 
-                    payload: newPayload,
-                    updatedAt: new Date().toISOString() 
-                };
-                resolve(localRequestsData[requestIndex]);
-            } else {
-                resolve(undefined);
-            }
-        }, SIMULATED_DELAY);
-    });
+    if (error) return undefined;
+    return mapRequestFromDb(data);
 };
 
-export const deleteRequest = (id: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-             // Check if local
-            const initialLength = localRequestsData.length;
-            localRequestsData = localRequestsData.filter(r => r.id !== id);
-            
-            if (localRequestsData.length < initialLength) {
-                resolve(true);
-            } else {
-                // Try deleting as lead
-                resolve(false); 
-            }
-        }, SIMULATED_DELAY);
-    });
+export const deleteRequest = async (id: string): Promise<boolean> => {
+    // Cascade delete handles messages if configured in DB, otherwise we might need manual cleanup
+    const { error } = await supabase.from('requests').delete().eq('id', id);
+    return !error;
 };
 
-export const addMessageToLead = (requestId: string, messageData: Omit<LeadMessage, 'id' | 'timestamp'>): Promise<Request | undefined> => {
-    // This function is primarily for the RequestDetailsPage which operates on Request types.
-    // It bridges the call to the underlying Lead message logic or local request message logic.
-    return new Promise(async (resolve, reject) => {
-        setTimeout(async () => {
-            try {
-                // Try as a lead first (most common case for messaging)
-                const { addMessageToLead: serviceAddMessage } = await import('./leads');
-                
-                // If it's a lead ID, this will succeed
-                await serviceAddMessage(requestId, messageData);
-                
-                const updatedReq = await getRequestById(requestId);
-                resolve(updatedReq);
-
-            } catch (e) {
-                // Fallback for localRequestsData (e.g. Property Request that isn't a 'Lead' type yet but needs notes)
-                let requestIndex = localRequestsData.findIndex(r => r.id === requestId);
-                if (requestIndex > -1) {
-                    const request = localRequestsData[requestIndex];
-                    // Ensure payload exists and is mutable
-                    if (typeof request.payload === 'string') {
-                        request.payload = JSON.parse(request.payload);
-                    }
-                    
-                    const payload = request.payload as any;
-                    
-                    if (!payload.messages) payload.messages = [];
-                    
-                    const newMessage: LeadMessage = {
-                        ...messageData,
-                        id: `msg-${requestId}-${Date.now()}`,
-                        timestamp: new Date().toISOString(),
-                    };
-                    payload.messages.push(newMessage);
-                    request.updatedAt = new Date().toISOString();
-                    resolve(request);
-                } else {
-                    reject(new Error('Request not found'));
-                }
-            }
-        }, SIMULATED_DELAY);
+export const addMessageToLead = async (requestId: string, messageData: Omit<LeadMessage, 'id' | 'timestamp'>): Promise<Request | undefined> => {
+    // This bridges to the separate table `request_messages`
+    
+    const { error } = await supabase.from('request_messages').insert({
+        request_id: requestId,
+        sender: messageData.sender,
+        sender_id: messageData.senderId,
+        type: messageData.type,
+        content: messageData.content,
+        created_at: new Date().toISOString()
     });
+
+    if (error) throw error;
+    
+    // Update the request's updated_at timestamp
+    await updateRequest(requestId, { updatedAt: new Date().toISOString() });
+    
+    return getRequestById(requestId);
 };

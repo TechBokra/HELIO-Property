@@ -1,3 +1,4 @@
+
 import { memo } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import type { Partner } from '../../types';
@@ -106,16 +107,16 @@ export const Header = memo<HeaderProps>(({
                             ) : (
                                 <>
                                     <Link
-                                        to="/login"
-                                        className="text-gray-700 font-semibold hover:text-amber-500 transition-colors"
-                                    >
-                                        {t.auth.login}
-                                    </Link>
-                                    <Link
                                         to="/register"
-                                        className="bg-amber-500 text-gray-900 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-amber-600 transition-colors"
+                                        className="text-gray-600 hover:text-amber-600 font-medium transition-colors"
                                     >
                                         {t.joinAsPartner}
+                                    </Link>
+                                    <Link
+                                        to="/login"
+                                        className="bg-amber-500 text-gray-900 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-amber-600 transition-colors"
+                                    >
+                                        {t.auth.login}
                                     </Link>
                                 </>
                             )}

@@ -1,74 +1,76 @@
 
-import { projectsData as initialProjectsData } from '../data/projects';
+import { supabase } from '../lib/supabase';
 import type { Project } from '../types';
 
-// Create a mutable, in-memory copy of the data to simulate a database.
-let projectsData: Project[] = [...initialProjectsData];
-
-const SIMULATED_DELAY = 50;
-
-export const getAllProjects = (): Promise<Project[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve([...projectsData]);
-        }, SIMULATED_DELAY);
-    });
+const mapProjectFromDb = (row: any): Project => {
+    const features = typeof row.features === 'string' ? JSON.parse(row.features) : row.features || [];
+    return {
+        id: row.id,
+        partnerId: row.partner_id,
+        name: { ar: row.name_ar, en: row.name_en },
+        description: { ar: row.description_ar, en: row.description_en },
+        imageUrl: row.image_url,
+        createdAt: row.created_at,
+        features: features,
+        imageUrl_small: row.image_url,
+        imageUrl_medium: row.image_url,
+        imageUrl_large: row.image_url
+    };
 };
 
-export const getProjectById = (id: string): Promise<Project | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve(projectsData.find(p => p.id === id));
-        }, SIMULATED_DELAY);
-    });
+export const getAllProjects = async (): Promise<Project[]> => {
+    const { data, error } = await supabase.from('projects').select('*');
+    if (error) throw error;
+    return data.map(mapProjectFromDb);
 };
 
-export const getProjectsByPartnerId = (partnerId: string): Promise<Project[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve(projectsData.filter(p => p.partnerId === partnerId));
-        }, SIMULATED_DELAY);
-    });
+export const getProjectById = async (id: string): Promise<Project | undefined> => {
+    const { data, error } = await supabase.from('projects').select('*').eq('id', id).single();
+    if (error) return undefined;
+    return mapProjectFromDb(data);
 };
 
-export const addProject = (project: Omit<Project, 'id' | 'createdAt'>): Promise<Project> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const newProject: Project = {
-                ...project,
-                id: `proj-${Date.now()}`,
-                createdAt: new Date().toISOString(),
-            };
-            projectsData.unshift(newProject);
-            resolve(newProject);
-        }, SIMULATED_DELAY);
-    });
+export const getProjectsByPartnerId = async (partnerId: string): Promise<Project[]> => {
+    const { data, error } = await supabase.from('projects').select('*').eq('partner_id', partnerId);
+    if (error) throw error;
+    return data.map(mapProjectFromDb);
 };
 
-export const updateProject = (projectId: string, updates: Partial<Project>): Promise<Project | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const projectIndex = projectsData.findIndex(p => p.id === projectId);
-            if (projectIndex > -1) {
-                projectsData[projectIndex] = { ...projectsData[projectIndex], ...updates };
-                resolve(projectsData[projectIndex]);
-            } else {
-                resolve(undefined);
-            }
-        }, SIMULATED_DELAY);
-    });
+export const addProject = async (project: Omit<Project, 'id' | 'createdAt'>): Promise<Project> => {
+    const dbPayload = {
+        partner_id: project.partnerId,
+        name_ar: project.name.ar,
+        name_en: project.name.en,
+        description_ar: project.description.ar,
+        description_en: project.description.en,
+        image_url: project.imageUrl,
+        features: JSON.stringify(project.features)
+    };
+    
+    const { data, error } = await supabase.from('projects').insert(dbPayload).select().single();
+    if (error) throw error;
+    return mapProjectFromDb(data);
 };
 
-export const deleteProject = (projectId: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const initialLength = projectsData.length;
-            projectsData = projectsData.filter(p => p.id !== projectId);
-            if (projectsData.length < initialLength) {
-                resolve(true);
-            } else {
-                resolve(false);
-            }
-        }, SIMULATED_DELAY);
-    });
+export const updateProject = async (projectId: string, updates: Partial<Project>): Promise<Project | undefined> => {
+    const dbUpdates: any = {};
+    if (updates.name) {
+        dbUpdates.name_ar = updates.name.ar;
+        dbUpdates.name_en = updates.name.en;
+    }
+    if (updates.description) {
+        dbUpdates.description_ar = updates.description.ar;
+        dbUpdates.description_en = updates.description.en;
+    }
+    if (updates.imageUrl) dbUpdates.image_url = updates.imageUrl;
+    if (updates.features) dbUpdates.features = JSON.stringify(updates.features);
+
+    const { data, error } = await supabase.from('projects').update(dbUpdates).eq('id', projectId).select().single();
+    if (error) return undefined;
+    return mapProjectFromDb(data);
+};
+
+export const deleteProject = async (projectId: string): Promise<boolean> => {
+    const { error } = await supabase.from('projects').delete().eq('id', projectId);
+    return !error;
 };

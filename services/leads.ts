@@ -1,153 +1,188 @@
 
-import { leadsData as initialLeadsData } from '../data/leads';
-import type { Lead, LeadStatus, LeadMessage } from '../types';
-import { getPartnerById } from './partners';
+import { supabase } from '../lib/supabase';
+import type { Lead, LeadMessage } from '../types';
 import { addNotification } from './notifications';
 
-// Create a mutable, in-memory copy of the data to simulate a database.
-let leadsData: Lead[] = [...initialLeadsData];
+const mapLeadFromDb = (row: any, messages: any[] = []): Lead => ({
+    id: row.id,
+    partnerId: row.assigned_to || row.payload.partnerId, // Fallback to payload if assigned_to is generic
+    managerId: row.payload.managerId,
+    propertyId: row.payload.propertyId,
+    serviceType: row.payload.serviceType || 'general',
+    customerName: row.requester_name,
+    customerPhone: row.requester_phone,
+    contactTime: row.payload.contactTime,
+    serviceTitle: row.payload.serviceTitle,
+    customerNotes: row.payload.customerNotes,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    assignedTo: row.assigned_to,
+    messages: messages.map(msg => ({
+        id: msg.id,
+        sender: msg.sender,
+        senderId: msg.sender_id,
+        type: msg.type,
+        content: msg.content,
+        timestamp: msg.created_at
+    })),
+    // Extra payload fields
+    referenceImage: row.payload.referenceImage,
+    itemCategory: row.payload.itemCategory,
+    dimensions: row.payload.dimensions,
+});
 
-const SIMULATED_DELAY = 50;
+export const getAllLeads = async (): Promise<Lead[]> => {
+    // 1. Fetch requests of type LEAD
+    const { data: leadsData, error } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('type', 'LEAD')
+        .order('created_at', { ascending: false });
 
-const populateLeadWithPartnerInfo = async (lead: Lead): Promise<Lead & { partnerName?: string }> => {
-    const partner = await getPartnerById(lead.partnerId);
-    return { ...lead, partnerName: partner?.name };
-};
+    if (error) throw error;
 
-export const getLeadsByPartnerId = (partnerId: string): Promise<Lead[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const partnerLeads = leadsData.filter(l => l.partnerId === partnerId)
-                                         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-            resolve(partnerLeads);
-        }, SIMULATED_DELAY);
+    // 2. Fetch messages for these leads (Optimized: In a real app, fetch only when needed or join)
+    // For now, we'll fetch all messages for simplicity or fetch on demand in detailed view.
+    // Let's fetch messages for the leads we got.
+    const leadIds = leadsData.map(l => l.id);
+    const { data: messagesData } = await supabase
+        .from('request_messages')
+        .select('*')
+        .in('request_id', leadIds)
+        .order('created_at', { ascending: true });
+
+    return leadsData.map(lead => {
+        const msgs = messagesData?.filter(m => m.request_id === lead.id) || [];
+        return mapLeadFromDb(lead, msgs);
     });
 };
 
-export const getLeadById = (leadId: string): Promise<Lead | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(async () => {
-            const lead = leadsData.find(l => l.id === leadId);
-            if (lead) {
-                resolve(await populateLeadWithPartnerInfo(lead));
-            } else {
-                resolve(undefined);
-            }
-        }, SIMULATED_DELAY);
-    });
+export const getLeadsByPartnerId = async (partnerId: string): Promise<Lead[]> => {
+    const { data: leadsData, error } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('type', 'LEAD')
+        .eq('assigned_to', partnerId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    
+    // We assume messages are fetched inside component or here if needed
+    return leadsData.map(lead => mapLeadFromDb(lead, []));
 };
 
-export const getAllLeads = (): Promise<(Lead & { partnerName?: string })[]> => {
-    return new Promise(async (resolve) => {
-        setTimeout(async () => {
-            const populatedLeadsPromises = leadsData.map(populateLeadWithPartnerInfo);
-            const populatedLeads = await Promise.all(populatedLeadsPromises);
-            const allLeads = populatedLeads
-                                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-            resolve(allLeads);
-        }, SIMULATED_DELAY);
-    });
+export const getLeadById = async (leadId: string): Promise<Lead | undefined> => {
+    const { data: leadData, error } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('id', leadId)
+        .single();
+
+    if (error) return undefined;
+
+    const { data: messagesData } = await supabase
+        .from('request_messages')
+        .select('*')
+        .eq('request_id', leadId)
+        .order('created_at', { ascending: true });
+
+    return mapLeadFromDb(leadData, messagesData || []);
 };
 
-export const addLead = (leadData: Omit<Lead, 'id' | 'status' | 'createdAt' | 'updatedAt' | 'messages'>): Promise<Lead> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const now = new Date().toISOString();
-            
-            const newLead: Lead = {
-                ...leadData,
-                id: `lead-${Date.now()}`,
-                status: 'new',
-                createdAt: now,
-                updatedAt: now,
-                messages: [],
-            };
-            leadsData.unshift(newLead);
+export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt' | 'updatedAt' | 'messages'>): Promise<Lead> => {
+    const dbPayload = {
+        type: 'LEAD',
+        status: 'new',
+        requester_name: leadData.customerName,
+        requester_phone: leadData.customerPhone,
+        assigned_to: leadData.assignedTo || leadData.managerId || leadData.partnerId,
+        // Store the rest of the flat structure in the JSONB payload
+        payload: {
+            serviceType: leadData.serviceType,
+            serviceTitle: leadData.serviceTitle,
+            contactTime: leadData.contactTime,
+            customerNotes: leadData.customerNotes,
+            partnerId: leadData.partnerId,
+            managerId: leadData.managerId,
+            propertyId: leadData.propertyId,
+            referenceImage: leadData.referenceImage,
+            itemCategory: leadData.itemCategory,
+            dimensions: leadData.dimensions
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+    };
 
-            const targetUserId = newLead.managerId || newLead.partnerId;
-            const link = newLead.managerId 
-                ? (newLead.serviceType === 'finishing' ? '/admin/finishing-requests' : '/admin/decoration-requests')
-                : '/dashboard/leads';
+    const { data, error } = await supabase
+        .from('requests')
+        .insert(dbPayload)
+        .select()
+        .single();
 
-            addNotification({
-                userId: targetUserId,
-                message: {
-                  ar: `لديك طلب عميل جديد من "${newLead.customerName}".`,
-                  en: `New lead from "${newLead.customerName}".`,
-                },
-                link: link,
-            });
+    if (error) throw error;
+    
+    const lead = mapLeadFromDb(data, []);
 
-            resolve(newLead);
-        }, SIMULATED_DELAY);
-    });
+    // Notification
+    if (lead.assignedTo) {
+        const link = lead.managerId 
+            ? (lead.serviceType === 'finishing' ? '/admin/platform-finishing/requests' : '/admin/platform-decorations/requests')
+            : '/dashboard/leads';
+
+        await addNotification({
+            userId: lead.assignedTo,
+            message: {
+                ar: `طلب عميل جديد: ${lead.serviceTitle}`,
+                en: `New Client Lead: ${lead.serviceTitle}`,
+            },
+            link: link,
+        });
+    }
+
+    return lead;
 };
 
-export const updateLead = (leadId: string, updates: Partial<Omit<Lead, 'id' | 'createdAt'>>): Promise<Lead | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const leadIndex = leadsData.findIndex(l => l.id === leadId);
-            if (leadIndex > -1) {
-                const lead = { ...leadsData[leadIndex] };
-                const now = new Date().toISOString();
+export const updateLead = async (leadId: string, updates: Partial<Lead>): Promise<Lead | undefined> => {
+    const dbUpdates: any = {};
+    if (updates.status) dbUpdates.status = updates.status;
+    if (updates.assignedTo) dbUpdates.assigned_to = updates.assignedTo;
+    
+    // If we need to update deep JSON properties, we need to fetch, merge, and save.
+    // For simple status updates, the above is enough.
+    
+    dbUpdates.updated_at = new Date().toISOString();
 
-                // Check for status change and create a system message
-                if (updates.status && updates.status !== lead.status) {
-                    const systemMessage: LeadMessage = {
-                        id: `msg-sys-${Date.now()}`,
-                        sender: 'system',
-                        type: 'note',
-                        content: `Status changed from "${lead.status}" to "${updates.status}".`,
-                        timestamp: now,
-                    };
-                    lead.messages.push(systemMessage);
-                }
+    const { data, error } = await supabase
+        .from('requests')
+        .update(dbUpdates)
+        .eq('id', leadId)
+        .select()
+        .single();
 
-                leadsData[leadIndex] = { ...lead, ...updates, updatedAt: now };
-                resolve(leadsData[leadIndex]);
-            } else {
-                resolve(undefined);
-            }
-        }, SIMULATED_DELAY);
-    });
+    if (error) return undefined;
+    return mapLeadFromDb(data, []);
 };
 
-export const addMessageToLead = (leadId: string, messageData: Omit<LeadMessage, 'id' | 'timestamp'>): Promise<Lead | undefined> => {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            const leadIndex = leadsData.findIndex(l => l.id === leadId);
-            if (leadIndex > -1) {
-                const lead = leadsData[leadIndex];
-                const newMessage: LeadMessage = {
-                    ...messageData,
-                    id: `msg-${leadId}-${Date.now()}`,
-                    timestamp: new Date().toISOString(),
-                };
-                lead.messages.push(newMessage);
-                lead.updatedAt = new Date().toISOString();
-                
-                if (lead.status === 'new' && (messageData.sender === 'partner' || messageData.sender === 'admin')) {
-                    lead.status = 'contacted';
-                }
-
-                resolve(lead);
-            } else {
-                reject(new Error('Lead not found'));
-            }
-        }, SIMULATED_DELAY);
-    });
+// Aliases
+export const deleteLead = async (id: string) => {
+    const { error } = await supabase.from('requests').delete().eq('id', id);
+    return !error;
 };
 
-export const deleteLead = (leadId: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const initialLength = leadsData.length;
-            leadsData = leadsData.filter(l => l.id !== leadId);
-            if (leadsData.length < initialLength) {
-                resolve(true);
-            } else {
-                resolve(false);
-            }
-        }, SIMULATED_DELAY);
+// Note: addMessageToLead is now imported from services/requests to avoid circular dependency issues
+// or implemented here directly accessing the table
+export const addMessageToLead = async (leadId: string, messageData: Omit<LeadMessage, 'id' | 'timestamp'>) => {
+     const { error } = await supabase.from('request_messages').insert({
+        request_id: leadId,
+        sender: messageData.sender,
+        sender_id: messageData.senderId,
+        type: messageData.type,
+        content: messageData.content,
+        created_at: new Date().toISOString()
     });
+    if (error) throw error;
+    
+    // Update timestamp
+    await supabase.from('requests').update({ updated_at: new Date().toISOString() }).eq('id', leadId);
 };

@@ -1,3 +1,4 @@
+
 import { type FC, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { TwitterIcon, LinkedInIcon, FacebookIcon, InstagramIcon, WhatsAppIcon, PhoneIcon } from '../ui/Icons';
@@ -34,16 +35,18 @@ const Footer: FC = () => {
     const { language, t } = useLanguage();
     const { data: siteContent, isLoading } = useSiteContent();
 
-    if (isLoading || !siteContent) {
+    // Safety check: Ensure siteContent and footer object exist before accessing
+    if (isLoading || !siteContent || !siteContent.footer) {
         return <footer className="bg-gray-100 pt-12 h-64 animate-pulse"></footer>;
     }
 
     const content = siteContent.footer;
-    const contentLang = content[language];
+    // Safety check: Ensure language key exists in footer content
+    const contentLang = content[language] || content['en'] || {};
 
     const phoneLink = content.isWhatsAppOnly 
-        ? `https://wa.me/${content.phone.replace(/\D/g, '')}` 
-        : `tel:${content.phone.replace(/\s/g, '')}`;
+        ? `https://wa.me/${(content.phone || '').replace(/\D/g, '')}` 
+        : `tel:${(content.phone || '').replace(/\s/g, '')}`;
 
     return (
         <footer className="bg-gray-100 pt-16 pb-8 border-t border-gray-200">
@@ -55,14 +58,16 @@ const Footer: FC = () => {
                         <Link to="/" className="text-amber-500">
                             <SiteIdentity logoClassName="h-8 w-8" textClassName="text-2xl" hideTextOnMobile={false} />
                         </Link>
-                        <p className="text-gray-500 text-sm leading-relaxed max-w-sm">{contentLang.description}</p>
+                        <p className="text-gray-500 text-sm leading-relaxed max-w-sm">{contentLang.description || 'Loading description...'}</p>
                         
-                        <div className={`flex space-x-4 ${language === 'ar' ? 'space-x-reverse' : ''}`}>
-                            <SocialLink href={content.social.facebook}><FacebookIcon className="h-5 w-5" /></SocialLink>
-                            <SocialLink href={content.social.twitter}><TwitterIcon className="h-5 w-5" /></SocialLink>
-                            <SocialLink href={content.social.instagram}><InstagramIcon className="h-5 w-5" /></SocialLink>
-                            <SocialLink href={content.social.linkedin}><LinkedInIcon className="h-5 w-5" /></SocialLink>
-                        </div>
+                        {content.social && (
+                            <div className={`flex space-x-4 ${language === 'ar' ? 'space-x-reverse' : ''}`}>
+                                <SocialLink href={content.social.facebook}><FacebookIcon className="h-5 w-5" /></SocialLink>
+                                <SocialLink href={content.social.twitter}><TwitterIcon className="h-5 w-5" /></SocialLink>
+                                <SocialLink href={content.social.instagram}><InstagramIcon className="h-5 w-5" /></SocialLink>
+                                <SocialLink href={content.social.linkedin}><LinkedInIcon className="h-5 w-5" /></SocialLink>
+                            </div>
+                        )}
                     </div>
 
                     {/* 2. Combined Links (Simplified) */}
@@ -110,13 +115,13 @@ const Footer: FC = () => {
 
                 {/* Bottom Bar */}
                 <div className="pt-8 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-500">
-                    <p>{content.copyright[language]}</p>
+                    <p>{content.copyright ? content.copyright[language] : 'All rights reserved.'}</p>
                     
                     <div className="flex flex-wrap justify-center gap-6">
                         <Link to="/privacy-policy" className="hover:text-amber-600 transition-colors">{t.nav.privacyPolicy}</Link>
                         <Link to="/terms-of-use" className="hover:text-amber-600 transition-colors">{t.nav.termsOfUse}</Link>
                         <a href={`mailto:${content.email}?subject=Feedback`} className="hover:text-amber-600 transition-colors">
-                            {content.feedbackText[language]}
+                            {content.feedbackText ? content.feedbackText[language] : 'Feedback'}
                         </a>
                     </div>
                 </div>

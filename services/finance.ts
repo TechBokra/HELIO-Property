@@ -1,103 +1,125 @@
 
-import { transactionsData as initialData } from '../data/finance';
+import { supabase } from '../lib/supabase';
 import type { Transaction, TransactionStatus, FinanceStats } from '../types';
 import { addNotification } from './notifications';
 
-let transactionsData: Transaction[] = [...initialData];
-const SIMULATED_DELAY = 300;
+const mapTransactionFromDb = (row: any): Transaction => ({
+    id: row.id,
+    userId: row.user_id,
+    userName: row.user_name,
+    amount: Number(row.amount),
+    currency: row.currency,
+    type: row.type,
+    description: row.description,
+    method: row.method,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    referenceNumber: row.reference_number,
+    receiptUrl: row.receipt_url,
+});
 
-export const getAllTransactions = (): Promise<Transaction[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve([...transactionsData].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        }, SIMULATED_DELAY);
-    });
+export const getAllTransactions = async (): Promise<Transaction[]> => {
+    const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data.map(mapTransactionFromDb);
 };
 
-export const getTransactionsByUserId = (userId: string): Promise<Transaction[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve(transactionsData.filter(t => t.userId === userId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        }, SIMULATED_DELAY);
-    });
+export const getTransactionsByUserId = async (userId: string): Promise<Transaction[]> => {
+    const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data.map(mapTransactionFromDb);
 };
 
-export const getFinanceStats = (): Promise<FinanceStats> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const stats = transactionsData.reduce((acc, curr) => {
-                if (curr.status === 'paid') {
-                    acc.totalRevenue += curr.amount;
-                    acc.successfulTransactions += 1;
-                } else if (curr.status === 'reviewing' || curr.status === 'pending') {
-                    acc.pendingAmount += curr.amount;
-                }
-                
-                if (curr.status === 'reviewing') {
-                    acc.pendingReviews += 1;
-                }
-                return acc;
-            }, { totalRevenue: 0, pendingAmount: 0, successfulTransactions: 0, pendingReviews: 0 });
-            resolve(stats);
-        }, SIMULATED_DELAY);
-    });
+export const getFinanceStats = async (): Promise<FinanceStats> => {
+    // In a real app, use database aggregation functions (SUM, COUNT)
+    const transactions = await getAllTransactions();
+    
+    return transactions.reduce((acc, curr) => {
+        if (curr.status === 'paid') {
+            acc.totalRevenue += curr.amount;
+            acc.successfulTransactions += 1;
+        } else if (curr.status === 'reviewing' || curr.status === 'pending') {
+            acc.pendingAmount += curr.amount;
+        }
+        
+        if (curr.status === 'reviewing') {
+            acc.pendingReviews += 1;
+        }
+        return acc;
+    }, { totalRevenue: 0, pendingAmount: 0, successfulTransactions: 0, pendingReviews: 0 });
 };
 
-export const createTransaction = (data: Omit<Transaction, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<Transaction> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const newTransaction: Transaction = {
-                ...data,
-                id: `txn-${Date.now()}`,
-                status: data.method === 'card' ? 'paid' : 'reviewing', // Auto-approve simulated cards, review manual
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            };
-            
-            transactionsData.unshift(newTransaction);
+export const createTransaction = async (data: Omit<Transaction, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<Transaction> => {
+    const dbPayload = {
+        id: `txn-${Date.now()}`,
+        user_id: data.userId,
+        user_name: data.userName,
+        amount: data.amount,
+        currency: data.currency || 'EGP',
+        type: data.type,
+        description: data.description,
+        method: data.method,
+        status: data.method === 'card' ? 'paid' : 'reviewing',
+        reference_number: data.referenceNumber,
+        receipt_url: data.receiptUrl,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+    };
 
-            // Notify Admin if review needed
-            if (newTransaction.status === 'reviewing') {
-                addNotification({
-                    userId: 'admin-user', // Super Admin or Finance Manager
-                    message: {
-                        ar: `إيصال دفع جديد للمراجعة من ${data.userName}`,
-                        en: `New payment receipt for review from ${data.userName}`,
-                    },
-                    link: '/admin/finance',
-                });
-            }
+    const { data: newTxn, error } = await supabase
+        .from('transactions')
+        .insert(dbPayload)
+        .select()
+        .single();
 
-            resolve(newTransaction);
-        }, SIMULATED_DELAY * 2); // Longer delay for payment simulation
-    });
+    if (error) throw error;
+    const transaction = mapTransactionFromDb(newTxn);
+
+    // Notify Admin if review needed
+    if (transaction.status === 'reviewing') {
+        await addNotification({
+            userId: 'admin-user',
+            message: {
+                ar: `إيصال دفع جديد للمراجعة من ${data.userName}`,
+                en: `New payment receipt for review from ${data.userName}`,
+            },
+            link: '/admin/finance',
+        });
+    }
+
+    return transaction;
 };
 
-export const updateTransactionStatus = (id: string, status: TransactionStatus): Promise<Transaction | undefined> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const index = transactionsData.findIndex(t => t.id === id);
-            if (index > -1) {
-                transactionsData[index] = {
-                    ...transactionsData[index],
-                    status,
-                    updatedAt: new Date().toISOString()
-                };
-                
-                // Notify User
-                addNotification({
-                    userId: transactionsData[index].userId,
-                    message: {
-                        ar: `تم تحديث حالة الدفع الخاصة بك إلى: ${status}`,
-                        en: `Your payment status has been updated to: ${status}`,
-                    },
-                    link: '/dashboard/finance', // Or finance page
-                });
+export const updateTransactionStatus = async (id: string, status: TransactionStatus): Promise<Transaction | undefined> => {
+    const { data, error } = await supabase
+        .from('transactions')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
 
-                resolve(transactionsData[index]);
-            } else {
-                resolve(undefined);
-            }
-        }, SIMULATED_DELAY);
+    if (error) return undefined;
+    const txn = mapTransactionFromDb(data);
+    
+    // Notify User
+    await addNotification({
+        userId: txn.userId,
+        message: {
+            ar: `تم تحديث حالة الدفع الخاصة بك إلى: ${status}`,
+            en: `Your payment status has been updated to: ${status}`,
+        },
+        link: '/dashboard/finance',
     });
+
+    return txn;
 };

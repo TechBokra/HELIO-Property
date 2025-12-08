@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -14,15 +13,7 @@ import UpgradeNotice from '../shared/UpgradeNotice';
 import { useLanguage } from '../shared/LanguageContext';
 import { useToast } from '../shared/ToastContext';
 import { Button } from '../ui/Button';
-
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
+import { uploadFile } from '../../services/upload';
 
 const ProjectFormPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -38,6 +29,8 @@ const ProjectFormPage: React.FC = () => {
     const { register, handleSubmit, reset, formState: { isSubmitting: isFormSubmitting, errors } } = useForm<Project>();
     
     const [image, setImage] = useState<string>('');
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
         if (projectId && projects) {
@@ -76,20 +69,35 @@ const ProjectFormPage: React.FC = () => {
         onError: () => showToast('Failed to update project.', 'error'),
     });
 
-    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            const base64 = await fileToBase64(e.target.files[0]);
-            setImage(base64);
+            const file = e.target.files[0];
+            setImageFile(file);
+            setImage(URL.createObjectURL(file));
         }
     };
 
     const onSubmit = async (formData: any) => {
         if (!currentUser || !('type' in currentUser)) return;
+        
+        setIsUploading(true);
+        let imageUrl = image;
+        
+        if (imageFile) {
+             try {
+                imageUrl = await uploadFile(imageFile);
+            } catch (error) {
+                showToast("Failed to upload image", "error");
+                setIsUploading(false);
+                return;
+            }
+        }
+        setIsUploading(false);
 
         const existingProject = projectId ? projects?.find(p => p.id === projectId) : undefined;
         const projectData = {
             ...formData,
-            imageUrl: image,
+            imageUrl: imageUrl,
             partnerId: existingProject?.partnerId || currentUser.id,
             features: existingProject?.features || [],
         };
@@ -108,7 +116,7 @@ const ProjectFormPage: React.FC = () => {
         return <UpgradeNotice />;
     }
     
-    const isSubmitting = addMutation.isPending || updateMutation.isPending;
+    const isSubmitting = addMutation.isPending || updateMutation.isPending || isUploading;
 
     return (
         <div>

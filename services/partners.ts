@@ -1,293 +1,175 @@
 
-import { partnersData as initialPartnersData } from '../data/partners';
-import type { Partner, PartnerStatus, PartnerRequest, AdminPartner, PartnerType, SubscriptionPlan, PartnerDisplayType, Permission } from '../types';
+import { supabase } from '../lib/supabase';
+import type { Partner, PartnerStatus, PartnerRequest, AdminPartner, SubscriptionPlan } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
-import { arTranslations, enTranslations } from '../data/translations';
 
-// Create a mutable copy. In React 19/Next.js we would use a real DB.
-let partnersData: (Omit<Partner, 'name' | 'description' | 'role'> & { password?: string })[] = [...initialPartnersData];
-const SIMULATED_DELAY = 50;
+// Mapper to convert DB row to Partner object
+const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
+    const contactMethods = typeof row.contact_methods === 'string' 
+        ? JSON.parse(row.contact_methods) 
+        : row.contact_methods || { whatsapp: { enabled: false }, phone: { enabled: false }, form: { enabled: true } };
 
-const getLocalizedPartnerInfo = (partnerId: string) => {
-    const enInfo = (enTranslations.partnerInfo as any)[partnerId] || { name: partnerId, description: '' };
-    const arInfo = (arTranslations.partnerInfo as any)[partnerId] || { name: partnerId, description: '' };
-    return { en: enInfo, ar: arInfo };
+    return {
+        id: row.id,
+        email: row.email,
+        imageUrl: row.image_url,
+        type: row.type,
+        status: row.status,
+        subscriptionPlan: row.subscription_plan,
+        displayType: row.display_type,
+        role: mapPartnerTypeToRole(row.type),
+        name: row.name_en, // English name as default name
+        description: row.description_en, // English desc as default
+        nameAr: row.name_ar,
+        descriptionAr: row.description_ar,
+        contactMethods,
+        subscriptionEndDate: row.subscription_end_date,
+        parentId: row.parent_id,
+        createdAt: row.created_at
+    };
 };
 
 export const getAllPartners = async (): Promise<Partner[]> => {
-    return partnersData.map(basePartner => {
-        const info = getLocalizedPartnerInfo(basePartner.id);
-        return {
-            ...basePartner,
-            name: info.en.name,
-            description: info.en.description,
-            role: mapPartnerTypeToRole(basePartner.type)
-        } as Partner;
-    });
+    const { data, error } = await supabase.from('partners').select('*');
+    if (error) throw error;
+    return data.map(mapPartnerFromDb);
 };
 
-export const getAllPartnersForAdmin = (): Promise<AdminPartner[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const result = partnersData.map(basePartner => {
-                 const info = getLocalizedPartnerInfo(basePartner.id);
-                 return {
-                     ...basePartner,
-                     name: info.en.name,
-                     description: info.en.description,
-                     nameAr: info.ar.name,
-                     descriptionAr: info.ar.description,
-                     role: mapPartnerTypeToRole(basePartner.type)
-                 } as AdminPartner;
-            });
-            resolve(result);
-        }, SIMULATED_DELAY);
-    });
+export const getAllPartnersForAdmin = async (): Promise<AdminPartner[]> => {
+    const { data, error } = await supabase.from('partners').select('*');
+    if (error) throw error;
+    return data.map(mapPartnerFromDb) as AdminPartner[];
 };
 
-export const getPartnerById = (id: string): Promise<Partner | undefined> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const basePartner = partnersData.find(p => p.id === id);
-      if (!basePartner) {
-        resolve(undefined);
-        return;
-      }
-      
-      const info = getLocalizedPartnerInfo(id);
-      resolve({
-          ...basePartner,
-          name: info.en.name,
-          description: info.en.description,
-          role: mapPartnerTypeToRole(basePartner.type)
-      } as Partner);
-    }, SIMULATED_DELAY);
-  });
+export const getPartnerById = async (id: string): Promise<Partner | undefined> => {
+    const { data, error } = await supabase.from('partners').select('*').eq('id', id).single();
+    if (error) return undefined;
+    return mapPartnerFromDb(data);
 };
 
 export const getPartnerByEmail = async (email: string): Promise<Partner | undefined> => {
-    const basePartner = partnersData.find(p => p.email.toLowerCase() === email.toLowerCase());
-    if (!basePartner) return undefined;
-
-    const info = getLocalizedPartnerInfo(basePartner.id);
-    return {
-        ...basePartner,
-        name: info.en.name,
-        description: info.en.description,
-        role: mapPartnerTypeToRole(basePartner.type)
-    } as Partner;
+    const { data, error } = await supabase.from('partners').select('*').eq('email', email).single();
+    if (error) return undefined;
+    return mapPartnerFromDb(data);
 };
 
-interface PartnerUpdates extends Partial<Omit<Partner, 'id' | 'role'>> {
-    password?: string;
-    imageUrl_small?: string;
-    imageUrl_medium?: string;
-    imageUrl_large?: string;
-    name?: string;
-    nameAr?: string;
-    nameEn?: string;
-    descriptionAr?: string;
-    descriptionEn?: string;
-    contactMethods?: any;
-}
+export const addPartner = async (request: PartnerRequest, password?: string): Promise<Partner> => {
+    const newPartnerId = request.companyName.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
+    
+    const dbPayload = {
+        id: newPartnerId,
+        email: request.contactEmail,
+        password: password || 'password123',
+        type: request.companyType,
+        status: 'active',
+        subscription_plan: request.subscriptionPlan,
+        display_type: 'standard',
+        image_url: request.logo || 'https://via.placeholder.com/150',
+        name_ar: request.companyName, 
+        name_en: request.companyName,
+        description_ar: request.description,
+        description_en: request.description,
+        contact_methods: { 
+            whatsapp: { enabled: false, number: '' },
+            phone: { enabled: true, number: request.contactPhone },
+            form: { enabled: true }
+        }
+    };
 
-export const updatePartner = (id: string, updates: PartnerUpdates): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const partnerIndex = partnersData.findIndex(p => p.id === id);
-            if (partnerIndex > -1) {
-                const currentPartner = partnersData[partnerIndex];
-                
-                // Handle Image Logic
-                if (updates.imageUrl && !updates.imageUrl.includes('unsplash.com')) {
-                    updates.imageUrl_small = updates.imageUrl;
-                    updates.imageUrl_medium = updates.imageUrl;
-                    updates.imageUrl_large = updates.imageUrl;
-                }
-                
-                // Remove UI-specific fields before merging into raw data
-                const { name, nameAr, nameEn, descriptionAr, descriptionEn, ...safeUpdates } = updates;
-
-                partnersData[partnerIndex] = { ...currentPartner, ...safeUpdates };
-                resolve(true);
-            } else {
-                resolve(false);
-            }
-        }, SIMULATED_DELAY);
-    });
+    const { data, error } = await supabase.from('partners').insert(dbPayload).select().single();
+    if (error) throw error;
+    return mapPartnerFromDb(data);
 };
 
-export const updatePartnerStatus = (id: string, status: PartnerStatus): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const idx = partnersData.findIndex(p => p.id === id);
-            if (idx > -1) {
-                partnersData[idx].status = status;
-                resolve(true);
-            } else resolve(false);
-        }, SIMULATED_DELAY);
-    });
+export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
+    const newId = `user-${Date.now()}`;
+    const dbPayload = {
+        id: newId,
+        email: userData.email,
+        password: userData.password,
+        type: userData.type,
+        status: 'active',
+        subscription_plan: 'basic',
+        name_ar: userData.nameAr,
+        name_en: userData.name,
+        image_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto.format&fit=crop'
+    };
+
+    const { data, error } = await supabase.from('partners').insert(dbPayload).select().single();
+    if (error) throw error;
+    return mapPartnerFromDb(data) as AdminPartner;
 };
 
-export const updatePartnerAdmin = (id: string, updates: Partial<AdminPartner> & { password?: string }): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const idx = partnersData.findIndex(p => p.id === id);
-            if (idx > -1) {
-                const { nameAr, descriptionAr, ...rest } = updates;
-                partnersData[idx] = { ...partnersData[idx], ...rest };
-                resolve(true);
-            } else resolve(false);
-        }, SIMULATED_DELAY);
-    });
+export const updatePartner = async (id: string, updates: any): Promise<boolean> => {
+    const dbUpdates: any = {};
+    if (updates.nameAr) dbUpdates.name_ar = updates.nameAr;
+    if (updates.nameEn) dbUpdates.name_en = updates.nameEn;
+    if (updates.name) dbUpdates.name_en = updates.name; 
+    if (updates.descriptionAr) dbUpdates.description_ar = updates.descriptionAr;
+    if (updates.descriptionEn) dbUpdates.description_en = updates.descriptionEn;
+    if (updates.imageUrl) dbUpdates.image_url = updates.imageUrl;
+    if (updates.status) dbUpdates.status = updates.status;
+    if (updates.contactMethods) dbUpdates.contact_methods = updates.contactMethods;
+    if (updates.password) dbUpdates.password = updates.password;
+    if (updates.email) dbUpdates.email = updates.email;
+    if (updates.type) dbUpdates.type = updates.type;
+
+    const { error } = await supabase.from('partners').update(dbUpdates).eq('id', id);
+    return !error;
 };
 
-export const upgradePartnerPlan = (id: string, newPlan: SubscriptionPlan): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const idx = partnersData.findIndex(p => p.id === id);
-            if (idx > -1) {
-                partnersData[idx].subscriptionPlan = newPlan;
-                const nextYear = new Date();
-                nextYear.setFullYear(nextYear.getFullYear() + 1);
-                partnersData[idx].subscriptionEndDate = nextYear.toISOString();
-                resolve(true);
-            } else resolve(false);
-        }, SIMULATED_DELAY);
-    });
+export const updatePartnerStatus = async (id: string, status: PartnerStatus): Promise<boolean> => {
+    const { error } = await supabase.from('partners').update({ status }).eq('id', id);
+    return !error;
 };
 
-export const addPartner = (request: PartnerRequest, password?: string): Promise<Partner> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const newPartnerId = `partner-${Date.now()}`;
-            const newPartnerBaseData = {
-                id: newPartnerId,
-                imageUrl: request.logo || 'https://via.placeholder.com/150',
-                email: request.contactEmail,
-                password: password || 'password123', 
-                type: request.companyType,
-                status: 'active' as PartnerStatus,
-                subscriptionPlan: request.subscriptionPlan,
-                displayType: 'standard' as PartnerDisplayType, 
-                contactMethods: { 
-                    whatsapp: { enabled: false, number: '' },
-                    phone: { enabled: true, number: request.contactPhone },
-                    form: { enabled: true }
-                }
-            };
-            partnersData.push(newPartnerBaseData);
-            
-            const newPartner: Partner = {
-                ...newPartnerBaseData,
-                name: request.companyName,
-                description: request.description,
-                role: mapPartnerTypeToRole(request.companyType)
-            };
-            resolve(newPartner);
-        }, SIMULATED_DELAY);
-    });
+export const updatePartnerAdmin = async (id: string, updates: any): Promise<boolean> => {
+    return updatePartner(id, updates);
 };
 
-export const addInternalUser = (userData: any): Promise<AdminPartner> => {
-    return new Promise((resolve) => {
-        setTimeout(async () => {
-            const newUserId = `user-${Date.now()}`;
-            const newPartnerBaseData = {
-                id: newUserId,
-                imageUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto.format&fit=crop',
-                email: userData.email,
-                password: userData.password || 'password123',
-                type: userData.type,
-                status: 'active' as PartnerStatus,
-                subscriptionPlan: 'basic' as SubscriptionPlan,
-                displayType: 'standard' as PartnerDisplayType,
-            };
-            partnersData.push(newPartnerBaseData);
-            const partner = await getPartnerById(newUserId);
-            resolve(partner as AdminPartner);
-        }, SIMULATED_DELAY);
-    });
+export const upgradePartnerPlan = async (id: string, newPlan: SubscriptionPlan): Promise<boolean> => {
+    const nextYear = new Date();
+    nextYear.setFullYear(nextYear.getFullYear() + 1);
+    
+    const { error } = await supabase.from('partners').update({ 
+        subscription_plan: newPlan,
+        subscription_end_date: nextYear.toISOString()
+    }).eq('id', id);
+    
+    return !error;
 };
 
-export const updateUser = (userId: string, updates: any): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const idx = partnersData.findIndex(p => p.id === userId);
-            if (idx > -1) {
-                partnersData[idx] = { ...partnersData[idx], ...updates };
-                resolve(true);
-            } else resolve(false);
-        }, SIMULATED_DELAY);
-    });
+export const deletePartner = async (userId: string): Promise<boolean> => {
+    const { error } = await supabase.from('partners').delete().eq('id', userId);
+    return !error;
 };
 
-export const deletePartner = (userId: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const initialLength = partnersData.length;
-            partnersData = partnersData.filter(p => p.id !== userId);
-            resolve(partnersData.length < initialLength);
-        }, SIMULATED_DELAY);
-    });
+export const getTeamMembers = async (parentId: string): Promise<AdminPartner[]> => {
+    const { data, error } = await supabase.from('partners').select('*').eq('parent_id', parentId);
+    if (error) throw error;
+    return data.map(mapPartnerFromDb) as AdminPartner[];
 };
 
-export const getTeamMembers = (parentId: string): Promise<AdminPartner[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-             const result = partnersData
-                .filter(p => p.parentId === parentId)
-                .map(basePartner => {
-                    const info = getLocalizedPartnerInfo(basePartner.id);
-                    return {
-                        ...basePartner,
-                        name: info.en.name !== basePartner.id ? info.en.name : 'Team Member',
-                        description: info.en.description,
-                        nameAr: info.ar.name !== basePartner.id ? info.ar.name : 'عضو فريق',
-                        role: mapPartnerTypeToRole(basePartner.type)
-                    } as AdminPartner;
-                });
-            resolve(result);
-        }, SIMULATED_DELAY);
-    });
+export const addTeamMember = async (parentId: string, memberData: any): Promise<Partner> => {
+    const newId = `sub-${Date.now()}`;
+    const dbPayload = {
+        id: newId,
+        parent_id: parentId,
+        email: memberData.email,
+        password: memberData.password,
+        type: memberData.type,
+        status: 'active',
+        subscription_plan: 'basic',
+        name_en: memberData.name,
+        name_ar: memberData.name,
+        image_url: 'https://via.placeholder.com/150',
+    };
+    
+    const { data, error } = await supabase.from('partners').insert(dbPayload).select().single();
+    if (error) throw error;
+    return mapPartnerFromDb(data);
 };
 
-export const addTeamMember = (parentId: string, memberData: any): Promise<Partner> => {
-    return new Promise((resolve) => {
-        setTimeout(async () => {
-            const newMemberId = `sub-${Date.now()}`;
-            const newMemberBase = {
-                id: newMemberId,
-                parentId: parentId,
-                imageUrl: 'https://via.placeholder.com/150',
-                email: memberData.email,
-                password: memberData.password,
-                type: memberData.type,
-                status: 'active' as PartnerStatus,
-                subscriptionPlan: 'basic' as SubscriptionPlan,
-                displayType: 'standard' as PartnerDisplayType,
-                customPermissions: memberData.customPermissions
-            };
-            partnersData.push(newMemberBase);
-            (enTranslations.partnerInfo as any)[newMemberId] = { name: memberData.name, description: 'Team Member' };
-            (arTranslations.partnerInfo as any)[newMemberId] = { name: memberData.name, description: 'عضو فريق' };
-            const member = await getPartnerById(newMemberId);
-            resolve(member!);
-        }, SIMULATED_DELAY);
-    });
-};
-
-export const updateTeamMember = (memberId: string, updates: any): Promise<boolean> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const idx = partnersData.findIndex(p => p.id === memberId);
-            if (idx > -1) {
-                partnersData[idx] = { ...partnersData[idx], ...updates };
-                if((enTranslations.partnerInfo as any)[memberId]) (enTranslations.partnerInfo as any)[memberId].name = updates.name;
-                resolve(true);
-            } else resolve(false);
-        }, SIMULATED_DELAY);
-    });
-};
-
-export const deleteTeamMember = (memberId: string): Promise<boolean> => deletePartner(memberId);
+export const updateTeamMember = updatePartner;
+export const deleteTeamMember = deletePartner;
+export const updateUser = updatePartner;

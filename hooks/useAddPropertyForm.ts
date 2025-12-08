@@ -9,20 +9,12 @@ import { getAllPropertyTypes, getAllFinishingStatuses, getAllAmenities } from '.
 import { getPlans } from '../services/plans';
 import { useLanguage } from '../components/shared/LanguageContext';
 import { useNavigate } from 'react-router-dom';
+import { uploadFile } from '../services/upload';
 
 const purposeOptions = [
     { en: 'For Sale', ar: 'للبيع' },
     { en: 'For Rent', ar: 'إيجار' },
 ] as const;
-
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
 
 export const useAddPropertyForm = () => {
     const { language, t } = useLanguage();
@@ -38,6 +30,7 @@ export const useAddPropertyForm = () => {
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
     const [formSubmitted, setFormSubmitted] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     
     // Data Fetching
     const { data: propertyTypes, isLoading: isLoadingPropTypes } = useQuery({ queryKey: ['propertyTypes'], queryFn: getAllPropertyTypes });
@@ -50,7 +43,6 @@ export const useAddPropertyForm = () => {
     const { register, handleSubmit, watch, setValue, formState: { errors }, reset, getValues } = useForm({
         defaultValues: {
             customerName: '', customerPhone: '', contactTime: '',
-            // title: { ar: '', en: '' }, // Removed titles as they are now handled by admin
             description: { ar: '', en: '' },
             propertyType: '', finishingStatus: '', area: '', price: '',
             bedrooms: '', bathrooms: '', floor: '', address: '',
@@ -79,7 +71,6 @@ export const useAddPropertyForm = () => {
         mutationFn: (data: any) => addRequest(RequestType.PROPERTY_LISTING_REQUEST, data),
         onSuccess: () => {
             setFormSubmitted(true);
-            // Invalidate admin queries to show the new request immediately
             queryClient.invalidateQueries({ queryKey: ['allRequests'] });
             queryClient.invalidateQueries({ queryKey: ['propertyRequests'] });
         },
@@ -166,7 +157,6 @@ export const useAddPropertyForm = () => {
     
     // Form submission
     const onSubmit = async (formData: any) => {
-        // Check ownership confirmation from hook state if not passed in formData
         const isOwner = formData.isOwner || getValues('isOwner');
         if (!isOwner) {
             showToast(t_page.errors.mustBeOwner, 'error');
@@ -178,43 +168,43 @@ export const useAddPropertyForm = () => {
             return;
         }
         
-        // Mandatory Image Check
         if (images.length === 0) {
             showToast(language === 'ar' ? 'يرجى رفع صورة واحدة على الأقل' : 'Please upload at least one image', 'error');
             return;
         }
 
-        // Merge data from DynamicForm (formData) with hook state (images, location, etc)
-        // Note: DynamicForm fields use 'key', so ensure keys match.
-        // We fallback to hook state if DynamicForm data is missing specific fields (e.g. if they are custom inputs)
-
-        const imageBase64Strings = await Promise.all(images.map(file => fileToBase64(file)));
+        setIsUploading(true);
+        let imageUrls: string[] = [];
+        try {
+             // Upload images to Cloudinary
+             imageUrls = await Promise.all(images.map(file => uploadFile(file)));
+        } catch (error) {
+            console.error("Upload failed", error);
+            showToast("Failed to upload images. Please check your connection.", "error");
+            setIsUploading(false);
+            return;
+        }
+        setIsUploading(false);
         
-        // Ensure lat/lng are present
         const lat = formData.latitude || getValues('latitude') || '30.11';
         const lng = formData.longitude || getValues('longitude') || '31.65';
         
-        // Find full objects for type and finishing to ensure correct data structure in Admin
         const selectedTypeObj = propertyTypes?.find(t => t.en.toLowerCase() === (formData.propertyType || '').toLowerCase()) || { en: formData.propertyType, ar: formData.propertyType };
         const selectedFinishingObj = finishingStatuses?.find(s => s.en.toLowerCase() === (formData.finishingStatus || '').toLowerCase()) || { en: formData.finishingStatus, ar: formData.finishingStatus };
 
         const propertyDetails = {
             purpose: purposeOptions.find(o => o.en === purpose)!,
-            // Set default pending titles as they are managed by admin later
             title: { ar: 'عقار جديد (في انتظار العنوان)', en: 'New Property (Pending Title)' },
             description: { ar: formData['description.ar'] || '', en: formData['description.en'] || '' },
-            
-            // Pass full objects
             propertyType: selectedTypeObj,
             finishingStatus: selectedFinishingObj,
-
             area: parseInt(formData.area),
             price: parseInt(formData.price),
             bedrooms: formData.bedrooms || formData.beds ? parseInt(formData.bedrooms || formData.beds) : undefined,
             bathrooms: formData.bathrooms || formData.baths ? parseInt(formData.bathrooms || formData.baths) : undefined,
             floor: formData.floor ? parseInt(formData.floor) : undefined,
             address: formData.address,
-            amenities: formData.amenities || getValues('amenities'), // Amenities might be handled by custom UI
+            amenities: formData.amenities || getValues('amenities'),
             location: { lat: parseFloat(lat), lng: parseFloat(lng) },
             isInCompound: formData.isInCompound === 'yes',
             deliveryType: formData.deliveryType,
@@ -249,7 +239,7 @@ export const useAddPropertyForm = () => {
                             contactTime: formData.contactTime,
                             cooperationType: cooperationType,
                             propertyDetails,
-                            images: imageBase64Strings,
+                            images: imageUrls,
                         }
                     }
                 } 
@@ -261,7 +251,7 @@ export const useAddPropertyForm = () => {
                     contactTime: formData.contactTime,
                     cooperationType: cooperationType,
                     propertyDetails,
-                    images: imageBase64Strings,
+                    images: imageUrls,
                 }
             });
         }
@@ -276,8 +266,6 @@ export const useAddPropertyForm = () => {
         isLoadingContext,
         isLocationModalOpen,
         imagePreviews,
-        
-        // Handlers
         nextStep,
         prevStep,
         handlePurposeSelect,
@@ -288,18 +276,12 @@ export const useAddPropertyForm = () => {
         handleAmenityChange,
         handleLocationSelect,
         resetForm,
-
-        // React Hook Form methods
         register,
         handleSubmit: handleSubmit(onSubmit),
         watch,
         setValue,
         errors,
-        
-        // Exposed raw submit for external callers (DynamicForm)
         onSubmit,
-
-        // Watchers
         watchPropertyType,
         watchAmenities,
         availableAmenities,
@@ -307,7 +289,6 @@ export const useAddPropertyForm = () => {
         watchLongitude,
         propertyTypes,
         finishingStatuses,
-        
-        isSubmitting: mutation.isPending,
+        isSubmitting: mutation.isPending || isUploading,
     };
 };

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,7 +7,8 @@ import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
-import { CloudIcon, DatabaseIcon, ServerIcon, LinkIcon } from '../../ui/Icons';
+import { CloudIcon, DatabaseIcon, ServerIcon, LinkIcon, ArrowUpIcon, CheckCircleIcon } from '../../ui/Icons';
+import { migrateDataToSupabase } from '../../../services/migration';
 
 const AdminExternalSettingsPage: React.FC = () => {
     const { t, language } = useLanguage();
@@ -19,7 +19,11 @@ const AdminExternalSettingsPage: React.FC = () => {
     const { data: siteContent, isLoading } = useQuery({ queryKey: ['siteContent'], queryFn: getContent });
     
     const { register, handleSubmit, reset, formState: { isSubmitting, isDirty } } = useForm<IntegrationConfiguration>();
-    const [activeTab, setActiveTab] = useState<'vercel' | 'supabase' | 'cloudinary'>('vercel');
+    const [activeTab, setActiveTab] = useState<'vercel' | 'supabase' | 'cloudinary' | 'migration'>('vercel');
+    
+    // Migration State
+    const [migrationLog, setMigrationLog] = useState<string[]>([]);
+    const [isMigrating, setIsMigrating] = useState(false);
 
     useEffect(() => {
         if (siteContent?.integrationConfiguration) {
@@ -41,13 +45,34 @@ const AdminExternalSettingsPage: React.FC = () => {
     const onSubmit = (data: IntegrationConfiguration) => {
         mutation.mutate(data);
     };
+    
+    const handleCopySQL = () => {
+        // In a real app, we might fetch this from a file. 
+        // For now, user has the file in their project root.
+        showToast('Please copy the content of supabase_schema.sql file from your project root.', 'success');
+    };
+
+    const handleMigration = async () => {
+        if (!window.confirm('This will overwrite data in Supabase with local mock data. Continue?')) return;
+        
+        setIsMigrating(true);
+        setMigrationLog(['Initializing migration...']);
+        
+        const success = await migrateDataToSupabase((msg) => {
+            setMigrationLog(prev => [...prev, msg]);
+        });
+        
+        setIsMigrating(false);
+        if (success) showToast('Data migrated successfully!', 'success');
+        else showToast('Migration failed. Check logs.', 'error');
+    };
 
     if (isLoading) return <div className="p-8 text-center">Loading settings...</div>;
 
-    const TabButton: React.FC<{ tabKey: 'vercel' | 'supabase' | 'cloudinary', label: string, icon: any }> = ({ tabKey, label, icon: Icon }) => (
+    const TabButton: React.FC<{ tabKey: string, label: string, icon: any }> = ({ tabKey, label, icon: Icon }) => (
         <button
             type="button"
-            onClick={() => setActiveTab(tabKey)}
+            onClick={() => setActiveTab(tabKey as any)}
             className={`flex items-center gap-2 px-6 py-3 font-medium rounded-t-lg border-b-2 transition-colors ${
                 activeTab === tabKey 
                 ? 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-900/10' 
@@ -76,6 +101,7 @@ const AdminExternalSettingsPage: React.FC = () => {
                             <TabButton tabKey="vercel" label={t_page.tabs.vercel} icon={ServerIcon} />
                             <TabButton tabKey="supabase" label={t_page.tabs.supabase} icon={DatabaseIcon} />
                             <TabButton tabKey="cloudinary" label={t_page.tabs.cloudinary} icon={CloudIcon} />
+                            <TabButton tabKey="migration" label="Database Migration" icon={ArrowUpIcon} />
                          </div>
                     </div>
 
@@ -158,13 +184,55 @@ const AdminExternalSettingsPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
+                        
+                        {activeTab === 'migration' && (
+                            <div className="space-y-8 animate-fadeIn">
+                                <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
+                                    <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-400 mb-2">Stage 1: Initialize Structure</h3>
+                                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                                        The file <code>supabase_schema.sql</code> has been created in your project root. 
+                                        Please copy its content and run it in the Supabase SQL Editor to create the necessary tables.
+                                    </p>
+                                    <div className="flex gap-4">
+                                        <a href="https://supabase.com/dashboard/project/_/sql" target="_blank" rel="noopener noreferrer">
+                                            <Button type="button" variant="outline">Open Supabase SQL Editor</Button>
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Stage 2: Feed Data</h3>
+                                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                        This will read all mock data currently in the application (partners, properties, projects, etc.) 
+                                        and push it to your Supabase database.
+                                     </p>
+                                     <Button 
+                                        type="button" 
+                                        onClick={handleMigration} 
+                                        isLoading={isMigrating}
+                                        className="bg-green-600 hover:bg-green-700 text-white"
+                                    >
+                                        <CheckCircleIcon className="w-5 h-5 mr-2" />
+                                        Start Data Migration
+                                    </Button>
+                                     
+                                     {migrationLog.length > 0 && (
+                                         <div className="mt-4 p-3 bg-black text-green-400 font-mono text-xs rounded-md h-40 overflow-y-auto">
+                                             {migrationLog.map((log, i) => <div key={i}>{'>'} {log}</div>)}
+                                         </div>
+                                     )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-                        <Button type="submit" isLoading={mutation.isPending} disabled={!isDirty}>
-                            {t_page.saveSuccess ? 'Save Configuration' : 'Save Configuration'}
-                        </Button>
-                    </div>
+                    {activeTab !== 'migration' && (
+                        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                            <Button type="submit" isLoading={mutation.isPending} disabled={!isDirty}>
+                                {t_page.saveSuccess ? 'Save Configuration' : 'Save Configuration'}
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </form>
         </div>

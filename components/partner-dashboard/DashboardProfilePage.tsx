@@ -12,17 +12,9 @@ import { useLanguage } from '../shared/LanguageContext';
 import { Button } from '../ui/Button';
 import { WhatsAppIcon, PhoneIcon, ClipboardDocumentListIcon, ShieldCheckIcon } from '../ui/Icons';
 import { ToggleSwitch } from '../ui/ToggleSwitch';
+import { uploadFile } from '../../services/upload';
 
 const textareaClasses = `${inputClasses} min-h-[120px]`;
-
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
 
 const DashboardProfilePage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -41,6 +33,7 @@ const DashboardProfilePage: React.FC = () => {
 
     const [logoPreview, setLogoPreview] = useState<string | null>('');
     const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     // Contact Methods State
     const [contactMethods, setContactMethods] = useState({
@@ -107,7 +100,15 @@ const DashboardProfilePage: React.FC = () => {
 
         let imageUrl = currentUser.imageUrl;
         if (logoFile) {
-            imageUrl = await fileToBase64(logoFile);
+            setIsUploading(true);
+            try {
+                imageUrl = await uploadFile(logoFile);
+            } catch (error) {
+                showToast("Failed to upload image", "error");
+                setIsUploading(false);
+                return;
+            }
+            setIsUploading(false);
         }
         
         const updates: any = {
@@ -309,7 +310,7 @@ const DashboardProfilePage: React.FC = () => {
                     </div>
                     
                     <div className="flex justify-end pt-4">
-                        <Button onClick={handleSubmit(onSubmit)} isLoading={mutation.isPending} size="lg">
+                        <Button onClick={handleSubmit(onSubmit)} isLoading={mutation.isPending || isUploading} size="lg">
                             {t_dash.saveChanges}
                         </Button>
                     </div>
