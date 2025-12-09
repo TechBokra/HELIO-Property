@@ -1,8 +1,10 @@
+
 import { supabase } from '../lib/supabase';
 import { getAllPartners } from './partners'; 
 import { getAllProjects } from './projects';
 import type { Property, PropertyFiltersType, Partner, Project } from '../types';
 import { filterProperties } from '../utils/propertyFilters';
+import { propertiesData as fallbackProperties } from '../data/properties';
 
 const mapPropertyFromDb = (row: any): Property => {
     const amenities = typeof row.amenities === 'string' ? JSON.parse(row.amenities) : row.amenities || { ar: [], en: [] };
@@ -105,51 +107,73 @@ const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[
 };
 
 export const getAllProperties = async (): Promise<Property[]> => {
-    const { data, error } = await supabase.from('properties').select('*').order('created_at', { ascending: false });
-    if (error) {
-        console.error("Error fetching all properties:", error);
-        return [];
+    try {
+        const { data, error } = await supabase.from('properties').select('*').order('created_at', { ascending: false });
+        
+        if (error || !data || data.length === 0) {
+            // Fallback to local data if DB is empty or fails
+            return hydratePropertiesBatch(fallbackProperties);
+        }
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        return hydratePropertiesBatch(fallbackProperties);
     }
-    const rawProperties = data.map(mapPropertyFromDb);
-    return hydratePropertiesBatch(rawProperties);
 };
 
 export const getProperties = async (): Promise<Property[]> => {
-    const { data, error } = await supabase.from('properties').select('*').eq('listing_status', 'active');
-    if (error) {
-        console.error("Error fetching active properties:", error);
-        return [];
+    try {
+        const { data, error } = await supabase.from('properties').select('*').eq('listing_status', 'active');
+        if (error || !data || data.length === 0) {
+            return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active'));
+        }
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active'));
     }
-    const rawProperties = data.map(mapPropertyFromDb);
-    return hydratePropertiesBatch(rawProperties);
 };
 
 export const getPropertiesByPartnerId = async (partnerId: string): Promise<Property[]> => {
-    const { data, error } = await supabase.from('properties').select('*').eq('partner_id', partnerId);
-    if (error) {
-        console.error(`Error fetching properties for partner ${partnerId}:`, error);
-        return [];
+    try {
+        const { data, error } = await supabase.from('properties').select('*').eq('partner_id', partnerId);
+        if (error || !data || data.length === 0) {
+            return hydratePropertiesBatch(fallbackProperties.filter(p => p.partnerId === partnerId));
+        }
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        return hydratePropertiesBatch(fallbackProperties.filter(p => p.partnerId === partnerId));
     }
-    const rawProperties = data.map(mapPropertyFromDb);
-    return hydratePropertiesBatch(rawProperties);
 };
 
 export const getPropertiesByProjectId = async (projectId: string): Promise<Property[]> => {
-    const { data, error } = await supabase.from('properties').select('*').eq('project_id', projectId);
-    if (error) {
-         console.error(`Error fetching properties for project ${projectId}:`, error);
-         return [];
+    try {
+        const { data, error } = await supabase.from('properties').select('*').eq('project_id', projectId);
+        if (error || !data || data.length === 0) {
+            return hydratePropertiesBatch(fallbackProperties.filter(p => p.projectId === projectId));
+        }
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        return hydratePropertiesBatch(fallbackProperties.filter(p => p.projectId === projectId));
     }
-    const rawProperties = data.map(mapPropertyFromDb);
-    return hydratePropertiesBatch(rawProperties);
 };
 
 export const getPropertyById = async (id: string): Promise<Property | undefined> => {
-    const { data, error } = await supabase.from('properties').select('*').eq('id', id).single();
-    if (error) return undefined;
-    const rawProp = mapPropertyFromDb(data);
-    const hydratedArray = await hydratePropertiesBatch([rawProp]);
-    return hydratedArray[0];
+    try {
+        const { data, error } = await supabase.from('properties').select('*').eq('id', id).single();
+        if (error || !data) {
+            const fallback = fallbackProperties.find(p => p.id === id);
+            return fallback ? (await hydratePropertiesBatch([fallback]))[0] : undefined;
+        }
+        const rawProp = mapPropertyFromDb(data);
+        const hydratedArray = await hydratePropertiesBatch([rawProp]);
+        return hydratedArray[0];
+    } catch (e) {
+        const fallback = fallbackProperties.find(p => p.id === id);
+        return fallback ? (await hydratePropertiesBatch([fallback]))[0] : undefined;
+    }
 };
 
 export const getPaginatedProperties = async (options: {

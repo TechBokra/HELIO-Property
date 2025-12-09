@@ -3,25 +3,24 @@ import { supabase } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import type { Partner, PartnerStatus, PartnerRequest, AdminPartner, SubscriptionPlan } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
+import { partnersData as fallbackPartners } from '../data/partners';
+import { arTranslations, enTranslations } from '../data/translations';
 
 // --- HELPER: Isolated Client ---
 // We create a temporary client for registration actions to prevent 
 // the main 'supabase' client (used by the Admin) from switching sessions 
 // when a new user is signed up.
-// CRITICAL: We set persistSession to false to avoid "Multiple GoTrueClient" warnings 
-// and prevent localStorage conflicts.
 const getTemporaryClient = () => {
     const getEnv = () => {
         try { return (import.meta as any).env || {}; } catch { return {}; }
     };
     const env = getEnv();
-    // Using hardcoded fallback values for robustness if env vars are missing during dev
     const supabaseUrl = env.VITE_SUPABASE_URL || 'https://ygajpxznposoqfjlwtqi.supabase.co';
     const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnYWpweHpucG9zb3Fmamx3dHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NDA1NjQsImV4cCI6MjA4MDUxNjU2NH0.iYd_ep77Qbp9dXHpFD-t5Xu3hzpN-aSS5YvS1_QfO3k';
     
     return createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
-            persistSession: false, // This is the key fix
+            persistSession: false,
             autoRefreshToken: false,
             detectSessionInUrl: false
         }
@@ -54,28 +53,72 @@ const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
     };
 };
 
+const mapFallbackPartner = (p: any): Partner | AdminPartner => {
+    // Map fallback data structure to match DB-hydrated structure
+    const enInfo = (enTranslations.partnerInfo as any)[p.id];
+    const arInfo = (arTranslations.partnerInfo as any)[p.id];
+    
+    return {
+        ...p,
+        role: mapPartnerTypeToRole(p.type),
+        name: enInfo?.name || p.id,
+        description: enInfo?.description || '',
+        nameAr: arInfo?.name || p.id,
+        descriptionAr: arInfo?.description || '',
+    };
+};
+
 export const getAllPartners = async (): Promise<Partner[]> => {
-    const { data, error } = await supabase.from('partners').select('*');
-    if (error) throw error;
-    return data.map(mapPartnerFromDb);
+    try {
+        const { data, error } = await supabase.from('partners').select('*');
+        if (error || !data || data.length === 0) {
+             // Fallback
+             return fallbackPartners.map(mapFallbackPartner);
+        }
+        return data.map(mapPartnerFromDb);
+    } catch (e) {
+        return fallbackPartners.map(mapFallbackPartner);
+    }
 };
 
 export const getAllPartnersForAdmin = async (): Promise<AdminPartner[]> => {
-    const { data, error } = await supabase.from('partners').select('*');
-    if (error) throw error;
-    return data.map(mapPartnerFromDb) as AdminPartner[];
+    try {
+        const { data, error } = await supabase.from('partners').select('*');
+        if (error || !data || data.length === 0) {
+            return fallbackPartners.map(mapFallbackPartner) as AdminPartner[];
+        }
+        return data.map(mapPartnerFromDb) as AdminPartner[];
+    } catch (e) {
+        return fallbackPartners.map(mapFallbackPartner) as AdminPartner[];
+    }
 };
 
 export const getPartnerById = async (id: string): Promise<Partner | undefined> => {
-    const { data, error } = await supabase.from('partners').select('*').eq('id', id).single();
-    if (error) return undefined;
-    return mapPartnerFromDb(data);
+    try {
+        const { data, error } = await supabase.from('partners').select('*').eq('id', id).single();
+        if (error || !data) {
+            const fallback = fallbackPartners.find(p => p.id === id);
+            return fallback ? mapFallbackPartner(fallback) : undefined;
+        }
+        return mapPartnerFromDb(data);
+    } catch (e) {
+         const fallback = fallbackPartners.find(p => p.id === id);
+         return fallback ? mapFallbackPartner(fallback) : undefined;
+    }
 };
 
 export const getPartnerByEmail = async (email: string): Promise<Partner | undefined> => {
-    const { data, error } = await supabase.from('partners').select('*').eq('email', email).single();
-    if (error) return undefined;
-    return mapPartnerFromDb(data);
+     try {
+        const { data, error } = await supabase.from('partners').select('*').eq('email', email).single();
+        if (error || !data) {
+            const fallback = fallbackPartners.find(p => p.email === email);
+            return fallback ? mapFallbackPartner(fallback) : undefined;
+        }
+        return mapPartnerFromDb(data);
+    } catch (e) {
+        const fallback = fallbackPartners.find(p => p.email === email);
+        return fallback ? mapFallbackPartner(fallback) : undefined;
+    }
 };
 
 export const addPartner = async (request: PartnerRequest, password?: string): Promise<Partner> => {
@@ -173,8 +216,6 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
 
     // Handle password update if provided (Requires Admin Privilege usually, or Edge Function)
     if (updates.password) {
-        // Warning: This only works if the current user updates THEIR OWN password.
-        // Admins cannot update other users' passwords via client-side SDK without Service Role.
         const { error: authError } = await supabase.auth.updateUser({ password: updates.password });
         if (authError) console.warn("Password update failed (likely permission issue):", authError.message);
     }

@@ -22,6 +22,10 @@ export const admin = {
         },
         "nav": {
             "dashboard": "Dashboard",
+            "analytics": "Analytics",
+            "finance": "Finance Center",
+            "notifications": "Notifications",
+            "reports": "Reports",
             "partners": "Partners",
             "partnersList": "Partners List",
             "partnerRequests": "Partner Requests",
@@ -47,8 +51,7 @@ export const admin = {
             "rolesAndPermissions": "Roles & Permissions",
             "settings": "General Settings",
             "externalSettings": "External Settings",
-            "forms": "Forms",
-            "finance": "Finance"
+            "forms": "Forms"
         },
         "filter": {
             "search": "Search...",
@@ -81,6 +84,13 @@ export const admin = {
             "pending": "Pending",
             "disabled": "Disabled",
             "rejected": "Rejected"
+        },
+        "requestTypes": {
+            "PARTNER_APPLICATION": "Partner Application",
+            "PROPERTY_LISTING_REQUEST": "Listing Request",
+            "LEAD": "Service Lead",
+            "CONTACT_MESSAGE": "Contact Message",
+            "PROPERTY_INQUIRY": "Property Inquiry"
         },
         "partnersManagement": {
             "title": "Partners Management",

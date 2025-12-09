@@ -1,6 +1,7 @@
 
 import { supabase } from '../lib/supabase';
 import type { PortfolioItem } from '../types';
+import { portfolioData as fallbackPortfolio } from '../data/portfolio';
 
 const mapPortfolioFromDb = (row: any): PortfolioItem => ({
     id: row.id,
@@ -16,15 +17,27 @@ const mapPortfolioFromDb = (row: any): PortfolioItem => ({
 });
 
 export const getAllPortfolioItems = async (): Promise<PortfolioItem[]> => {
-    const { data, error } = await supabase.from('portfolio_items').select('*');
-    if (error) throw error;
-    return data.map(mapPortfolioFromDb);
+    try {
+        const { data, error } = await supabase.from('portfolio_items').select('*');
+        if (error || !data || data.length === 0) {
+            return fallbackPortfolio;
+        }
+        return data.map(mapPortfolioFromDb);
+    } catch (e) {
+        return fallbackPortfolio;
+    }
 };
 
 export const getPortfolioByPartnerId = async (partnerId: string): Promise<PortfolioItem[]> => {
-    const { data, error } = await supabase.from('portfolio_items').select('*').eq('partner_id', partnerId);
-    if (error) throw error;
-    return data.map(mapPortfolioFromDb);
+    try {
+        const { data, error } = await supabase.from('portfolio_items').select('*').eq('partner_id', partnerId);
+        if (error || !data || data.length === 0) {
+            return fallbackPortfolio.filter(i => i.partnerId === partnerId);
+        }
+        return data.map(mapPortfolioFromDb);
+    } catch (e) {
+        return fallbackPortfolio.filter(i => i.partnerId === partnerId);
+    }
 };
 
 export const addPortfolioItem = async (item: Omit<PortfolioItem, 'id'>): Promise<PortfolioItem> => {

@@ -22,6 +22,10 @@ export const admin = {
         },
         "nav": {
             "dashboard": "لوحة التحكم",
+            "analytics": "التحليلات",
+            "finance": "المركز المالي",
+            "notifications": "الإشعارات",
+            "reports": "التقارير",
             "partners": "الشركاء",
             "partnersList": "قائمة الشركاء",
             "partnerRequests": "طلبات الشراكة",
@@ -47,8 +51,7 @@ export const admin = {
             "rolesAndPermissions": "الأدوار والصلاحيات",
             "settings": "الإعدادات العامة",
             "externalSettings": "الإعدادات الخارجية",
-            "forms": "النماذج",
-            "finance": "المالية"
+            "forms": "النماذج"
         },
         "filter": {
             "search": "بحث...",
@@ -81,6 +84,13 @@ export const admin = {
             "pending": "قيد الانتظار",
             "disabled": "معطل",
             "rejected": "مرفوض"
+        },
+        "requestTypes": {
+            "PARTNER_APPLICATION": "طلب شراكة",
+            "PROPERTY_LISTING_REQUEST": "طلب إدراج عقار",
+            "LEAD": "طلب خدمة",
+            "CONTACT_MESSAGE": "رسالة تواصل",
+            "PROPERTY_INQUIRY": "استفسار عقاري"
         },
         "partnersManagement": {
             "title": "إدارة الشركاء",

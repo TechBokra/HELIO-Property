@@ -1,8 +1,11 @@
+
 import React, { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import LoadingFallback from '../shared/LoadingFallback';
 
 const AdminHomePage = React.lazy(() => import('./AdminHomePage'));
+const AdminAnalyticsPage = React.lazy(() => import('./AdminAnalyticsPage'));
+const AdminReportsPage = React.lazy(() => import('./AdminReportsPage'));
 const AdminPartnersLayout = React.lazy(() => import('./partners/AdminPartnersLayout'));
 const AdminPartnersDashboard = React.lazy(() => import('./partners/AdminPartnersDashboard'));
 const AdminPartnersPage = React.lazy(() => import('./partners/AdminPartnersPage'));
@@ -30,6 +33,7 @@ const AdminFinishingRequestDetailsPage = React.lazy(() => import('./AdminFinishi
 
 const AdminPlatformDecorationsPage = React.lazy(() => import('./platform-ops/AdminPlatformDecorationsPage'));
 const AdminPortfolioFormPage = React.lazy(() => import('./decorations/AdminPortfolioFormPage'));
+const AdminPortfolioFormEditPage = React.lazy(() => import('./decorations/AdminPortfolioFormPage'));
 
 const AdminPlatformPropertiesPage = React.lazy(() => import('./platform-ops/AdminPlatformPropertiesPage'));
 
@@ -72,6 +76,8 @@ const AdminRoutes: React.FC = () => {
         <Suspense fallback={<LoadingFallback />}>
             <Routes>
                 <Route index element={<AdminHomePage />} />
+                <Route path="analytics" element={<AdminAnalyticsPage />} />
+                <Route path="reports" element={<AdminReportsPage />} />
                 
                 {/* Partners Management */}
                 <Route path="partners" element={<AdminPartnersLayout />}>

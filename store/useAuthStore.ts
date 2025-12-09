@@ -29,36 +29,48 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
 
             initialize: async () => {
-                // Check active session on load
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session?.user) {
-                    const userProfile = await getPartnerById(session.user.id);
-                    if (userProfile) {
-                        // Ensure role is mapped correctly from type if not present
-                        const userRole = userProfile.role || mapPartnerTypeToRole(userProfile.type);
-                        const permissions = rolePermissions.get(userRole) || [];
-                        const updatedProfile = { ...userProfile, role: userRole };
-                        set({ currentUser: updatedProfile, permissions });
+                try {
+                    // Check active session on load
+                    const { data: { session }, error } = await supabase.auth.getSession();
+                    
+                    if (error) {
+                        console.warn("Auth initialization warning:", error.message);
+                        // Don't throw, just stay logged out
+                        return;
                     }
-                }
 
-                // Listen for auth changes
-                supabase.auth.onAuthStateChange(async (event, session) => {
-                    if (event === 'SIGNED_IN' && session?.user) {
-                         // Fetch profile again to ensure fresh data
+                    if (session?.user) {
                         const userProfile = await getPartnerById(session.user.id);
                         if (userProfile) {
+                            // Ensure role is mapped correctly from type if not present
                             const userRole = userProfile.role || mapPartnerTypeToRole(userProfile.type);
                             const permissions = rolePermissions.get(userRole) || [];
                             const updatedProfile = { ...userProfile, role: userRole };
                             set({ currentUser: updatedProfile, permissions });
                         }
-                    } else if (event === 'SIGNED_OUT') {
-                        set({ currentUser: null, permissions: [] });
-                        // Clear local storage explicitly to be safe
-                        localStorage.removeItem('onlyhelio-auth-storage');
                     }
-                });
+
+                    // Listen for auth changes
+                    supabase.auth.onAuthStateChange(async (event, session) => {
+                        if (event === 'SIGNED_IN' && session?.user) {
+                             // Fetch profile again to ensure fresh data
+                            const userProfile = await getPartnerById(session.user.id);
+                            if (userProfile) {
+                                const userRole = userProfile.role || mapPartnerTypeToRole(userProfile.type);
+                                const permissions = rolePermissions.get(userRole) || [];
+                                const updatedProfile = { ...userProfile, role: userRole };
+                                set({ currentUser: updatedProfile, permissions });
+                            }
+                        } else if (event === 'SIGNED_OUT') {
+                            set({ currentUser: null, permissions: [] });
+                            // Clear local storage explicitly to be safe
+                            localStorage.removeItem('onlyhelio-auth-storage');
+                        }
+                    });
+                } catch (e) {
+                    console.error("Auth store initialization failed completely:", e);
+                    set({ currentUser: null, permissions: [] });
+                }
             },
 
             login: async (email: string, pass: string) => {
@@ -88,7 +100,6 @@ export const useAuthStore = create<AuthState>()(
                         return updatedProfile;
                     } else {
                         console.error("Profile not found for user:", data.user.id);
-                        // Optional: Create a fallback profile if needed, or throw
                         throw new Error("Profile setup incomplete. Please contact support.");
                     }
                 } catch (error: any) {

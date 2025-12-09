@@ -5,7 +5,8 @@ import {
   HomeIcon, ChartBarIcon, UserPlusIcon, ClipboardDocumentListIcon, SearchIcon,
   InboxIcon, WrenchScrewdriverIcon, UsersIcon, CubeIcon, BuildingIcon, QuoteIcon,
   CogIcon, PhotoIcon, SparklesIcon, ShieldCheckIcon, FileDownloadIcon, PhoneIcon,
-  AdjustmentsHorizontalIcon, BellIcon, BanknotesIcon, ListIcon, LinkIcon, CalculatorIcon
+  AdjustmentsHorizontalIcon, BellIcon, BanknotesIcon, ListIcon, LinkIcon, CalculatorIcon,
+  TableCellsIcon
 } from '../components/ui/Icons';
 
 export interface NavLinkItem {
@@ -31,21 +32,36 @@ export const partnerNavLinks: NavLinkItem[] = [
 ];
 
 export const adminNavLinks: NavLinkItem[] = [
-    { name: t => t.adminDashboard.nav.dashboard, href: '/admin', icon: HomeIcon, exact: true, permission: Permission.VIEW_ADMIN_DASHBOARD, group: 'Overview' },
-    { name: t => t.adminDashboard.nav.partners, href: '/admin/partners', icon: UsersIcon, permission: Permission.MANAGE_ALL_PARTNERS, group: 'Partner Relations' },
-    { name: t => t.adminDashboard.nav.properties, href: '/admin/properties', icon: BuildingIcon, permission: Permission.MANAGE_ALL_PROPERTIES, group: 'Content & Listings' },
-    { name: t => t.adminDashboard.nav.projects, href: '/admin/projects', icon: CubeIcon, permission: Permission.MANAGE_ALL_PROJECTS, group: 'Content & Listings' },
+    // --- 1. Dashboard (Overview) ---
+    { name: t => t.adminDashboard.nav.dashboard, href: '/admin', icon: HomeIcon, exact: true, permission: Permission.VIEW_ADMIN_DASHBOARD, group: 'Management' },
+    
+    // --- 2. Analytics ---
+    { name: t => t.adminDashboard.nav.analytics, href: '/admin/analytics', icon: ChartBarIcon, permission: Permission.VIEW_ADMIN_DASHBOARD, group: 'Management' },
+
+    // --- 3. Finance Center ---
+    { name: t => t.adminDashboard.nav.finance, href: '/admin/finance', icon: BanknotesIcon, permission: Permission.MANAGE_SETTINGS, group: 'Management' },
+    
+    // --- 4. Notifications ---
+    { name: t => t.adminDashboard.nav.notifications, href: '/admin/notifications', icon: BellIcon, permission: Permission.VIEW_ADMIN_DASHBOARD, group: 'Management' },
+
+    // --- 5. Reports ---
+    { name: t => t.adminDashboard.nav.reports, href: '/admin/reports', icon: TableCellsIcon, permission: Permission.VIEW_ADMIN_DASHBOARD, group: 'Management' },
+
+    // --- Operations ---
+    { name: t => t.adminDashboard.nav.partners, href: '/admin/partners', icon: UsersIcon, permission: Permission.MANAGE_ALL_PARTNERS, group: 'Operations' },
+    { name: t => t.adminDashboard.nav.properties, href: '/admin/properties', icon: BuildingIcon, permission: Permission.MANAGE_ALL_PROPERTIES, group: 'Operations' },
+    { name: t => t.adminDashboard.nav.projects, href: '/admin/projects', icon: CubeIcon, permission: Permission.MANAGE_ALL_PROJECTS, group: 'Operations' },
     
     { name: t => t.adminDashboard.nav.platformFinishing, href: '/admin/platform-finishing', icon: WrenchScrewdriverIcon, permission: Permission.MANAGE_PLATFORM_FINISHING_LEADS, group: 'Platform Operations' },
     { name: t => t.adminDashboard.nav.platformDecorations, href: '/admin/platform-decorations', icon: SparklesIcon, permission: Permission.MANAGE_DECORATIONS_LEADS, group: 'Platform Operations' },
     { name: t => t.adminDashboard.nav.platformProperties, href: '/admin/platform-properties', icon: BuildingIcon, permission: Permission.MANAGE_PLATFORM_PROPERTIES, group: 'Platform Operations' },
     { name: t => t.adminDashboard.nav.contactRequests, href: '/admin/contact-requests', icon: InboxIcon, permission: Permission.MANAGE_CONTACT_REQUESTS, group: 'Customer Relations' },
-    { name: t => t.adminDashboard.nav.banners, href: '/admin/banners', icon: PhotoIcon, permission: Permission.MANAGE_BANNERS, group: 'Content Management' },
-    { name: t => t.adminDashboard.nav.siteContent, href: '/admin/content', icon: ClipboardDocumentListIcon, permission: Permission.MANAGE_SITE_CONTENT, group: 'Content Management' },
+    
+    { name: t => t.adminDashboard.nav.banners, href: '/admin/banners', icon: PhotoIcon, permission: Permission.MANAGE_BANNERS, group: 'Content' },
+    { name: t => t.adminDashboard.nav.siteContent, href: '/admin/content', icon: ClipboardDocumentListIcon, permission: Permission.MANAGE_SITE_CONTENT, group: 'Content' },
     
     { name: t => t.adminDashboard.nav.forms, href: '/admin/forms', icon: ListIcon, permission: Permission.MANAGE_FORMS, group: 'System' },
     { name: t => t.adminDashboard.nav.users, href: '/admin/users', icon: UsersIcon, permission: Permission.MANAGE_USERS, group: 'System' },
-    { name: t => t.adminDashboard.nav.finance, href: '/admin/finance', icon: BanknotesIcon, permission: Permission.MANAGE_SETTINGS, group: 'System' },
     { name: t => t.adminDashboard.nav.automationRules, href: '/admin/automation', icon: AdjustmentsHorizontalIcon, permission: Permission.MANAGE_AUTOMATION, group: 'System' },
     { name: t => t.adminDashboard.nav.rolesAndPermissions, href: '/admin/roles', icon: ShieldCheckIcon, permission: Permission.MANAGE_ROLES_PERMISSIONS, group: 'System' },
     { name: t => t.adminDashboard.nav.settings, href: '/admin/settings', icon: CogIcon, permission: Permission.MANAGE_SETTINGS, group: 'System' },

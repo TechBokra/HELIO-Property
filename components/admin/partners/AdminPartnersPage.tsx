@@ -34,6 +34,12 @@ const AdminPartnersPage: React.FC = () => {
     const [actionToConfirm, setActionToConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(null);
     const highlightedId = searchParams.get('highlight');
 
+    // Filter to show only external business partners
+    const businessPartners = useMemo(() => {
+        if (!partners) return [];
+        return partners.filter(p => ['developer', 'finishing', 'agency'].includes(p.type));
+    }, [partners]);
+
     const statusMutation = useMutation({
         mutationFn: ({ id, status }: { id: string, status: PartnerStatus }) => updatePartnerStatus(id, status),
         onSuccess: () => {
@@ -78,7 +84,7 @@ const AdminPartnersPage: React.FC = () => {
         filters,
         setFilter,
     } = useAdminTable({
-        data: partners,
+        data: businessPartners,
         itemsPerPage: 15,
         initialSort: { key: 'name', direction: 'ascending' },
         initialFilters,
@@ -296,7 +302,9 @@ const AdminPartnersPage: React.FC = () => {
                 <Input placeholder={t_admin.filter.searchByNameOrEmail} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-xs"/>
                 <Select value={filters.type || 'all'} onChange={e => updateUrlFilter('type', e.target.value)}>
                     <option value="all">{t_admin.filter.filterByType} ({t_admin.filter.all})</option>
-                    {Object.entries(t_admin.partnerTypes).map(([key, value]) => <option key={key} value={key}>{value as string}</option>)}
+                    {Object.entries(t_admin.partnerTypes)
+                        .filter(([key]) => ['developer', 'agency', 'finishing'].includes(key))
+                        .map(([key, value]) => <option key={key} value={key}>{value as string}</option>)}
                 </Select>
                 <Select value={filters.status || 'all'} onChange={e => updateUrlFilter('status', e.target.value)}>
                     <option value="all">{t_admin.filter.filterByStatus} ({t_admin.filter.all})</option>

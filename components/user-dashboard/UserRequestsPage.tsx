@@ -1,3 +1,4 @@
+
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAllRequests } from '../../services/requests';
@@ -40,7 +41,8 @@ const UserRequestsPage = () => {
                     myRequests.map((req) => {
                         const payload = req.payload as any;
                         const title = payload.serviceTitle || payload.propertyDetails?.title?.en || req.type.replace(/_/g, ' ');
-                        
+                        const typeLabel = t.adminDashboard.requestTypes?.[req.type] || req.type;
+
                         return (
                             <Card key={req.id} className="hover:shadow-md transition-shadow">
                                 <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -50,7 +52,7 @@ const UserRequestsPage = () => {
                                             <StatusBadge status={req.status} />
                                         </div>
                                         <p className="text-sm text-gray-500">
-                                            {t.adminDashboard.requestTypes[req.type]} • {new Date(req.createdAt).toLocaleDateString(language, { dateStyle: 'long' })}
+                                            {typeLabel} • {new Date(req.createdAt).toLocaleDateString(language, { dateStyle: 'long' })}
                                         </p>
                                     </div>
                                     

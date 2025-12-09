@@ -53,14 +53,19 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
     }, [navLinks, hasPermission, user]);
     
     const linkGroups = useMemo(() => {
+        // Defines the display order of groups in the sidebar
         const groupOrder = [
+            'Management', // Added Management here to show Dashboard, Analytics, etc.
             'Overview', 
+            'Operations',
             'Request Triage', 
             'Real Estate Market',
             'Platform Operations', 
+            'Customer Relations',
             'Partner Relations', 
             'Content Management', 
             'Content & Listings', 
+            'Content',
             'System', 
             'Partner'
         ];
@@ -71,9 +76,19 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
             groups[link.group].push(link);
         });
 
-        return groupOrder
+        // Map groups based on order, and include any groups found in links but not in the order list at the end
+        const orderedGroups = groupOrder
             .map(groupName => ({ name: groupName, links: groups[groupName] }))
             .filter(group => group.links && group.links.length > 0);
+            
+        // Find any remaining groups not in the explicit order list
+        Object.keys(groups).forEach(key => {
+            if (!groupOrder.includes(key)) {
+                orderedGroups.push({ name: key, links: groups[key] });
+            }
+        });
+
+        return orderedGroups;
             
     }, [visibleNavLinks]);
 
