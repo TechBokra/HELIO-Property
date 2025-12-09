@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { Role } from '../../types';
 import { Input } from '../ui/Input';
@@ -20,7 +20,6 @@ const LoginPage: React.FC = () => {
     const { login } = useAuth();
     const navigate = useNavigate();
 
-    // Check for saved email on component mount
     useEffect(() => {
         const savedEmail = localStorage.getItem('onlyhelio-remember-email');
         if (savedEmail) {
@@ -38,20 +37,14 @@ const LoginPage: React.FC = () => {
             const user = await login(email, password);
 
             if (user) {
-                // Handle "Remember Me" logic
                 if (rememberMe) {
                     localStorage.setItem('onlyhelio-remember-email', email);
                 } else {
                     localStorage.removeItem('onlyhelio-remember-email');
                 }
 
-                // Redirect based on role
                 if (user.role === Role.SUPER_ADMIN || 
-                    user.role === Role.DECORATION_MANAGER || 
-                    user.role === Role.PLATFORM_FINISHING_MANAGER ||
-                    user.role === Role.PLATFORM_REAL_ESTATE_MANAGER ||
-                    user.role === Role.PARTNER_RELATIONS_MANAGER ||
-                    user.role === Role.CONTENT_MANAGER) {
+                    user.role.includes('manager')) {
                     navigate('/admin', { replace: true });
                 } else {
                     navigate('/dashboard', { replace: true });
@@ -59,21 +52,16 @@ const LoginPage: React.FC = () => {
             }
         } catch (err: any) {
              console.error("Login error:", err);
+             const msg = err.message || '';
              
-             // Handle specific error messages
-             if (err.message) {
-                 const msg = err.message.toLowerCase();
-                 if (msg.includes('invalid login credentials') || msg.includes('invalid email')) {
-                     setError(language === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password');
-                 } else if (msg.includes('email not confirmed')) {
-                     setError(language === 'ar' 
-                        ? 'لم يتم تأكيد البريد الإلكتروني بعد. يرجى مراجعة الإدارة.' 
-                        : 'Email not confirmed. Please contact support/admin.');
-                 } else {
-                     setError(language === 'ar' ? 'حدث خطأ أثناء تسجيل الدخول' : err.message);
-                 }
+             if (msg.includes('Invalid login credentials') || msg.includes('invalid_grant')) {
+                 setError(language === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password');
+             } else if (msg.includes('Email not confirmed')) {
+                 setError(language === 'ar' 
+                    ? 'البريد الإلكتروني غير مفعل. يرجى مراجعة بريدك أو التواصل مع الإدارة.' 
+                    : 'Email not confirmed. Please check your inbox or contact support.');
              } else {
-                 setError(t_auth.loginError);
+                 setError(language === 'ar' ? 'حدث خطأ أثناء تسجيل الدخول' : (msg || t_auth.loginError));
              }
         } finally {
             setLoading(false);

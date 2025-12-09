@@ -15,6 +15,7 @@ const getTemporaryClient = () => {
         try { return (import.meta as any).env || {}; } catch { return {}; }
     };
     const env = getEnv();
+    // Using hardcoded fallback values for robustness if env vars are missing during dev
     const supabaseUrl = env.VITE_SUPABASE_URL || 'https://ygajpxznposoqfjlwtqi.supabase.co';
     const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnYWpweHpucG9zb3Fmamx3dHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NDA1NjQsImV4cCI6MjA4MDUxNjU2NH0.iYd_ep77Qbp9dXHpFD-t5Xu3hzpN-aSS5YvS1_QfO3k';
     
@@ -174,7 +175,6 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
     if (updates.password) {
         // Warning: This only works if the current user updates THEIR OWN password.
         // Admins cannot update other users' passwords via client-side SDK without Service Role.
-        // For MVP, we skip password updates for other users here or assume self-update.
         const { error: authError } = await supabase.auth.updateUser({ password: updates.password });
         if (authError) console.warn("Password update failed (likely permission issue):", authError.message);
     }
@@ -206,8 +206,6 @@ export const upgradePartnerPlan = async (id: string, newPlan: SubscriptionPlan):
 
 export const deletePartner = async (userId: string): Promise<boolean> => {
     // Note: Deleting from 'partners' table does NOT delete from auth.users.
-    // A proper implementation requires an Edge Function to delete the Auth User.
-    // For now, we just remove the data record which effectively disables them in the app logic.
     const { error } = await supabase.from('partners').delete().eq('id', userId);
     return !error;
 };

@@ -34,7 +34,8 @@ export const useAuthStore = create<AuthState>()(
                 if (session?.user) {
                     const userProfile = await getPartnerById(session.user.id);
                     if (userProfile) {
-                        const userRole = mapPartnerTypeToRole(userProfile.type);
+                        // Ensure role is mapped correctly from type if not present
+                        const userRole = userProfile.role || mapPartnerTypeToRole(userProfile.type);
                         const permissions = rolePermissions.get(userRole) || [];
                         const updatedProfile = { ...userProfile, role: userRole };
                         set({ currentUser: updatedProfile, permissions });
@@ -44,15 +45,18 @@ export const useAuthStore = create<AuthState>()(
                 // Listen for auth changes
                 supabase.auth.onAuthStateChange(async (event, session) => {
                     if (event === 'SIGNED_IN' && session?.user) {
+                         // Fetch profile again to ensure fresh data
                         const userProfile = await getPartnerById(session.user.id);
                         if (userProfile) {
-                            const userRole = mapPartnerTypeToRole(userProfile.type);
+                            const userRole = userProfile.role || mapPartnerTypeToRole(userProfile.type);
                             const permissions = rolePermissions.get(userRole) || [];
                             const updatedProfile = { ...userProfile, role: userRole };
                             set({ currentUser: updatedProfile, permissions });
                         }
                     } else if (event === 'SIGNED_OUT') {
                         set({ currentUser: null, permissions: [] });
+                        // Clear local storage explicitly to be safe
+                        localStorage.removeItem('onlyhelio-auth-storage');
                     }
                 });
             },
@@ -72,7 +76,7 @@ export const useAuthStore = create<AuthState>()(
                     const userProfile = await getPartnerById(data.user.id);
                     
                     if (userProfile) {
-                        const userRole = mapPartnerTypeToRole(userProfile.type);
+                        const userRole = userProfile.role || mapPartnerTypeToRole(userProfile.type);
                         const permissions = rolePermissions.get(userRole) || [];
                         const updatedProfile = { ...userProfile, role: userRole };
                         
@@ -84,6 +88,7 @@ export const useAuthStore = create<AuthState>()(
                         return updatedProfile;
                     } else {
                         console.error("Profile not found for user:", data.user.id);
+                        // Optional: Create a fallback profile if needed, or throw
                         throw new Error("Profile setup incomplete. Please contact support.");
                     }
                 } catch (error: any) {
@@ -97,7 +102,6 @@ export const useAuthStore = create<AuthState>()(
                 set({ isLoading: true });
                 await supabase.auth.signOut();
                 set({ currentUser: null, permissions: [], isLoading: false });
-                localStorage.removeItem('onlyhelio-auth-storage');
             },
 
             hasPermission: (permission: Permission) => {
