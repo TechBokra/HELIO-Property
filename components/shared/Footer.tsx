@@ -1,7 +1,7 @@
 
 import { type FC, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { TwitterIcon, LinkedInIcon, FacebookIcon, InstagramIcon, WhatsAppIcon, PhoneIcon } from '../ui/Icons';
+import { TwitterIcon, LinkedInIcon, FacebookIcon, InstagramIcon, WhatsAppIcon, PhoneIcon, MapPinIcon, EnvelopeIcon } from '../ui/Icons';
 import { SiteIdentity } from './SiteIdentity';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { useLanguage } from './LanguageContext';
@@ -96,17 +96,30 @@ const Footer: FC = () => {
                         <h3 className="font-bold text-gray-900 mb-4">{t.footer.contactUs}</h3>
                         <ul className="space-y-4 text-sm text-gray-600">
                             <li className="flex items-start gap-3">
-                                <span className="text-amber-500 mt-0.5">📍</span>
+                                <div className="mt-0.5 text-amber-500">
+                                    <MapPinIcon className="w-5 h-5" />
+                                </div>
                                 <span>{contentLang.address}</span>
                             </li>
                             <li className="flex items-center gap-3">
-                                {content.isWhatsAppOnly ? <WhatsAppIcon className="w-5 h-5 text-green-600" /> : <PhoneIcon className="w-5 h-5 text-amber-500" />}
-                                <a href={phoneLink} target={content.isWhatsAppOnly ? '_blank' : undefined} rel={content.isWhatsAppOnly ? "noopener noreferrer" : undefined} className="hover:text-amber-500 transition-colors font-mono" dir="ltr">
-                                    {content.phone}
-                                </a>
+                                <div className="text-amber-500">
+                                    {content.isWhatsAppOnly ? <WhatsAppIcon className="w-5 h-5 text-green-600" /> : <PhoneIcon className="w-5 h-5" />}
+                                </div>
+                                <div className="flex flex-col">
+                                    <a href={phoneLink} target={content.isWhatsAppOnly ? '_blank' : undefined} rel={content.isWhatsAppOnly ? "noopener noreferrer" : undefined} className="hover:text-amber-500 transition-colors font-mono" dir="ltr">
+                                        {content.phone}
+                                    </a>
+                                    {content.isWhatsAppOnly && (
+                                        <span className="text-xs text-green-600">
+                                            {language === 'ar' ? '(واتساب فقط)' : '(WhatsApp Only)'}
+                                        </span>
+                                    )}
+                                </div>
                             </li>
                             <li className="flex items-center gap-3">
-                                <span className="text-amber-500">✉️</span>
+                                <div className="text-amber-500">
+                                    <EnvelopeIcon className="w-5 h-5" />
+                                </div>
                                 <a href={`mailto:${content.email}`} className="hover:text-amber-500 transition-colors">{content.email}</a>
                             </li>
                         </ul>

@@ -8,8 +8,9 @@ import { useToast } from '../shared/ToastContext';
 import { useQuery } from '@tanstack/react-query';
 import { getAllPartnersForAdmin } from '../../services/partners';
 import { useLanguage } from '../shared/LanguageContext';
-import { BanknotesIcon } from '../ui/Icons';
+import { BanknotesIcon, PhoneIcon, EnvelopeIcon, MapPinIcon, WhatsAppIcon } from '../ui/Icons';
 import DynamicForm from '../shared/DynamicForm';
+import { useSiteContent } from '../../hooks/useSiteContent';
 
 const ServiceRequestPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -19,6 +20,10 @@ const ServiceRequestPage: React.FC = () => {
     const t_decor_modal = t.decorationRequestModal;
     const t_custom_decor_modal = t.customDecorationRequestModal;
     const t_decor = t.decorationsPage;
+    
+    // Get footer/contact info from global site content
+    const { data: siteContent } = useSiteContent();
+    const footerContent = siteContent?.footer;
     
     const { serviceTitle, partnerId, propertyId, workItem, isCustom, serviceType, tier, isBooking, isPurchase, categoryName } = location.state || {};
     const { data: allPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
@@ -58,7 +63,6 @@ const ServiceRequestPage: React.FC = () => {
 
     const handleCustomSubmit = (formData: any) => {
         // Extract special fields from specific forms and append to notes
-        // This ensures all data is captured in the lead's notes field since the Lead model is simple
         let finalNotes = formData.customerNotes || '';
         
         const extendedFieldsMap: Record<string, string> = {
@@ -227,35 +231,123 @@ const ServiceRequestPage: React.FC = () => {
     }, [isCustom, categoryName, workItem]);
     
     const hiddenFields = useMemo(() => {
-         // If category is pre-selected (custom design from category page OR specific work item), hide the category selector
          if ((isCustom && categoryName) || workItem) return ['itemCategory'];
          return [];
     }, [isCustom, categoryName, workItem]);
 
-    return (
-        <div className="py-20 bg-gray-50">
-            <div className="container mx-auto px-6">
-                <div className="max-w-3xl mx-auto">
-                    <div className="text-center mb-8">
-                        <Link to="/" className="inline-block mb-6">
-                             <SiteIdentity className="justify-center text-amber-500" textClassName="text-2xl" hideTextOnMobile={false} />
-                        </Link>
-                    </div>
+    const SidebarSupport = () => {
+        if (!footerContent) return null;
+        const phone = footerContent.phone;
+        const email = footerContent.email;
+        const address = footerContent[language]?.address;
+        const whatsappOnly = footerContent.isWhatsAppOnly;
+        
+        return (
+            <div className="space-y-6">
+                <div className="bg-amber-50 dark:bg-amber-900/10 p-6 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                        {language === 'ar' ? 'هل تحتاج مساعدة؟' : 'Need Help?'}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+                        {language === 'ar' 
+                            ? 'فريقنا متاح للإجابة على استفساراتك ومساعدتك في اختيار الخدمة المناسبة.' 
+                            : 'Our team is available to answer your questions and help you choose the right service.'}
+                    </p>
                     
-                    <div className="bg-white p-8 rounded-lg shadow-lg border border-gray-200">
-                        <h2 className="text-3xl font-bold text-amber-500 mb-2 text-center">{pageTitle}</h2>
-                        <p className="text-gray-500 text-center mb-8">({serviceTitle})</p>
+                    <ul className="space-y-4 text-sm">
+                         <li className="flex items-center gap-3">
+                            <div className="p-2 bg-white dark:bg-gray-800 rounded-full text-green-600 shadow-sm">
+                                <WhatsAppIcon className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 font-semibold uppercase">{language === 'ar' ? 'واتساب' : 'WhatsApp'}</p>
+                                <a href={`https://wa.me/${phone?.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="text-gray-900 dark:text-white font-mono hover:text-amber-600">
+                                    {phone}
+                                </a>
+                            </div>
+                        </li>
                         
-                        <DynamicForm 
-                            slug={formSlug}
-                            customSubmit={handleCustomSubmit}
-                            submitButtonText={submitButtonText}
-                            submitButtonIcon={isPaymentFlow ? <BanknotesIcon className="w-5 h-5" /> : undefined}
-                            defaultValues={defaultValues}
-                            hiddenFields={hiddenFields}
-                            headerContent={headerContent}
-                        />
+                        {!whatsappOnly && (
+                            <li className="flex items-center gap-3">
+                                <div className="p-2 bg-white dark:bg-gray-800 rounded-full text-blue-600 shadow-sm">
+                                    <PhoneIcon className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500 font-semibold uppercase">{language === 'ar' ? 'اتصال' : 'Call Us'}</p>
+                                    <a href={`tel:${phone?.replace(/\s/g, '')}`} className="text-gray-900 dark:text-white font-mono hover:text-amber-600">
+                                        {phone}
+                                    </a>
+                                </div>
+                            </li>
+                        )}
+
+                        <li className="flex items-center gap-3">
+                            <div className="p-2 bg-white dark:bg-gray-800 rounded-full text-amber-500 shadow-sm">
+                                <EnvelopeIcon className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 font-semibold uppercase">{language === 'ar' ? 'البريد الإلكتروني' : 'Email'}</p>
+                                <a href={`mailto:${email}`} className="text-gray-900 dark:text-white hover:text-amber-600">
+                                    {email}
+                                </a>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                     <div className="flex items-start gap-3">
+                        <MapPinIcon className="w-6 h-6 text-gray-400 mt-1" />
+                        <div>
+                             <p className="text-xs text-gray-500 font-semibold uppercase mb-1">{language === 'ar' ? 'مقر الشركة' : 'Office Location'}</p>
+                             <p className="text-sm text-gray-800 dark:text-gray-200">{address}</p>
+                        </div>
+                     </div>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="py-20 bg-gray-50 dark:bg-gray-900 min-h-screen">
+            <div className="container mx-auto px-6">
+                 <div className="text-center mb-12">
+                    <Link to="/" className="inline-block mb-6">
+                            <SiteIdentity className="justify-center text-amber-500" textClassName="text-3xl" hideTextOnMobile={false} />
+                    </Link>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                    
+                    {/* Main Form Column */}
+                    <div className="lg:col-span-2">
+                        <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                            <div className="mb-8 border-b border-gray-100 dark:border-gray-700 pb-6">
+                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{pageTitle}</h2>
+                                <p className="text-gray-500 dark:text-gray-400">
+                                    {serviceTitle}
+                                </p>
+                            </div>
+                            
+                            <DynamicForm 
+                                slug={formSlug}
+                                customSubmit={handleCustomSubmit}
+                                submitButtonText={submitButtonText}
+                                submitButtonIcon={isPaymentFlow ? <BanknotesIcon className="w-5 h-5" /> : undefined}
+                                defaultValues={defaultValues}
+                                hiddenFields={hiddenFields}
+                                headerContent={headerContent}
+                            />
+                        </div>
                     </div>
+
+                    {/* Sidebar Support Column */}
+                    <div className="lg:col-span-1">
+                        <div className="sticky top-24">
+                            <SidebarSupport />
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>

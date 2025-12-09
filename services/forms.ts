@@ -12,11 +12,12 @@ export const getAllForms = async (): Promise<FormDefinition[]> => {
             .single();
         
         if (error || !data) {
-            console.warn("Forms config not found in DB, using fallback.");
+            // If table exists but key is missing, return fallback without warning
             return fallbackForms;
         }
         return data.content as FormDefinition[];
     } catch (e) {
+        console.warn("Error fetching forms form DB, using fallback", e);
         return fallbackForms;
     }
 };

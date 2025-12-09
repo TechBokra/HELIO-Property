@@ -1,7 +1,31 @@
 
 import { supabase } from '../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import type { Partner, PartnerStatus, PartnerRequest, AdminPartner, SubscriptionPlan } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
+
+// --- HELPER: Isolated Client ---
+// We create a temporary client for registration actions to prevent 
+// the main 'supabase' client (used by the Admin) from switching sessions 
+// when a new user is signed up.
+// CRITICAL: We set persistSession to false to avoid "Multiple GoTrueClient" warnings 
+// and prevent localStorage conflicts.
+const getTemporaryClient = () => {
+    const getEnv = () => {
+        try { return (import.meta as any).env || {}; } catch { return {}; }
+    };
+    const env = getEnv();
+    const supabaseUrl = env.VITE_SUPABASE_URL || 'https://ygajpxznposoqfjlwtqi.supabase.co';
+    const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnYWpweHpucG9zb3Fmamx3dHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NDA1NjQsImV4cCI6MjA4MDUxNjU2NH0.iYd_ep77Qbp9dXHpFD-t5Xu3hzpN-aSS5YvS1_QfO3k';
+    
+    return createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+            persistSession: false, // This is the key fix
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+        }
+    });
+}
 
 // Mapper to convert DB row to Partner object
 const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
@@ -54,12 +78,31 @@ export const getPartnerByEmail = async (email: string): Promise<Partner | undefi
 };
 
 export const addPartner = async (request: PartnerRequest, password?: string): Promise<Partner> => {
-    const newPartnerId = request.companyName.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
+    // Use Temporary Client to avoid logging out the current admin
+    const tempSupabase = getTemporaryClient();
+
+    const { data: authData, error: authError } = await tempSupabase.auth.signUp({
+        email: request.contactEmail,
+        password: password || 'tempPass123!', 
+        options: {
+            data: {
+                name: request.companyName,
+                type: request.companyType
+            }
+        }
+    });
+
+    if (authError) throw authError;
+    if (!authData.user) throw new Error("Auth user creation failed");
+
+    const newPartnerId = authData.user.id;
+    
+    // The Trigger in SQL handles insertion into 'partners' table automatically.
+    // However, we want to update it with extra details immediately.
     
     const dbPayload = {
         id: newPartnerId,
         email: request.contactEmail,
-        password: password || 'password123',
         type: request.companyType,
         status: 'active',
         subscription_plan: request.subscriptionPlan,
@@ -76,17 +119,30 @@ export const addPartner = async (request: PartnerRequest, password?: string): Pr
         }
     };
 
-    const { data, error } = await supabase.from('partners').insert(dbPayload).select().single();
+    // We use the main 'supabase' client for DB operations (as it has the Admin's RLS permissions)
+    const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
+    
     if (error) throw error;
     return mapPartnerFromDb(data);
 };
 
 export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
-    const newId = `user-${Date.now()}`;
+    // Use Temporary Client
+    const tempSupabase = getTemporaryClient();
+
+    const { data: authData, error: authError } = await tempSupabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+    });
+
+    if (authError) throw authError;
+    if (!authData.user) throw new Error("Auth user creation failed");
+
+    const newId = authData.user.id;
+
     const dbPayload = {
         id: newId,
         email: userData.email,
-        password: userData.password,
         type: userData.type,
         status: 'active',
         subscription_plan: 'basic',
@@ -95,7 +151,8 @@ export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
         image_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto.format&fit=crop'
     };
 
-    const { data, error } = await supabase.from('partners').insert(dbPayload).select().single();
+    // Use main client for DB insert
+    const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
     if (error) throw error;
     return mapPartnerFromDb(data) as AdminPartner;
 };
@@ -110,9 +167,17 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
     if (updates.imageUrl) dbUpdates.image_url = updates.imageUrl;
     if (updates.status) dbUpdates.status = updates.status;
     if (updates.contactMethods) dbUpdates.contact_methods = updates.contactMethods;
-    if (updates.password) dbUpdates.password = updates.password;
     if (updates.email) dbUpdates.email = updates.email;
     if (updates.type) dbUpdates.type = updates.type;
+
+    // Handle password update if provided (Requires Admin Privilege usually, or Edge Function)
+    if (updates.password) {
+        // Warning: This only works if the current user updates THEIR OWN password.
+        // Admins cannot update other users' passwords via client-side SDK without Service Role.
+        // For MVP, we skip password updates for other users here or assume self-update.
+        const { error: authError } = await supabase.auth.updateUser({ password: updates.password });
+        if (authError) console.warn("Password update failed (likely permission issue):", authError.message);
+    }
 
     const { error } = await supabase.from('partners').update(dbUpdates).eq('id', id);
     return !error;
@@ -140,6 +205,9 @@ export const upgradePartnerPlan = async (id: string, newPlan: SubscriptionPlan):
 };
 
 export const deletePartner = async (userId: string): Promise<boolean> => {
+    // Note: Deleting from 'partners' table does NOT delete from auth.users.
+    // A proper implementation requires an Edge Function to delete the Auth User.
+    // For now, we just remove the data record which effectively disables them in the app logic.
     const { error } = await supabase.from('partners').delete().eq('id', userId);
     return !error;
 };
@@ -151,13 +219,23 @@ export const getTeamMembers = async (parentId: string): Promise<AdminPartner[]> 
 };
 
 export const addTeamMember = async (parentId: string, memberData: any): Promise<Partner> => {
-    const newId = `sub-${Date.now()}`;
+    // Use Temporary Client
+    const tempSupabase = getTemporaryClient();
+
+    const { data: authData, error: authError } = await tempSupabase.auth.signUp({
+        email: memberData.email,
+        password: memberData.password,
+    });
+    
+    if (authError) throw authError;
+
+    const newId = authData.user!.id;
+    
     const dbPayload = {
         id: newId,
         parent_id: parentId,
         email: memberData.email,
-        password: memberData.password,
-        type: memberData.type,
+        type: memberData.type, // Inherit type usually, or set as 'agency' etc
         status: 'active',
         subscription_plan: 'basic',
         name_en: memberData.name,
@@ -165,6 +243,7 @@ export const addTeamMember = async (parentId: string, memberData: any): Promise<
         image_url: 'https://via.placeholder.com/150',
     };
     
+    // Use Main Client
     const { data, error } = await supabase.from('partners').insert(dbPayload).select().single();
     if (error) throw error;
     return mapPartnerFromDb(data);

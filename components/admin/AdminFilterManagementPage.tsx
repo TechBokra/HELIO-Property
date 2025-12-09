@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import type { FilterOption } from '../../types';
 import FilterItemFormModal from './FilterItemFormModal';
@@ -74,7 +73,7 @@ const AdminFilterManagementPage: React.FC = () => {
 
     const handleSave = () => {
         setModalState({ isOpen: false });
-        // Invalidate all queries on save
+        // Invalidate all queries on save to be safe, or optimize to specific dataType
         queryClient.invalidateQueries({ queryKey: ['propertyTypes'] });
         queryClient.invalidateQueries({ queryKey: ['finishingStatuses'] });
         queryClient.invalidateQueries({ queryKey: ['amenities'] });

@@ -1,5 +1,5 @@
 
-import { Fragment, type ReactNode, type FC } from 'react';
+import { Fragment, type ReactNode, type FC, useState } from 'react';
 import { useForm, SubmitHandler, FormProvider, FieldValues, RegisterOptions } from 'react-hook-form';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { getFormBySlug } from '../../services/forms';
@@ -15,6 +15,7 @@ import { Select } from '../ui/Select';
 import { Checkbox } from '../ui/Checkbox';
 import FormField, { inputClasses, selectClasses } from '../ui/FormField';
 import { PATTERNS, MESSAGES, CONFIG } from '../../utils/validation';
+import { uploadFile } from '../../services/upload';
 
 interface DynamicFormProps {
     slug: string;
@@ -24,20 +25,12 @@ interface DynamicFormProps {
     contextData?: Record<string, unknown>; 
     children?: ReactNode; 
     headerContent?: ReactNode; 
+    footerContent?: ReactNode; // New prop for injecting buttons (Back, Cancel, etc.)
     customSubmit?: (data: Record<string, unknown>) => void; 
     submitButtonText?: string;
     submitButtonIcon?: ReactNode;
     hiddenFields?: string[];
 }
-
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
 
 const DynamicForm: FC<DynamicFormProps> = ({ 
     slug, 
@@ -47,6 +40,7 @@ const DynamicForm: FC<DynamicFormProps> = ({
     contextData, 
     children, 
     headerContent,
+    footerContent,
     customSubmit,
     submitButtonText,
     submitButtonIcon,
@@ -54,6 +48,7 @@ const DynamicForm: FC<DynamicFormProps> = ({
 }) => {
     const { language, t } = useLanguage();
     const { showToast } = useToast();
+    const [uploading, setUploading] = useState(false);
 
     const { data: formDef, isLoading } = useQuery({
         queryKey: ['form', slug],
@@ -70,13 +65,24 @@ const DynamicForm: FC<DynamicFormProps> = ({
         const processedData = { ...formData };
         const fileFields = fields.filter(f => f.type === 'file');
         
-        for (const field of fileFields) {
-            const fileList = formData[field.key];
-            if (fileList && fileList.length > 0) {
-                processedData[field.key] = await fileToBase64(fileList[0]);
-            } else {
-                delete processedData[field.key];
+        if (fileFields.length > 0) setUploading(true);
+
+        try {
+            for (const field of fileFields) {
+                const fileList = formData[field.key];
+                if (fileList && fileList.length > 0) {
+                    // Upload to Cloudinary
+                    const url = await uploadFile(fileList[0]);
+                    processedData[field.key] = url;
+                } else {
+                    delete processedData[field.key];
+                }
             }
+        } catch (error) {
+            console.error("File upload error", error);
+            throw error;
+        } finally {
+            setUploading(false);
         }
         return processedData;
     };
@@ -159,7 +165,7 @@ const DynamicForm: FC<DynamicFormProps> = ({
         }
     };
 
-    if (isLoading) return <div className="animate-pulse h-64 bg-gray-100 rounded-lg"></div>;
+    if (isLoading) return <div className="animate-pulse h-64 bg-gray-100 dark:bg-gray-800 rounded-lg"></div>;
     if (!formDef) return <div className="text-red-500">Form not found: {slug}</div>;
     if (!formDef.isActive) return <div className="text-gray-500">This form is currently inactive.</div>;
 
@@ -179,7 +185,7 @@ const DynamicForm: FC<DynamicFormProps> = ({
         }
         if (field.type === 'file') {
             rules.validate = {
-                fileSize: (files: any) => !files || files.length === 0 || validateFile(files[0])
+                fileSize: (files: any) => !files || files.length === 0 || validateFile(files[0]) || true
             }
         }
 
@@ -268,18 +274,25 @@ const DynamicForm: FC<DynamicFormProps> = ({
 
     return (
         <FormProvider {...methods}>
-            <form onSubmit={handleSubmit(onSubmit)} className={`space-y-4 ${className}`}>
+            <form onSubmit={handleSubmit(onSubmit)} className={`space-y-6 ${className}`}>
                 {headerContent && <div className="mb-6">{headerContent}</div>}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Using 12-column grid for finer control */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                     {formDef.fields.map((field) => {
                         const isHidden = hiddenFields.includes(field.key);
                         if (isHidden) {
                             return <Fragment key={field.id}>{renderField(field)}</Fragment>;
                         }
 
-                        const isFullWidth = field.width === 'full' || field.type === 'textarea';
-                        const colSpanClass = isFullWidth ? 'md:col-span-2' : 'md:col-span-1';
+                        // Determine colspan based on width config using 12-col system
+                        // full = 12, half = 6, third = 4
+                        let colSpanClass = 'md:col-span-12'; 
+                        if (field.width === 'half') colSpanClass = 'md:col-span-6';
+                        if (field.width === 'third') colSpanClass = 'md:col-span-4';
+                        
+                        // Force full width for textareas
+                        if (field.type === 'textarea') colSpanClass = 'md:col-span-12';
                         
                         return (
                             <div key={field.id} className={colSpanClass}>
@@ -303,13 +316,28 @@ const DynamicForm: FC<DynamicFormProps> = ({
                     })}
                 </div>
 
-                {children && <div className="mt-6 space-y-6">{children}</div>}
+                {children && <div className="mt-8 space-y-6 border-t border-gray-100 dark:border-gray-700 pt-6">{children}</div>}
 
-                <div className="pt-4 flex justify-end">
-                    <Button type="submit" isLoading={isSubmitting || mutation.isPending} className="w-full md:w-auto flex items-center gap-2" size="lg">
-                        {submitButtonText || formDef.submitButtonLabel?.[language] || (language === 'ar' ? 'إرسال' : 'Submit')}
-                        {submitButtonIcon}
-                    </Button>
+                {/* Footer Section with Buttons */}
+                <div className="pt-8 mt-8 border-t border-gray-100 dark:border-gray-700 flex flex-col-reverse sm:flex-row justify-between items-center gap-4">
+                    {/* Left side: Back/Cancel buttons via prop */}
+                    <div className="w-full sm:w-auto">
+                        {footerContent}
+                    </div>
+
+                    {/* Right side: Submit */}
+                    <div className="w-full sm:w-auto">
+                        <Button 
+                            type="submit" 
+                            isLoading={isSubmitting || mutation.isPending || uploading} 
+                            className="w-full sm:w-auto flex items-center justify-center gap-2 px-8" 
+                            size="lg"
+                        >
+                            {uploading ? (language === 'ar' ? 'جاري الرفع...' : 'Uploading...') : 
+                             submitButtonText || formDef.submitButtonLabel?.[language] || (language === 'ar' ? 'إرسال' : 'Submit')}
+                            {submitButtonIcon}
+                        </Button>
+                    </div>
                 </div>
             </form>
         </FormProvider>

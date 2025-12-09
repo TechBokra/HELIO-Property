@@ -76,7 +76,48 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
         };
     }
 
-    // Prepare payload for other request types
+    // LISTING REQUEST MAPPING: Ensure flat dynamic form data is structured correctly
+    let finalPayload = data.payload;
+    if (type === RequestType.PROPERTY_LISTING_REQUEST) {
+        // If propertyDetails is missing (flat data from DynamicForm), construct it
+        const p = data.payload as any;
+        if (!p.propertyDetails) {
+             const propertyDetails = {
+                purpose: { en: 'For Sale', ar: 'للبيع' }, // Default, typically set in flow
+                title: { ar: p.title?.ar || 'عقار جديد', en: p.title?.en || 'New Property' },
+                description: { ar: p['description.ar'], en: p['description.en'] },
+                propertyType: { en: p.propertyType, ar: p.propertyType }, // Ideally map from ID
+                finishingStatus: { en: p.finishingStatus, ar: p.finishingStatus },
+                area: p.area,
+                price: p.price,
+                bedrooms: p.beds,
+                bathrooms: p.baths,
+                floor: p.floor,
+                address: p.address,
+                location: p.location, // {lat, lng} if present
+                isInCompound: p.isInCompound === 'yes',
+                hasInstallments: p.hasInstallments === 'yes',
+                realEstateFinanceAvailable: p.realEstateFinanceAvailable === 'yes',
+                deliveryType: p.deliveryType,
+                deliveryMonth: p.deliveryMonth,
+                deliveryYear: p.deliveryYear,
+                amenities: p.amenities,
+                contactMethod: p.contactMethod,
+                ownerPhone: p.ownerPhone
+            };
+            
+            finalPayload = {
+                ...p,
+                propertyDetails,
+                // Ensure top level props are clean
+                cooperationType: p.cooperationType || 'commission', 
+                contactTime: p.contactTime,
+                images: p.images || []
+            };
+        }
+    }
+
+    // Prepare payload for DB
     const dbPayload = {
         type,
         status: 'new',
@@ -84,7 +125,7 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
         requester_phone: data.requesterInfo.phone,
         requester_email: data.requesterInfo.email,
         assigned_to: data.assignedTo,
-        payload: data.payload,
+        payload: finalPayload,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     };
@@ -96,6 +137,8 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
                 dbPayload.assigned_to = 'partner-relations-manager-1';
                 break;
             case RequestType.PROPERTY_LISTING_REQUEST:
+                dbPayload.assigned_to = 'platform-real-estate-manager-1';
+                break;
             case RequestType.PROPERTY_INQUIRY:
             case RequestType.CONTACT_MESSAGE:
             default:
@@ -116,10 +159,7 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
 
     // Notification Logic
     if (request.assignedTo) {
-        // We fetch assignee simply to check role for link generation, purely optional optimization
-        // For now, we just send the notification
-        const link = `/dashboard/requests`; // Simplified link
-        
+        const link = `/admin/requests`; 
         await addNotification({
             userId: request.assignedTo,
             message: {
@@ -137,7 +177,7 @@ export const updateRequest = async (id: string, updates: Partial<Request>): Prom
     const dbUpdates: any = {};
     if (updates.status) dbUpdates.status = updates.status;
     if (updates.assignedTo) dbUpdates.assigned_to = updates.assignedTo;
-    if (updates.payload) dbUpdates.payload = updates.payload; // Be careful with partial JSON updates
+    if (updates.payload) dbUpdates.payload = updates.payload;
     
     dbUpdates.updated_at = new Date().toISOString();
 
@@ -159,8 +199,6 @@ export const deleteRequest = async (id: string): Promise<boolean> => {
 };
 
 export const addMessageToLead = async (requestId: string, messageData: Omit<LeadMessage, 'id' | 'timestamp'>): Promise<Request | undefined> => {
-    // This bridges to the separate table `request_messages`
-    
     const { error } = await supabase.from('request_messages').insert({
         request_id: requestId,
         sender: messageData.sender,

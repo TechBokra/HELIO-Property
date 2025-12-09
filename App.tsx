@@ -1,5 +1,5 @@
 
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 
 import ScrollToTop from './components/shared/ScrollToTop';
@@ -10,6 +10,7 @@ import BackToTopButton from './components/shared/BackToTopButton';
 import { useLanguage } from './components/shared/LanguageContext';
 import { adminNavLinks, partnerNavLinks } from './data/navigation';
 import LoadingFallback from './components/shared/LoadingFallback';
+import { useAuthStore } from './store/useAuthStore';
 
 // --- Layouts (Static Imports to fix #525) ---
 import DashboardLayout from './components/shared/DashboardLayout';
@@ -42,6 +43,11 @@ const NotFoundPage = lazy(() => import('./components/shared/NotFoundPage'));
 
 const App = () => {
     const { t } = useLanguage();
+    const initializeAuth = useAuthStore(state => state.initialize);
+
+    useEffect(() => {
+        initializeAuth();
+    }, [initializeAuth]);
 
     return (
         <div>

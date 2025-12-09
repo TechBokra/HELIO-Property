@@ -1,6 +1,5 @@
-
 import { supabase } from '../lib/supabase';
-import { getAllPartners } from './partners'; // Use getAllPartners instead of getPartnerById loop
+import { getAllPartners } from './partners'; 
 import { getAllProjects } from './projects';
 import type { Property, PropertyFiltersType, Partner, Project } from '../types';
 import { filterProperties } from '../utils/propertyFilters';
@@ -75,15 +74,10 @@ const mapPropertyFromDb = (row: any): Property => {
 const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[]> => {
     if (properties.length === 0) return [];
 
-    // 1. Fetch all partners needed (deduplicated)
-    // In a real optimized scenario, we would use .in('id', ids), but here we leverage existing services for simplicity
-    // Assuming the partner list isn't massive yet, fetching all is cached by React Query anyway.
-    // For better scalability, we fetch all partners once here.
-    
     try {
         const [allPartners, allProjects] = await Promise.all([
-            getAllPartners(),
-            getAllProjects()
+            getAllPartners().catch(e => { console.error("Failed to fetch partners", e); return []; }),
+            getAllProjects().catch(e => { console.error("Failed to fetch projects", e); return []; })
         ]);
 
         const partnerMap = new Map<string, Partner>();
@@ -106,35 +100,46 @@ const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[
 
     } catch (e) {
         console.error("Error hydrating properties:", e);
-        return properties; // Return unhydrated if aux fetch fails
+        return properties;
     }
 };
 
 export const getAllProperties = async (): Promise<Property[]> => {
-    const { data, error } = await supabase.from('properties').select('*');
-    if (error) throw error;
+    const { data, error } = await supabase.from('properties').select('*').order('created_at', { ascending: false });
+    if (error) {
+        console.error("Error fetching all properties:", error);
+        return [];
+    }
     const rawProperties = data.map(mapPropertyFromDb);
     return hydratePropertiesBatch(rawProperties);
 };
 
 export const getProperties = async (): Promise<Property[]> => {
     const { data, error } = await supabase.from('properties').select('*').eq('listing_status', 'active');
-    if (error) throw error;
+    if (error) {
+        console.error("Error fetching active properties:", error);
+        return [];
+    }
     const rawProperties = data.map(mapPropertyFromDb);
     return hydratePropertiesBatch(rawProperties);
 };
 
 export const getPropertiesByPartnerId = async (partnerId: string): Promise<Property[]> => {
     const { data, error } = await supabase.from('properties').select('*').eq('partner_id', partnerId);
-    if (error) throw error;
+    if (error) {
+        console.error(`Error fetching properties for partner ${partnerId}:`, error);
+        return [];
+    }
     const rawProperties = data.map(mapPropertyFromDb);
-    // Even for a single partner, we use hydration to get project names if needed
     return hydratePropertiesBatch(rawProperties);
 };
 
 export const getPropertiesByProjectId = async (projectId: string): Promise<Property[]> => {
     const { data, error } = await supabase.from('properties').select('*').eq('project_id', projectId);
-    if (error) throw error;
+    if (error) {
+         console.error(`Error fetching properties for project ${projectId}:`, error);
+         return [];
+    }
     const rawProperties = data.map(mapPropertyFromDb);
     return hydratePropertiesBatch(rawProperties);
 };
@@ -153,8 +158,9 @@ export const getPaginatedProperties = async (options: {
   filters: PropertyFiltersType;
   disablePagination?: boolean;
 }): Promise<{ properties: Property[]; total: number }> => {
-    // Note: For large datasets, filtering should happen on DB side. 
-    // Currently implementing client-side filtering on fetched set for flexibility with the mock data structure.
+    // In a real production app, filtering should be done on the DB side (Supabase).
+    // For this implementation, we fetch all and filter in memory to support complex JSON logic easier, 
+    // but in a high-scale app, this should be refactored to SQL queries.
     const allProps = await getProperties();
     const filtered = filterProperties(allProps, options.filters);
     
@@ -168,38 +174,67 @@ export const getPaginatedProperties = async (options: {
     return { properties: filtered.slice(start, end), total };
 };
 
+const mapPropertyToDbPayload = (property: Partial<Property>) => {
+    const payload: any = {};
+    
+    if (property.partnerId) payload.partner_id = property.partnerId;
+    if (property.projectId) payload.project_id = property.projectId;
+    if (property.imageUrl) payload.main_image = property.imageUrl;
+    if (property.gallery) payload.gallery = property.gallery;
+    
+    if (property.title) {
+        payload.title_ar = property.title.ar;
+        payload.title_en = property.title.en;
+    }
+    if (property.description) {
+        payload.description_ar = property.description.ar;
+        payload.description_en = property.description.en;
+    }
+    if (property.address) {
+        payload.address_ar = property.address.ar;
+        payload.address_en = property.address.en;
+    }
+    
+    if (property.priceNumeric !== undefined) payload.price = property.priceNumeric;
+    if (property.area !== undefined) payload.area = property.area;
+    
+    if (property.type) payload.type = property.type.en;
+    if (property.status) payload.status = property.status.en;
+    if (property.finishingStatus) payload.finishing_status = property.finishingStatus.en;
+    
+    if (property.beds !== undefined) payload.beds = property.beds;
+    if (property.baths !== undefined) payload.baths = property.baths;
+    if (property.floor !== undefined) payload.floor = property.floor;
+    
+    if (property.amenities) payload.amenities = property.amenities; 
+    if (property.location) payload.location = property.location; 
+    
+    if (property.isInCompound !== undefined) payload.is_in_compound = property.isInCompound;
+    if (property.installmentsAvailable !== undefined) payload.installments_available = property.installmentsAvailable;
+    if (property.realEstateFinanceAvailable !== undefined) payload.finance_available = property.realEstateFinanceAvailable;
+    
+    if (property.delivery) {
+        payload.delivery_immediate = property.delivery.isImmediate;
+        payload.delivery_date = property.delivery.date;
+    }
+    
+    if (property.installments) payload.installments_info = property.installments;
+    
+    if (property.listingStatus) payload.listing_status = property.listingStatus;
+    if (property.contactMethod) payload.contact_method = property.contactMethod;
+    if (property.ownerPhone) payload.owner_phone = property.ownerPhone;
+    if (property.listingStartDate) payload.listing_start_date = property.listingStartDate;
+    if (property.listingEndDate) payload.listing_end_date = property.listingEndDate;
+
+    return payload;
+};
+
 export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl'>): Promise<Property> => {
+    const id = `prop-${Date.now()}`;
     const dbPayload = {
-        partner_id: property.partnerId,
-        project_id: property.projectId,
-        main_image: property.imageUrl,
-        gallery: property.gallery,
-        title_ar: property.title.ar,
-        title_en: property.title.en,
-        description_ar: property.description.ar,
-        description_en: property.description.en,
-        address_ar: property.address.ar,
-        address_en: property.address.en,
-        price: property.priceNumeric,
-        area: property.area,
-        type: property.type.en,
-        status: property.status.en,
-        finishing_status: property.finishingStatus?.en,
-        beds: property.beds,
-        baths: property.baths,
-        floor: property.floor,
-        amenities: JSON.stringify(property.amenities), 
-        location: JSON.stringify(property.location),   
-        is_in_compound: property.isInCompound,
-        installments_available: property.installmentsAvailable,
-        finance_available: property.realEstateFinanceAvailable,
-        delivery_immediate: property.delivery.isImmediate,
-        delivery_date: property.delivery.date,
-        installments_info: JSON.stringify(property.installments),
-        listing_status: property.listingStatus,
-        contact_method: property.contactMethod,
-        owner_phone: property.ownerPhone,
-        listing_start_date: new Date().toISOString()
+        id,
+        ...mapPropertyToDbPayload(property),
+        created_at: new Date().toISOString()
     };
     
     const { data, error } = await supabase.from('properties').insert(dbPayload).select().single();
@@ -208,16 +243,21 @@ export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' 
 };
 
 export const updateProperty = async (propertyId: string, updates: Partial<Property>): Promise<Property | undefined> => {
-    const dbUpdates: any = {};
-    if (updates.listingStatus) dbUpdates.listing_status = updates.listingStatus;
-    if (updates.title) { dbUpdates.title_ar = updates.title.ar; dbUpdates.title_en = updates.title.en; }
+    const dbUpdates = mapPropertyToDbPayload(updates);
     
     const { data, error } = await supabase.from('properties').update(dbUpdates).eq('id', propertyId).select().single();
-    if (error) return undefined;
+    if (error) {
+        console.error("Error updating property:", error);
+        return undefined;
+    }
     return mapPropertyFromDb(data);
 };
 
 export const deleteProperty = async (propertyId: string): Promise<boolean> => {
     const { error } = await supabase.from('properties').delete().eq('id', propertyId);
-    return !error;
+    if (error) {
+        console.error("Error deleting property:", error);
+        return false;
+    }
+    return true;
 };

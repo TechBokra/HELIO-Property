@@ -12,7 +12,7 @@ interface StatusBadgeProps {
   className?: string;
 }
 
-export const statusConfig: Record<StatusType, string> = {
+export const statusConfig: Record<string, string> = {
   // Positive / Success
   active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800',
   approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800',
@@ -48,10 +48,13 @@ export const statusConfig: Record<StatusType, string> = {
   suspended: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200'
 };
 
-const defaultStyle = 'bg-gray-50 text-gray-600 border-gray-200';
+const defaultStyle = 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => {
-  const statusKey = status?.toLowerCase() as StatusType;
+  // Normalize status key (handle case sensitivity)
+  const statusKey = (status || '').toLowerCase();
+  
+  // Lookup style or fallback
   const styles = statusConfig[statusKey] || defaultStyle;
 
   return (

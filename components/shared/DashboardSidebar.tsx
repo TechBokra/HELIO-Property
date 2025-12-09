@@ -44,7 +44,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
     const visibleNavLinks = useMemo(() => {
         if (!user) return [];
         return navLinks.filter(link => {
-            // Special check for team management: must have permission AND not be a super admin (admins manage users via different route)
+            // Special check for team management: must have permission AND not be a super admin
             if (link.permission === Permission.MANAGE_TEAM && user.role === Role.SUPER_ADMIN) return false;
             
             return hasPermission(link.permission) && 
@@ -77,7 +77,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
             
     }, [visibleNavLinks]);
 
-    // @ts-ignore - Dealing with dynamic translation key access
+    // @ts-ignore
     const partnerName = t.partnerInfo?.[user.id]?.name || user.name;
 
     return (
@@ -87,7 +87,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                     className={`text-amber-500 transition-all duration-300 ${isCollapsed ? 'scale-90' : ''}`}
                     logoClassName="h-8 w-auto" 
                     textClassName={`font-bold text-lg text-gray-800 whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-3'}`}
-                    showText={true} // Always render text, hide via CSS for transition
+                    showText={true}
                     hideTextOnMobile={false}
                 />
             </div>
@@ -95,11 +95,11 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
             <nav className="flex flex-1 flex-col">
                 <ul role="list" className="flex flex-1 flex-col gap-y-7">
                     <li>
-                         <div className={`text-center transition-all duration-300 ${isCollapsed ? 'px-0' : 'px-1 space-y-2'}`}>
+                         <div className={`text-center transition-all duration-300 ease-in-out ${isCollapsed ? 'px-0' : 'px-1 space-y-2'}`}>
                              <div className={`mx-auto border-2 border-amber-500 rounded-full overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-10 h-10 border-0' : 'w-16 h-16'}`}>
                                 <img src={user.imageUrl} alt={partnerName} className="w-full h-full object-cover" />
                              </div>
-                            <div className={`transition-all duration-300 overflow-hidden ${isCollapsed ? 'h-0 opacity-0' : 'h-auto opacity-100'}`}>
+                            <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isCollapsed ? 'h-0 opacity-0' : 'h-auto opacity-100'}`}>
                                  <h2 className="text-sm font-bold text-gray-900 truncate px-1" title={partnerName}>{partnerName}</h2>
                                  <p className="text-xs text-amber-500 capitalize truncate px-1">{user.role === Role.SUPER_ADMIN ? 'Super Admin' : t.adminDashboard.partnerTypes[user.type as keyof typeof t.adminDashboard.partnerTypes]}</p>
                             </div>
@@ -111,7 +111,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                             <div className={`text-xs font-bold leading-6 text-gray-400 px-2 uppercase tracking-wider mb-1 transition-all duration-300 whitespace-nowrap overflow-hidden ${isCollapsed ? 'h-0 opacity-0' : 'h-6 opacity-100'}`}>
                                 {group.name.replace(/([A-Z])/g, ' $1').trim()}
                             </div>
-                             {/* Separator line when collapsed to distinguish groups */}
+                             {/* Separator line when collapsed to distinguish groups visually without text */}
                             {isCollapsed && <div className="h-px bg-gray-100 mx-2 my-2"></div>}
                             
                             <ul role="list" className="-mx-2 space-y-1">
@@ -132,7 +132,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                                                 className={({isActive}) => `group flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold transition-all duration-200 ${isCollapsed ? 'justify-center' : ''} ${isActive ? 'bg-amber-50 text-amber-600' : 'text-gray-700 hover:text-amber-600 hover:bg-gray-50'}`}
                                             >
                                                 <Icon className="h-6 w-6 shrink-0" aria-hidden="true" />
-                                                <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
+                                                <span className={`whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 opacity-0 -translate-x-4' : 'w-auto max-w-[140px] opacity-100 translate-x-0'}`}>
                                                     {linkName}
                                                 </span>
                                             </NavLink>
@@ -216,7 +216,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = (props) => {
             </div>
 
             {/* Desktop sidebar */}
-            {/* Using min-width and max-width transitions for smoother effect than just width */}
             <div 
                 className={`hidden lg:fixed lg:inset-y-0 lg:z-40 lg:flex lg:flex-col transition-all duration-300 ease-in-out border-r border-gray-200 bg-white shadow-sm overflow-hidden`}
                 style={{ width: isCollapsed ? '5rem' : '18rem' }}

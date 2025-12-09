@@ -18,12 +18,14 @@ import { ResponsiveList } from '../../shared/ResponsiveList';
 import { Card, CardContent } from '../../ui/Card';
 import TableSkeleton from '../../shared/TableSkeleton';
 import ErrorState from '../../shared/ErrorState';
+import { useToast } from '../../shared/ToastContext';
 
 const AdminPartnersPage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_admin = t.adminDashboard;
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
+    const { showToast } = useToast();
 
     const { data: partners, isLoading, isError, refetch } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
     useQuery({ queryKey: ['plans'], queryFn: getPlans }); 
@@ -34,12 +36,24 @@ const AdminPartnersPage: React.FC = () => {
 
     const statusMutation = useMutation({
         mutationFn: ({ id, status }: { id: string, status: PartnerStatus }) => updatePartnerStatus(id, status),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allPartnersAdmin'] })
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['allPartnersAdmin'] });
+            showToast('Status updated successfully', 'success');
+        },
+        onError: () => showToast('Failed to update status', 'error')
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id: string) => deletePartner(id),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allPartnersAdmin'] })
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['allPartnersAdmin'] });
+            showToast('Partner deleted successfully', 'success');
+            setActionToConfirm(null); // Close modal if open (for bulk)
+        },
+        onError: (error: any) => {
+            console.error("Delete failed", error);
+            showToast('Failed to delete partner. Check console for details.', 'error');
+        }
     });
 
     const handleStatusToggle = (id: string, currentStatus: PartnerStatus) => {
@@ -101,7 +115,13 @@ const AdminPartnersPage: React.FC = () => {
                 default: return Promise.resolve();
             }
         });
-        await Promise.all(promises);
+        
+        try {
+            await Promise.all(promises);
+            showToast('Bulk action completed successfully', 'success');
+        } catch (error) {
+            showToast('Some actions failed', 'error');
+        }
         
         setSelectedPartners([]);
         setActionToConfirm(null);
@@ -185,9 +205,11 @@ const AdminPartnersPage: React.FC = () => {
                                 />
                             </TableCell>
                             <TableCell>
-                                <Link to={`/admin/partners/edit/${p.id}`}>
-                                    <Button variant="link">{t.adminShared.edit}</Button>
-                                </Link>
+                                <div className="flex gap-2">
+                                    <Link to={`/admin/partners/edit/${p.id}`}>
+                                        <Button variant="link" size="sm">{t.adminShared.edit}</Button>
+                                    </Link>
+                                </div>
                             </TableCell>
                         </TableRow>
                     ))}
@@ -254,8 +276,9 @@ const AdminPartnersPage: React.FC = () => {
                     onClose={() => setActionToConfirm(null)}
                     onConfirm={handleBulkAction}
                     title={`${actionToConfirm.charAt(0).toUpperCase() + actionToConfirm.slice(1)} Partners`}
-                    message={`Are you sure you want to ${actionToConfirm} ${selectedPartners.length} selected partner(s)? This action cannot be undone.`}
+                    message={`Are you sure you want to ${actionToConfirm} ${selectedPartners.length} selected partner(s)?`}
                     confirmText={t_admin.bulkActions[actionToConfirm as 'activate' | 'deactivate' | 'delete']}
+                    isLoading={deleteMutation.isPending || statusMutation.isPending}
                 />
             )}
 

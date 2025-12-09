@@ -41,7 +41,7 @@ const AddPropertyPage: React.FC = () => {
     };
 
     return (
-        <div className="py-20 bg-gray-50 dark:bg-gray-800">
+        <div className="py-20 bg-gray-50 dark:bg-gray-800 min-h-screen">
             {formLogic.isLocationModalOpen && (
                 <LocationPickerModal 
                     onClose={() => formLogic.setIsLocationModalOpen(false)}
@@ -53,15 +53,15 @@ const AddPropertyPage: React.FC = () => {
                     }
                 />
             )}
-            <div className="container mx-auto px-6">
+            <div className="container mx-auto px-6 pb-32">
                 <div className="text-center mb-12">
                     <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white">{t_page.title}</h1>
                     <p className="text-lg text-gray-500 dark:text-gray-400 mt-4 max-w-3xl mx-auto">{t_page.subtitle}</p>
                 </div>
 
-                <div className="grid lg:grid-cols-3 gap-12">
+                <div className="grid lg:grid-cols-3 gap-12 items-start">
                     <div className="lg:col-span-1">
-                        <div className="bg-white dark:bg-gray-900 p-8 rounded-lg border border-gray-200 dark:border-gray-700 sticky top-28">
+                        <div className="bg-white dark:bg-gray-900 p-8 rounded-lg border border-gray-200 dark:border-gray-700 sticky top-28 shadow-sm">
                             <h2 className="text-2xl font-bold text-amber-500 mb-6">{t_page.howItWorksTitle}</h2>
                             <ul className="space-y-5">
                                 {[1, 2, 3, 4].map(num => (
@@ -75,7 +75,7 @@ const AddPropertyPage: React.FC = () => {
                     </div>
 
                     <div className="lg:col-span-2">
-                        <div className="bg-white dark:bg-gray-900 p-8 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="bg-white dark:bg-gray-900 p-8 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg">
                             {renderStep()}
                         </div>
                     </div>

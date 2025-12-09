@@ -2,8 +2,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Partner, Role, Permission } from '../types';
-import { getPartnerByEmail } from '../services/partners';
-import { rolePermissions } from '../data/permissions';
+import { getPartnerById } from '../services/partners';
+import { rolePermissions, mapPartnerTypeToRole } from '../data/permissions';
+import { supabase } from '../lib/supabase';
 
 interface AuthState {
     currentUser: Partner | null;
@@ -14,8 +15,9 @@ interface AuthState {
     login: (email: string, pass: string) => Promise<Partner | null>;
     logout: () => void;
     hasPermission: (permission: Permission) => boolean;
+    initialize: () => Promise<void>;
     
-    // Internal setter (useful if profile updates happen elsewhere)
+    // Internal setter
     setCurrentUser: (user: Partner | null) => void;
 }
 
@@ -26,47 +28,89 @@ export const useAuthStore = create<AuthState>()(
             permissions: [],
             isLoading: false,
 
+            initialize: async () => {
+                // Check active session on load
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.user) {
+                    const userProfile = await getPartnerById(session.user.id);
+                    if (userProfile) {
+                        const userRole = mapPartnerTypeToRole(userProfile.type);
+                        const permissions = rolePermissions.get(userRole) || [];
+                        const updatedProfile = { ...userProfile, role: userRole };
+                        set({ currentUser: updatedProfile, permissions });
+                    }
+                }
+
+                // Listen for auth changes
+                supabase.auth.onAuthStateChange(async (event, session) => {
+                    if (event === 'SIGNED_IN' && session?.user) {
+                        const userProfile = await getPartnerById(session.user.id);
+                        if (userProfile) {
+                            const userRole = mapPartnerTypeToRole(userProfile.type);
+                            const permissions = rolePermissions.get(userRole) || [];
+                            const updatedProfile = { ...userProfile, role: userRole };
+                            set({ currentUser: updatedProfile, permissions });
+                        }
+                    } else if (event === 'SIGNED_OUT') {
+                        set({ currentUser: null, permissions: [] });
+                    }
+                });
+            },
+
             login: async (email: string, pass: string) => {
                 set({ isLoading: true });
                 try {
-                    // In a real app, pass would be sent to API
-                    const user = await getPartnerByEmail(email);
+                    const { data, error } = await supabase.auth.signInWithPassword({
+                        email,
+                        password: pass
+                    });
+
+                    if (error) throw error;
+                    if (!data.user) throw new Error("No user returned");
+
+                    // Fetch the full profile from the 'partners' table
+                    const userProfile = await getPartnerById(data.user.id);
                     
-                    if (user) {
-                        const permissions = rolePermissions.get(user.role) || [];
+                    if (userProfile) {
+                        const userRole = mapPartnerTypeToRole(userProfile.type);
+                        const permissions = rolePermissions.get(userRole) || [];
+                        const updatedProfile = { ...userProfile, role: userRole };
+                        
                         set({ 
-                            currentUser: user, 
+                            currentUser: updatedProfile, 
                             permissions, 
                             isLoading: false 
                         });
-                        return user;
+                        return updatedProfile;
+                    } else {
+                        console.error("Profile not found for user:", data.user.id);
+                        throw new Error("Profile setup incomplete. Please contact support.");
                     }
-                } catch (error) {
+                } catch (error: any) {
                     console.error("Login failed", error);
+                    set({ currentUser: null, permissions: [], isLoading: false });
+                    throw error;
                 }
-                
-                set({ isLoading: false });
-                return null;
             },
 
-            logout: () => {
-                set({ currentUser: null, permissions: [] });
-                // Optional: clear other stores if needed
-                localStorage.removeItem('onlyhelio-auth-storage'); // Clean specific key if needed
+            logout: async () => {
+                set({ isLoading: true });
+                await supabase.auth.signOut();
+                set({ currentUser: null, permissions: [], isLoading: false });
+                localStorage.removeItem('onlyhelio-auth-storage');
             },
 
             hasPermission: (permission: Permission) => {
                 const state = get();
                 const user = state.currentUser;
                 if (!user) return false;
+                
                 if (user.role === Role.SUPER_ADMIN) return true;
                 
-                // If user has granular custom permissions (e.g. Sub-User), use them
                 if (user.customPermissions && user.customPermissions.length > 0) {
                     return user.customPermissions.includes(permission);
                 }
 
-                // Otherwise fallback to standard role-based permissions
                 return state.permissions.includes(permission);
             },
 
@@ -80,9 +124,9 @@ export const useAuthStore = create<AuthState>()(
             }
         }),
         {
-            name: 'onlyhelio-auth-storage', // unique name
+            name: 'onlyhelio-auth-storage',
             storage: createJSONStorage(() => localStorage),
-            partialize: (state) => ({ currentUser: state.currentUser, permissions: state.permissions }), // Persist only these fields
+            partialize: (state) => ({ currentUser: state.currentUser, permissions: state.permissions }),
         }
     )
 );
