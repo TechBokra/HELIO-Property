@@ -1,5 +1,6 @@
 
 import type { SiteContent } from '../types';
+import { quotes } from './quotes';
 
 export let siteContentData: SiteContent = {
   siteName: { ar: 'أونلي هيليو', en: 'ONLY HELIO' },
@@ -23,8 +24,8 @@ export let siteContentData: SiteContent = {
           teamId: ''
       },
       supabase: {
-          url: 'https://ygajpxznposoqfjlwtqi.supabase.co',
-          anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnYWpweHpucG9zb3Fmamx3dHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NDA1NjQsImV4cCI6MjA4MDUxNjU2NH0.iYd_ep77Qbp9dXHpFD-t5Xu3hzpN-aSS5YvS1_QfO3k',
+          url: 'https://xyyvgpchkznznwbxbgrp.supabase.co',
+          anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM',
           serviceRoleKey: ''
       },
       cloudinary: {
@@ -208,9 +209,8 @@ export let siteContentData: SiteContent = {
           { src: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=2144&auto=format&fit=crop', alt: { ar: 'صورة المدينة', en: 'City Image' } }
       ]
   },
-  quotes: [
-      { quote: { ar: 'المنزل هو حيث يبدأ القلب.', en: 'Home is where the heart starts.' }, author: { ar: 'مجهول', en: 'Unknown' } }
-  ],
+  // Use the rich quotes array from data/quotes.ts
+  quotes: quotes,
   footer: {
       ar: {
           description: 'منصة عقارية متكاملة.',

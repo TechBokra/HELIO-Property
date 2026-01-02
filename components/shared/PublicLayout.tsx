@@ -35,39 +35,27 @@ const PublicLayout: React.FC = () => {
 
     const handleToggleQuietZone = useCallback(() => {
         setIsQuietZoneActive(true);
-        setIsMobileNavOpen(false); // Close nav when opening quiet zone from mobile
+        setIsMobileNavOpen(false);
     }, []);
-
-    const handleOpenMobileNav = useCallback(() => {
-        setIsMobileNavOpen(true);
-    }, []);
-    
-    const handleLogout = useCallback(() => {
-        logout();
-        setIsMobileNavOpen(false); // Close nav on logout
-    }, [logout]);
 
     return (
         <div className="flex flex-col min-h-screen">
-            {/* Dynamic Top Banner */}
             {siteContent?.topBanner?.enabled && (
                 <div className="bg-gray-900 text-white text-center py-3 px-4 text-sm font-medium relative z-50 border-b-2 border-amber-500">
                     <div className="container mx-auto flex items-center justify-center gap-2">
                         <span className="text-xl">🚧</span>
-                        <span>
-                            {siteContent.topBanner.content[language]}
-                        </span>
+                        <span>{siteContent.topBanner.content[language]}</span>
                     </div>
                 </div>
             )}
 
             <Header
                 onToggleQuietZone={handleToggleQuietZone}
-                onOpenMobileNav={handleOpenMobileNav}
+                onOpenMobileNav={() => setIsMobileNavOpen(true)}
                 currentUser={currentUser}
                 dashboardPath={dashboardPath}
                 dashboardText={dashboardText}
-                logout={handleLogout}
+                logout={logout}
             />
             <main className="flex-grow">
                 <Outlet />
@@ -82,7 +70,7 @@ const PublicLayout: React.FC = () => {
                 onToggleQuietZone={handleToggleQuietZone}
                 currentUser={currentUser}
                 dashboardPath={dashboardPath}
-                logout={handleLogout}
+                logout={logout}
                 hasPermission={hasPermission}
             />
         </div>

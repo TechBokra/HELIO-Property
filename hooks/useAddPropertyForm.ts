@@ -222,9 +222,19 @@ export const useAddPropertyForm = () => {
         };
         
         if (cooperationType === 'paid_listing') {
+            // Safe check for plan details, fall back to default price if data missing
+            let priceNumeric = 0;
             const planDetails = plansForPurpose['paid_listing'];
-            const planPriceString = planDetails?.[language]?.price || "0";
-            const priceNumeric = parseInt(planPriceString.replace(/[^0-9]/g, '')) || 0;
+            
+            if (planDetails) {
+                 const planPriceString = planDetails[language]?.price || "0";
+                 priceNumeric = parseInt(planPriceString.replace(/[^0-9]/g, '')) || 0;
+            }
+            
+            // Fallback price if DB fetch failed or returns 0
+            if (priceNumeric === 0) {
+                priceNumeric = purpose === 'For Sale' ? 500 : 300;
+            }
 
             navigate('/payment', { 
                 state: { 

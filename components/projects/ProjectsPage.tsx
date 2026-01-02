@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { Language, Project, Partner } from '../../types';
@@ -86,12 +85,14 @@ const ProjectsPage: React.FC = () => {
   const content = siteContent?.projectsPage?.[language] || t.projectsPage;
   
   const projectsWithDetails = useMemo(() => {
-    if (!projects || !partners || !properties) return [];
+    if (!projects) return [];
     return projects.map(project => {
         const developer = (partners || []).find(p => p.id === project.partnerId);
         const unitsCount = (properties || []).filter(p => p.projectId === project.id).length;
         return { project, developer, unitsCount };
-    }).filter(item => item.developer?.status === 'active');
+    });
+    // Removed the .filter() that checked for developer.status === 'active' 
+    // to ensure projects show up even if partner data is incomplete in fallback mode.
   }, [projects, partners, properties]);
 
   return (
@@ -161,6 +162,12 @@ const ProjectsPage: React.FC = () => {
                             />
                         ))}
                     </div>
+                )}
+                
+                {projectsWithDetails.length === 0 && (
+                     <div className="text-center py-20 bg-white rounded-lg shadow-sm border border-dashed border-gray-300">
+                         <p className="text-gray-500 text-lg">No projects found at the moment.</p>
+                     </div>
                 )}
             </div>
         )}

@@ -31,7 +31,11 @@ const PaymentPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     
-    const { data: siteContent, isLoading: isLoadingContent } = useQuery({ queryKey: ['siteContent'], queryFn: getContent });
+    // Fetch site content but don't block render if it fails/loads
+    const { data: siteContent, isLoading: isLoadingContent } = useQuery({ 
+        queryKey: ['siteContent'], 
+        queryFn: getContent 
+    });
     
     // Payment State
     const [amount, setAmount] = useState<number>(0);
@@ -42,7 +46,7 @@ const PaymentPage: React.FC = () => {
     const [contextData, setContextData] = useState<any>(null); 
     const [isValidSession, setIsValidSession] = useState(false);
 
-    const [method, setMethod] = useState<PaymentMethod | null>(null);
+    const [method, setMethod] = useState<PaymentMethod>('instapay'); // Default to Instapay
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [isSuccess, setIsSuccess] = useState(false);
     const [transactionId, setTransactionId] = useState<string>('');
@@ -63,13 +67,13 @@ const PaymentPage: React.FC = () => {
         }
     }, [location, navigate]);
 
-    // Set default method based on enabled config
+    // Set default method based on enabled config IF available, otherwise keep default
     useEffect(() => {
         if (siteContent?.paymentConfiguration) {
             const { instapay, paymob } = siteContent.paymentConfiguration;
             if (instapay.enabled && !paymob.enabled) setMethod('instapay');
             else if (!instapay.enabled && paymob.enabled) setMethod('card');
-            else if (instapay.enabled && paymob.enabled) setMethod('instapay'); 
+            // If both are enabled or disabled, keep default
         }
     }, [siteContent]);
 
@@ -147,9 +151,22 @@ const PaymentPage: React.FC = () => {
 
     // Don't render anything until we verify the session or redirect
     if (!isValidSession) return null;
-    if (isLoadingContent) return <div className="p-10 text-center flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div></div>;
     
-    const config = siteContent?.paymentConfiguration;
+    // Use fallback config if API fails or hasn't loaded yet to prevent empty screen
+    const config = siteContent?.paymentConfiguration || {
+        instapay: {
+            enabled: true,
+            number: '01012345678',
+            walletName: 'OnlyHelio',
+            paymentLink: '',
+            qrCodeUrl: '',
+            instructions: {
+                ar: 'قم بالتحويل ثم ارفع صورة الإيصال للتأكيد.',
+                en: 'Transfer amount then upload receipt for confirmation.'
+            }
+        },
+        paymob: { enabled: false }
+    };
 
     if (isSuccess) {
         return (
@@ -239,7 +256,7 @@ const PaymentPage: React.FC = () => {
                                         {language === 'ar' ? 'اختر طريقة الدفع' : 'Select Payment Method'}
                                     </label>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        {config?.instapay.enabled && (
+                                        {config?.instapay?.enabled && (
                                             <button
                                                 type="button"
                                                 onClick={() => setMethod('instapay')}
@@ -256,7 +273,7 @@ const PaymentPage: React.FC = () => {
                                             </button>
                                         )}
                                         
-                                        {config?.paymob.enabled && (
+                                        {config?.paymob?.enabled && (
                                             <button
                                                 type="button"
                                                 onClick={() => setMethod('card')}
@@ -281,13 +298,13 @@ const PaymentPage: React.FC = () => {
                                             <div>
                                                 <h4 className="font-semibold text-gray-900 dark:text-white mb-2">{language === 'ar' ? 'بيانات التحويل' : 'Transfer Details'}</h4>
                                                 
-                                                {config?.instapay.qrCodeUrl && (
+                                                {config?.instapay?.qrCodeUrl && (
                                                     <div className="mb-4 flex justify-center">
                                                         <img src={config.instapay.qrCodeUrl} alt="InstaPay QR Code" className="w-48 h-48 object-contain border-4 border-white rounded-lg shadow-md" />
                                                     </div>
                                                 )}
                                                 
-                                                {config?.instapay.paymentLink && (
+                                                {config?.instapay?.paymentLink && (
                                                     <a 
                                                         href={config.instapay.paymentLink} 
                                                         target="_blank" 
@@ -299,15 +316,15 @@ const PaymentPage: React.FC = () => {
                                                 )}
                                                 
                                                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">
-                                                    {config?.instapay.instructions[language]}
+                                                    {config?.instapay?.instructions?.[language]}
                                                 </p>
                                                 
                                                 <div className="grid grid-cols-1 gap-3">
                                                     <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex justify-between items-center">
                                                         <span className="text-gray-500 text-sm">Wallet Number</span>
-                                                        <span className="font-mono font-bold text-lg select-all text-amber-600">{config?.instapay.number}</span>
+                                                        <span className="font-mono font-bold text-lg select-all text-amber-600">{config?.instapay?.number}</span>
                                                     </div>
-                                                    {config?.instapay.walletName && (
+                                                    {config?.instapay?.walletName && (
                                                         <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex justify-between items-center">
                                                             <span className="text-gray-500 text-sm">Name</span>
                                                             <span className="font-bold text-gray-800 dark:text-white">{config.instapay.walletName}</span>

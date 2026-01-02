@@ -121,6 +121,40 @@ export const getPartnerByEmail = async (email: string): Promise<Partner | undefi
     }
 };
 
+// Self-healing function for missing profiles
+export const createProfileForExistingUser = async (user: any): Promise<Partner> => {
+    const isAdminEmail = user.email?.toLowerCase().includes('admin');
+    // Default to agency if not explicitly an admin email, allowing basic access
+    const type = isAdminEmail ? 'admin' : 'agency';
+
+    const dbPayload = {
+        id: user.id,
+        email: user.email,
+        type: type,
+        status: 'active',
+        subscription_plan: 'basic',
+        display_type: 'standard',
+        image_url: 'https://via.placeholder.com/150',
+        name_ar: user.user_metadata?.name || user.email?.split('@')[0] || 'مستخدم',
+        name_en: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+        description_ar: 'تم استعادة الحساب تلقائياً',
+        description_en: 'Account recovered automatically',
+        contact_methods: { 
+            whatsapp: { enabled: false, number: '' },
+            phone: { enabled: false, number: '' },
+            form: { enabled: true }
+        }
+    };
+
+    const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
+    
+    if (error) {
+        console.error("Failed to create profile for existing user:", error);
+        throw error;
+    }
+    return mapPartnerFromDb(data) as Partner;
+};
+
 export const addPartner = async (request: PartnerRequest, password?: string): Promise<Partner> => {
     // Use Temporary Client to avoid logging out the current admin
     const tempSupabase = getTemporaryClient();
@@ -141,9 +175,6 @@ export const addPartner = async (request: PartnerRequest, password?: string): Pr
 
     const newPartnerId = authData.user.id;
     
-    // The Trigger in SQL handles insertion into 'partners' table automatically.
-    // However, we want to update it with extra details immediately.
-    
     const dbPayload = {
         id: newPartnerId,
         email: request.contactEmail,
@@ -163,7 +194,6 @@ export const addPartner = async (request: PartnerRequest, password?: string): Pr
         }
     };
 
-    // We use the main 'supabase' client for DB operations (as it has the Admin's RLS permissions)
     const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
     
     if (error) throw error;
@@ -171,7 +201,6 @@ export const addPartner = async (request: PartnerRequest, password?: string): Pr
 };
 
 export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
-    // Use Temporary Client
     const tempSupabase = getTemporaryClient();
 
     const { data: authData, error: authError } = await tempSupabase.auth.signUp({
@@ -195,7 +224,6 @@ export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
         image_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto.format&fit=crop'
     };
 
-    // Use main client for DB insert
     const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
     if (error) throw error;
     return mapPartnerFromDb(data) as AdminPartner;
@@ -214,7 +242,6 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
     if (updates.email) dbUpdates.email = updates.email;
     if (updates.type) dbUpdates.type = updates.type;
 
-    // Handle password update if provided (Requires Admin Privilege usually, or Edge Function)
     if (updates.password) {
         const { error: authError } = await supabase.auth.updateUser({ password: updates.password });
         if (authError) console.warn("Password update failed (likely permission issue):", authError.message);
@@ -246,7 +273,6 @@ export const upgradePartnerPlan = async (id: string, newPlan: SubscriptionPlan):
 };
 
 export const deletePartner = async (userId: string): Promise<boolean> => {
-    // Note: Deleting from 'partners' table does NOT delete from auth.users.
     const { error } = await supabase.from('partners').delete().eq('id', userId);
     return !error;
 };
@@ -258,7 +284,6 @@ export const getTeamMembers = async (parentId: string): Promise<AdminPartner[]> 
 };
 
 export const addTeamMember = async (parentId: string, memberData: any): Promise<Partner> => {
-    // Use Temporary Client
     const tempSupabase = getTemporaryClient();
 
     const { data: authData, error: authError } = await tempSupabase.auth.signUp({
@@ -282,7 +307,6 @@ export const addTeamMember = async (parentId: string, memberData: any): Promise<
         image_url: 'https://via.placeholder.com/150',
     };
     
-    // Use Main Client
     const { data, error } = await supabase.from('partners').insert(dbPayload).select().single();
     if (error) throw error;
     return mapPartnerFromDb(data);

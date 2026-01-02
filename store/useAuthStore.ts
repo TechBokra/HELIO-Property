@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Partner, Role, Permission } from '../types';
-import { getPartnerById } from '../services/partners';
+import { getPartnerById, createProfileForExistingUser } from '../services/partners';
 import { rolePermissions, mapPartnerTypeToRole } from '../data/permissions';
 import { supabase } from '../lib/supabase';
 
@@ -35,12 +35,22 @@ export const useAuthStore = create<AuthState>()(
                     
                     if (error) {
                         console.warn("Auth initialization warning:", error.message);
-                        // Don't throw, just stay logged out
                         return;
                     }
 
                     if (session?.user) {
-                        const userProfile = await getPartnerById(session.user.id);
+                        let userProfile = await getPartnerById(session.user.id);
+                        
+                        // Self-healing: if session exists but no profile, create it
+                        if (!userProfile) {
+                            try {
+                                console.warn("Missing profile for active session. Attempting recovery...");
+                                userProfile = await createProfileForExistingUser(session.user);
+                            } catch(e) {
+                                console.error("Self-healing failed during init", e);
+                            }
+                        }
+
                         if (userProfile) {
                             // Ensure role is mapped correctly from type if not present
                             const userRole = userProfile.role || mapPartnerTypeToRole(userProfile.type);
@@ -85,8 +95,19 @@ export const useAuthStore = create<AuthState>()(
                     if (!data.user) throw new Error("No user returned");
 
                     // Fetch the full profile from the 'partners' table
-                    const userProfile = await getPartnerById(data.user.id);
+                    let userProfile = await getPartnerById(data.user.id);
                     
+                    // Self-healing: If auth exists but profile doesn't, create it.
+                    if (!userProfile) {
+                        try {
+                            console.warn("Profile missing for existing auth user. Attempting to create default profile...");
+                            userProfile = await createProfileForExistingUser(data.user);
+                        } catch (createError) {
+                            console.error("Failed to create default profile:", createError);
+                             // Let it fall through to throw error below if still null
+                        }
+                    }
+
                     if (userProfile) {
                         const userRole = userProfile.role || mapPartnerTypeToRole(userProfile.type);
                         const permissions = rolePermissions.get(userRole) || [];

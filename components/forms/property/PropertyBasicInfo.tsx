@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useLanguage } from '../../shared/LanguageContext';
@@ -18,9 +19,8 @@ const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partner
     const td = t.dashboard.propertyForm;
     const { currentUser } = useAuth();
 
-    // Determine which projects list to show based on role
     const availableProjects = isAdmin ? projects : partnerProjects;
-    const showProjectSelector = currentUser && 'type' in currentUser && (currentUser.role === Role.DEVELOPER_PARTNER || currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.LISTINGS_MANAGER);
+    const showProjectSelector = currentUser && (currentUser.role === Role.DEVELOPER_PARTNER || currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.LISTINGS_MANAGER);
 
     return (
         <div className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
