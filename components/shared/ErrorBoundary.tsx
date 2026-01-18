@@ -1,5 +1,4 @@
-
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { Button } from '../ui/Button';
 import { ExclamationCircleIcon, HomeIcon, ArrowRightIcon } from '../ui/Icons';
 
@@ -14,9 +13,8 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed inheritance by using Component directly from 'react' to ensure all inherited properties like 'props' and 'setState' are recognized
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fixed state property by using class property initialization instead of constructor
+// Fixed: Explicitly using React.Component to resolve type membership issues for props and setState
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = {
     hasError: false,
     error: null
@@ -31,9 +29,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   handleRetry = () => {
-    // Correctly accessing props on class instance
+    // Fixed: Props now correctly recognized as member of React.Component
     this.props.onReset?.();
-    // Correctly accessing setState on class instance
+    // Fixed: setState now correctly recognized as member of React.Component
     this.setState({ hasError: false, error: null });
   };
 
@@ -42,9 +40,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   };
 
   render() {
-    // Correctly accessing state on class instance
     if (this.state.hasError) {
-      // Fixed props access in render method
+      // Fixed: Props now correctly recognized as member of React.Component
       if (this.props.fallback) {
         return this.props.fallback;
       }
@@ -90,7 +87,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Correctly accessing props for children components
+    // Fixed: Props now correctly recognized as member of React.Component
     return this.props.children;
   }
 }

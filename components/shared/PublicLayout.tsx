@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useCallback } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
@@ -61,6 +60,7 @@ const PublicLayout: React.FC = () => {
                 <Outlet />
             </main>
             <Footer />
+            
             {isQuietZoneActive && <QuietZone onClose={() => setIsQuietZoneActive(false)} />}
 
             <MobileNav
