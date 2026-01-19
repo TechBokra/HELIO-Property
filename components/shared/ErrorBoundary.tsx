@@ -1,4 +1,5 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Button } from '../ui/Button';
 import { ExclamationCircleIcon, HomeIcon, ArrowRightIcon } from '../ui/Icons';
 
@@ -13,9 +14,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed: Explicitly using React.Component to resolve type membership issues for props and setState
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = {
+// Fix: Use named Component import and ensure proper inheritance to fix 'props' and 'setState' errors.
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Remove 'override' and 'public' modifiers which were causing issues with base class detection.
+  state: ErrorBoundaryState = {
     hasError: false,
     error: null
   };
@@ -24,14 +26,14 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     return { hasError: true, error };
   }
 
+  // Fix: Remove 'override' modifier.
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error in ErrorBoundary:", error, errorInfo);
   }
 
   handleRetry = () => {
-    // Fixed: Props now correctly recognized as member of React.Component
+    // Fix: Base class members (props, setState) now correctly recognized.
     this.props.onReset?.();
-    // Fixed: setState now correctly recognized as member of React.Component
     this.setState({ hasError: false, error: null });
   };
 
@@ -39,9 +41,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     window.location.href = '/';
   };
 
+  // Fix: Remove 'override' modifier.
   render() {
     if (this.state.hasError) {
-      // Fixed: Props now correctly recognized as member of React.Component
       if (this.props.fallback) {
         return this.props.fallback;
       }
@@ -87,7 +89,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    // Fixed: Props now correctly recognized as member of React.Component
     return this.props.children;
   }
 }
