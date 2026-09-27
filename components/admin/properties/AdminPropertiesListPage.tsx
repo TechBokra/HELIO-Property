@@ -18,6 +18,7 @@ import { Select } from '../../ui/Select';
 import ErrorState from '../../shared/ErrorState';
 import { getAllPropertyTypes, getAllFinishingStatuses } from '../../../services/filters';
 import { StatusBadge } from '../../ui/StatusBadge';
+import { useToast } from '../../shared/ToastContext';
 
 interface AdminPropertiesListPageProps {
     title?: string;
@@ -36,6 +37,7 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
 }) => {
     const { language, t } = useLanguage();
     const t_admin = t.adminDashboard;
+    const { showToast } = useToast();
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -61,6 +63,8 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
         status: searchParams.get('status') || 'all',
         type: searchParams.get('type') || 'all',
         finishing: searchParams.get('finishing') || 'all',
+        verification: searchParams.get('verification') || 'all',
+        availability: searchParams.get('availability') || 'all',
     }), [searchParams]);
 
     const { paginatedItems, totalPages, currentPage, setCurrentPage, searchTerm, setSearchTerm, filters, setFilter } = useAdminTable({
@@ -71,22 +75,53 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
         searchFn: (item: Property, term) => 
             (item.title?.en?.toLowerCase().includes(term) || false) || 
             (item.title?.ar?.includes(term) || false) ||
-            (item.partnerName?.toLowerCase().includes(term) || false),
+            (item.partnerName?.toLowerCase().includes(term) || false) ||
+            (item.referenceNumber?.toLowerCase().includes(term) || false) ||
+            (item.id?.toLowerCase().includes(term) || false),
         filterFns: {
             status: (item: Property, value: string) => item.listingStatus === value,
             type: (item: Property, value: string) => item.type.en === value,
             finishing: (item: Property, value: string) => item.finishingStatus?.en === value,
+            verification: (item: Property, value: string) => item.verificationStatus === value,
+            availability: (item: Property, value: string) => (item.availabilityStatus || 'available') === value,
         },
     });
 
     const mutation = useMutation({
         mutationFn: ({ id, status }: { id: string, status: ListingStatus }) => updateProperty(id, { listingStatus: status }),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] })
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
+            showToast('Listing status updated', 'success');
+        }
+    });
+
+    const verificationMutation = useMutation({
+        mutationFn: ({ id, verificationStatus }: { id: string, verificationStatus: 'verified' | 'pending' }) => 
+            updateProperty(id, { verificationStatus }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
+            showToast('Verification updated', 'success');
+        }
+    });
+
+    const availabilityMutation = useMutation({
+        mutationFn: ({ id, availabilityStatus }: { id: string, availabilityStatus: 'available' | 'reserved' | 'sold' }) => 
+            updateProperty(id, { 
+                availabilityStatus, 
+                listingStatus: availabilityStatus === 'sold' ? 'sold' : 'active' 
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
+            showToast('Availability updated', 'success');
+        }
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id: string) => deleteProperty(id),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] })
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
+            showToast('Property deleted', 'success');
+        }
     });
     
     const handleSelect = (propertyId: string) => {
@@ -145,68 +180,151 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
                 <TableHeader>
                     <TableRow>
                         <TableHead className="w-12"><input type="checkbox" onChange={handleSelectAll} checked={selectedProperties.length === items.length && items.length > 0} /></TableHead>
+                        <TableHead>{language === 'ar' ? 'الكود' : 'Ref'}</TableHead>
                         <TableHead>{t_admin.propertyTable.image}</TableHead>
                         <TableHead>{t.dashboard.propertyTable.title}</TableHead>
                         <TableHead>{t.propertiesPage.typeLabel}</TableHead>
+                        <TableHead>{language === 'ar' ? 'السعر والتحديث' : 'Price & Updated'}</TableHead>
                         {!hideFilters.includes('partner') && <TableHead>{t_admin.propertyTable.partner}</TableHead>}
+                        <TableHead>{language === 'ar' ? 'التوثيق' : 'Verification'}</TableHead>
+                        <TableHead>{language === 'ar' ? 'الإتاحة' : 'Availability'}</TableHead>
                         <TableHead>{t_admin.propertyTable.liveStatus}</TableHead>
                         <TableHead>{t_admin.propertyTable.actions}</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {items.map(prop => (
-                        <TableRow key={prop.id} className={highlightedId === prop.id ? 'highlight-item bg-amber-50 dark:bg-amber-900/10' : ''}>
-                             <TableCell><input type="checkbox" checked={selectedProperties.includes(prop.id)} onChange={() => handleSelect(prop.id)}/></TableCell>
-                            <TableCell><img src={prop.imageUrl} alt="" className="w-16 h-16 object-cover rounded-md" /></TableCell>
-                            <TableCell className="font-medium text-gray-900 dark:text-white">
-                                {prop.title[language]}
-                                {prop.listingStatus === 'draft' && <span className="block text-xs text-amber-600 mt-1 font-normal">(Draft / Pending)</span>}
-                            </TableCell>
-                            <TableCell className="text-xs">{prop.type[language]}</TableCell>
-                            {!hideFilters.includes('partner') && <TableCell>{prop.partnerName}</TableCell>}
-                            <TableCell>
-                                <StatusBadge status={prop.listingStatus} />
-                            </TableCell>
-                            <TableCell>
-                                <Link to={`/admin/properties/edit/${prop.id}`}>
-                                    <Button variant="link">{t_admin.propertyTable.edit}</Button>
-                                </Link>
-                            </TableCell>
-                        </TableRow>
-                    ))}
+                    {items.map(prop => {
+                        const isVerified = prop.verificationStatus === 'verified';
+                        const availability = prop.availabilityStatus || 'available';
+                        const refCode = prop.referenceNumber || prop.id.slice(0, 8);
+
+                        return (
+                            <TableRow key={prop.id} className={highlightedId === prop.id ? 'highlight-item bg-amber-50 dark:bg-amber-900/10' : ''}>
+                                <TableCell><input type="checkbox" checked={selectedProperties.includes(prop.id)} onChange={() => handleSelect(prop.id)}/></TableCell>
+                                <TableCell>
+                                    <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                                        {refCode}
+                                    </span>
+                                </TableCell>
+                                <TableCell><img src={prop.imageUrl} alt="" className="w-14 h-14 object-cover rounded-md" /></TableCell>
+                                <TableCell className="font-medium text-gray-900 dark:text-white max-w-xs">
+                                    <div className="truncate">{prop.title[language]}</div>
+                                    {prop.projectName && (
+                                        <span className="text-xs text-amber-600 dark:text-amber-400 block truncate">
+                                            {prop.projectName[language]}
+                                        </span>
+                                    )}
+                                    {prop.listingStatus === 'draft' && <span className="block text-xs text-amber-600 font-normal">(Draft / Pending Review)</span>}
+                                </TableCell>
+                                <TableCell className="text-xs whitespace-nowrap">{prop.type[language]}</TableCell>
+                                <TableCell className="whitespace-nowrap">
+                                    <div className="font-semibold text-sm text-gray-900 dark:text-white">{prop.price[language]}</div>
+                                    {prop.priceUpdatedAt && (
+                                        <div className="text-[10px] text-gray-400" title={prop.priceUpdatedAt}>
+                                            {language === 'ar' ? 'محدث' : 'Updated'}: {new Date(prop.priceUpdatedAt).toLocaleDateString()}
+                                        </div>
+                                    )}
+                                </TableCell>
+                                {!hideFilters.includes('partner') && <TableCell className="text-xs">{prop.partnerName || '-'}</TableCell>}
+                                <TableCell>
+                                    <button
+                                        type="button"
+                                        onClick={() => verificationMutation.mutate({ 
+                                            id: prop.id, 
+                                            verificationStatus: isVerified ? 'pending' : 'verified' 
+                                        })}
+                                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                                            isVerified 
+                                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 hover:bg-emerald-200' 
+                                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 hover:bg-amber-200'
+                                        }`}
+                                        title={isVerified ? 'Click to unverify' : 'Click to verify'}
+                                    >
+                                        {isVerified ? '✓ موثق' : '⏳ قيد التحقق'}
+                                    </button>
+                                </TableCell>
+                                <TableCell>
+                                    <select
+                                        value={availability}
+                                        onChange={(e) => availabilityMutation.mutate({ 
+                                            id: prop.id, 
+                                            availabilityStatus: e.target.value as any 
+                                        })}
+                                        className="text-xs py-1 px-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+                                    >
+                                        <option value="available">{language === 'ar' ? 'متاح' : 'Available'}</option>
+                                        <option value="reserved">{language === 'ar' ? 'محجوز' : 'Reserved'}</option>
+                                        <option value="sold">{language === 'ar' ? 'تم البيع' : 'Sold'}</option>
+                                    </select>
+                                </TableCell>
+                                <TableCell>
+                                    <StatusBadge status={prop.listingStatus} />
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex items-center gap-2">
+                                        <Link to={`/admin/properties/edit/${prop.id}`}>
+                                            <Button variant="link" size="sm">{t_admin.propertyTable.edit}</Button>
+                                        </Link>
+                                        <Link to={`/properties/${prop.id}`} target="_blank" className="text-xs text-gray-500 hover:text-amber-600 underline">
+                                            {language === 'ar' ? 'معاينة' : 'View'}
+                                        </Link>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        );
+                    })}
                 </TableBody>
             </Table>
         </div>
     );
     
-    const renderCard = (prop: Property) => (
-        <Card key={prop.id} className={`overflow-hidden ${selectedProperties.includes(prop.id) ? 'ring-2 ring-amber-500' : ''}`}>
-             <div className="relative">
-                <img src={prop.imageUrl} alt="" className="w-full h-32 object-cover" />
-                <input type="checkbox" checked={selectedProperties.includes(prop.id)} onChange={() => handleSelect(prop.id)} className="absolute top-2 right-2 h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"/>
-                <div className="absolute bottom-2 left-2">
-                    <StatusBadge status={prop.listingStatus} className="shadow-sm" />
+    const renderCard = (prop: Property) => {
+        const isVerified = prop.verificationStatus === 'verified';
+        const availability = prop.availabilityStatus || 'available';
+
+        return (
+            <Card key={prop.id} className={`overflow-hidden ${selectedProperties.includes(prop.id) ? 'ring-2 ring-amber-500' : ''}`}>
+                 <div className="relative">
+                    <img src={prop.imageUrl} alt="" className="w-full h-32 object-cover" />
+                    <input type="checkbox" checked={selectedProperties.includes(prop.id)} onChange={() => handleSelect(prop.id)} className="absolute top-2 right-2 h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"/>
+                    <div className="absolute bottom-2 left-2 flex gap-1">
+                        <StatusBadge status={prop.listingStatus} className="shadow-sm" />
+                        {isVerified && (
+                            <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">
+                                ✓ موثق
+                            </span>
+                        )}
+                    </div>
                 </div>
-            </div>
-            <CardContent className="p-4">
-                <h3 className="font-bold text-gray-900 dark:text-white truncate">{prop.title[language]}</h3>
-                <p className="text-sm text-gray-500">{prop.partnerName}</p>
-                <div className="text-xs text-gray-400 mt-2 space-y-1">
-                    <p className="flex items-center gap-1"><LocationMarkerIcon className="w-3 h-3"/> {prop.address[language]}</p>
-                    <p className="flex items-center gap-1"><CalendarIcon className="w-3 h-3"/> {new Date(prop.listingStartDate || 0).toLocaleDateString()}</p>
+                <CardContent className="p-4">
+                    <div className="flex justify-between items-start gap-2">
+                        <h3 className="font-bold text-gray-900 dark:text-white truncate">{prop.title[language]}</h3>
+                        <span className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-600">
+                            {prop.referenceNumber || prop.id.slice(0, 6)}
+                        </span>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">{prop.partnerName}</p>
+                    <p className="font-bold text-amber-600 text-sm mt-1">{prop.price[language]}</p>
+                    <div className="text-xs text-gray-400 mt-2 space-y-1">
+                        <p className="flex items-center gap-1"><LocationMarkerIcon className="w-3 h-3"/> {prop.address[language]}</p>
+                        <p className="flex items-center gap-1"><CalendarIcon className="w-3 h-3"/> {new Date(prop.listingStartDate || 0).toLocaleDateString()}</p>
+                    </div>
+                </CardContent>
+                <div className="p-2 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700 flex justify-between gap-2">
+                    <Link to={`/admin/properties/edit/${prop.id}`} className="flex-1">
+                        <Button variant="ghost" size="sm" className="w-full">{t_admin.propertyTable.edit}</Button>
+                    </Link>
+                    <Link to={`/properties/${prop.id}`} target="_blank" className="flex-1">
+                        <Button variant="outline" size="sm" className="w-full">{language === 'ar' ? 'معاينة' : 'View'}</Button>
+                    </Link>
                 </div>
-            </CardContent>
-            <div className="p-2 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
-                 <Link to={`/admin/properties/edit/${prop.id}`} className="w-full">
-                    <Button variant="ghost" className="w-full">{t_admin.propertyTable.edit}</Button>
-                </Link>
-            </div>
-        </Card>
-    );
+            </Card>
+        );
+    };
     
     const loadingSkeletons = (
         <>
-            <div className="hidden lg:block"><TableSkeleton cols={6} rows={5} /></div>
+            <div className="hidden lg:block"><TableSkeleton cols={7} rows={5} /></div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:hidden">
                 {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-48 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>)}
             </div>
@@ -244,11 +362,24 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
                 {!hideFilters.includes('search') && <Input placeholder={t_admin.filter.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm"/>}
                 
                 <Select value={filters.status || 'all'} onChange={(e) => updateUrlFilter('status', e.target.value)} className="max-w-xs">
-                    <option value="all">All Statuses</option>
-                    <option value="active">Active</option>
+                    <option value="all">All Publication Statuses</option>
+                    <option value="active">Active (Published)</option>
                     <option value="draft">Draft (Under Review)</option>
                     <option value="inactive">Inactive</option>
-                    <option value="sold">Sold/Rented</option>
+                    <option value="sold">Sold</option>
+                </Select>
+
+                <Select value={filters.verification || 'all'} onChange={(e) => updateUrlFilter('verification', e.target.value)} className="max-w-xs">
+                    <option value="all">{language === 'ar' ? 'جميع حالات التوثيق' : 'All Verification'}</option>
+                    <option value="verified">{language === 'ar' ? 'موثق فقط' : 'Verified Only'}</option>
+                    <option value="pending">{language === 'ar' ? 'قيد التحقق' : 'Pending Verification'}</option>
+                </Select>
+
+                <Select value={filters.availability || 'all'} onChange={(e) => updateUrlFilter('availability', e.target.value)} className="max-w-xs">
+                    <option value="all">{language === 'ar' ? 'جميع حالات الإتاحة' : 'All Availability'}</option>
+                    <option value="available">{language === 'ar' ? 'متاح' : 'Available'}</option>
+                    <option value="reserved">{language === 'ar' ? 'محجوز' : 'Reserved'}</option>
+                    <option value="sold">{language === 'ar' ? 'تم البيع' : 'Sold'}</option>
                 </Select>
 
                 <Select value={filters.type || 'all'} onChange={(e) => updateUrlFilter('type', e.target.value)} className="max-w-xs">

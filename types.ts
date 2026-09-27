@@ -112,9 +112,25 @@ export interface Project {
 }
 
 export type ListingStatus = 'active' | 'inactive' | 'draft' | 'sold';
+export type PublicationStatus = 'draft' | 'pending_review' | 'published' | 'rejected' | 'archived';
+export type AvailabilityStatus = 'available' | 'reserved' | 'sold';
+export type VerificationStatus = 'pending' | 'verified' | 'rejected';
+
+export interface PropertyHistoryEntry {
+    id: string;
+    propertyId: string;
+    changedBy: string;
+    changedAt: string;
+    field: string;
+    oldValue: any;
+    newValue: any;
+    note?: string;
+}
 
 export interface Property {
     id: string;
+    referenceNumber?: string;
+    slug?: string;
     partnerId: string;
     projectId?: string;
     imageUrl: string;
@@ -145,6 +161,7 @@ export interface Property {
     listingStartDate?: string | null;
     listingEndDate?: string;
     listingStatus: ListingStatus;
+    publicationStatus?: PublicationStatus;
     partnerName?: string;
     partnerImageUrl?: string;
     projectName?: { ar: string; en: string };
@@ -152,10 +169,15 @@ export interface Property {
     ownerPhone?: string;
     leadCount?: number;
     sourceType?: 'developer' | 'broker' | 'partner_direct' | 'platform_admin';
-    verificationStatus?: 'pending' | 'verified' | 'rejected';
+    verificationStatus?: VerificationStatus;
     verifiedAt?: string;
     priceUpdatedAt?: string;
-    availabilityStatus?: 'available' | 'reserved' | 'sold';
+    availabilityStatus?: AvailabilityStatus;
+    lastVerifiedAt?: string;
+    lastPriceConfirmedAt?: string;
+    lastAvailabilityConfirmedAt?: string;
+    createdBy?: string;
+    updatedBy?: string;
 }
 
 export interface PortfolioItem {

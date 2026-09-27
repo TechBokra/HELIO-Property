@@ -136,8 +136,12 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
             
             const mainImage = (payload.images && payload.images.length > 0) ? payload.images[0] : 'https://via.placeholder.com/800x600';
 
+            const validPartnerId = actionAssignee || (partners && partners[0] ? partners[0].id : (currentUser?.id || '3e554896-eee8-4545-9c7f-0a79a4c1a9f1'));
             const newProperty: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl' | 'projectName'> = {
-                partnerId: 'individual-listings', 
+                partnerId: validPartnerId,
+                sourceType: 'partner_direct',
+                verificationStatus: 'pending',
+                availabilityStatus: 'available', 
                 title: { 
                     en: `[DRAFT] ${pd.propertyType?.en || 'Property'} - ${pd.address || 'New Heliopolis'}`, 
                     ar: `[مسودة] ${pd.propertyType?.ar || 'عقار'} - ${pd.address || 'هليوبوليس الجديدة'}` 

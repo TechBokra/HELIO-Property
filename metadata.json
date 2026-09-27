@@ -1,5 +1,8 @@
 {
   "name": "ONLY HELIO | Premium Real Estate Gateway",
   "description": "An integrated portal for modern living in New Heliopolis, offering premium real estate services, interior design, and finishing.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

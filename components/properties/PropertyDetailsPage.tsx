@@ -112,11 +112,12 @@ const PropertyDetailsPage: React.FC = () => {
     const propertyUrl = typeof window !== 'undefined' ? window.location.href : `https://onlyhelio.com/properties/${property?.id}`;
     const targetPhone = partner?.contactMethods?.phone?.number || property?.ownerPhone || '+201099999999';
     const targetWhatsApp = partner?.contactMethods?.whatsapp?.number?.replace(/[^0-9]/g, '') || property?.ownerPhone?.replace(/[^0-9]/g, '') || '201099999999';
+    const refCode = property?.referenceNumber || property?.id?.slice(0, 8) || '';
     
     const whatsappText = encodeURIComponent(
         language === 'ar'
-            ? `مرحبًا، أود الاستفسار عن العقار المعروض على ONLY HELIO:\n"${property?.title.ar}"\nكود العقار: ${property?.id}\nالسعر: ${property?.price.ar}\nرابط العقار: ${propertyUrl}`
-            : `Hello, I'm inquiring about the property on ONLY HELIO:\n"${property?.title.en}"\nID: ${property?.id}\nPrice: ${property?.price.en}\nLink: ${propertyUrl}`
+            ? `مرحبًا، أود الاستفسار عن العقار المعروض على ONLY HELIO:\n"${property?.title.ar}"\nكود العقار: ${refCode}\nالسعر: ${property?.price.ar}\nرابط العقار: ${propertyUrl}`
+            : `Hello, I'm inquiring about the property on ONLY HELIO:\n"${property?.title.en}"\nRef: ${refCode}\nPrice: ${property?.price.en}\nLink: ${propertyUrl}`
     );
     const whatsappUrl = `https://wa.me/${targetWhatsApp}?text=${whatsappText}`;
     const phoneUrl = `tel:${targetPhone}`;
@@ -227,9 +228,28 @@ const PropertyDetailsPage: React.FC = () => {
                 <div className="lg:flex justify-between items-start mb-4">
                     <div>
                         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">{property.title[language]}</h1>
-                         <p className="text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-2">
-                            <LocationMarkerIcon className="w-4 h-4" /> {property.address[language]}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                                {property.referenceNumber || property.id.slice(0, 8)}
+                            </span>
+                            {property.verificationStatus === 'verified' && (
+                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                    <CheckBadgeIcon className="w-3.5 h-3.5" /> {language === 'ar' ? 'عقار موثق' : 'Verified Listing'}
+                                </span>
+                            )}
+                            {property.availabilityStatus === 'sold' ? (
+                                <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                                    {language === 'ar' ? 'تم البيع' : 'Sold'}
+                                </span>
+                            ) : property.availabilityStatus === 'reserved' ? (
+                                <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                    {language === 'ar' ? 'محجوز' : 'Reserved'}
+                                </span>
+                            ) : null}
+                            <p className="text-gray-500 dark:text-gray-400 flex items-center gap-1 text-sm ml-2">
+                                <LocationMarkerIcon className="w-4 h-4" /> {property.address[language]}
+                            </p>
+                        </div>
                     </div>
                     <div className="flex-shrink-0 flex items-center gap-4 mt-4 lg:mt-0">
                          <button onClick={handleShare} className="p-3 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" aria-label={t.sharing.shareProperty}>
@@ -282,7 +302,17 @@ const PropertyDetailsPage: React.FC = () => {
                    <div className="lg:col-span-1">
                         <div className="sticky top-28 space-y-6">
                             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-                               <p className="text-3xl font-bold text-amber-500">{property.price[language]}</p>
+                               <div className="flex justify-between items-baseline">
+                                   <p className="text-3xl font-bold text-amber-500">{property.price[language]}</p>
+                                   {property.pricePerMeter && (
+                                       <span className="text-xs text-gray-400 font-medium">{property.pricePerMeter[language]}</span>
+                                   )}
+                               </div>
+                               {property.priceUpdatedAt && (
+                                   <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1 flex items-center gap-1">
+                                       <span>✓</span> {language === 'ar' ? 'تم تأكيد السعر حديثاً' : 'Price confirmed recently'}: {new Date(property.priceUpdatedAt).toLocaleDateString()}
+                                   </p>
+                               )}
                                <div className="flex items-center gap-4 text-gray-500 dark:text-gray-400 mt-4">
                                     {!isCommercial(property) && <>
                                         <div className="flex items-center gap-2"><BedIcon className="w-5 h-5"/> {property.beds}</div>
