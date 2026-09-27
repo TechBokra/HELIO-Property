@@ -48,6 +48,7 @@ export const adminNavLinks: NavLinkItem[] = [
     { name: t => t.adminDashboard.nav.reports, href: '/admin/reports', icon: TableCellsIcon, permission: Permission.VIEW_ADMIN_DASHBOARD, group: 'Management' },
 
     // --- Operations ---
+    { name: t => t.nav?.leads || 'العملاء المحتملين (Leads)', href: '/admin/leads', icon: InboxIcon, permission: Permission.VIEW_ADMIN_DASHBOARD, group: 'Operations' },
     { name: t => t.adminDashboard.nav.partners, href: '/admin/partners', icon: UsersIcon, permission: Permission.MANAGE_ALL_PARTNERS, group: 'Operations' },
     { name: t => t.adminDashboard.nav.properties, href: '/admin/properties', icon: BuildingIcon, permission: Permission.MANAGE_ALL_PROPERTIES, group: 'Operations' },
     { name: t => t.adminDashboard.nav.projects, href: '/admin/projects', icon: CubeIcon, permission: Permission.MANAGE_ALL_PROJECTS, group: 'Operations' },

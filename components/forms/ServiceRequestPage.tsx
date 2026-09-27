@@ -11,6 +11,7 @@ import { useLanguage } from '../shared/LanguageContext';
 import { BanknotesIcon, PhoneIcon, EnvelopeIcon, MapPinIcon, WhatsAppIcon } from '../ui/Icons';
 import DynamicForm from '../shared/DynamicForm';
 import { useSiteContent } from '../../hooks/useSiteContent';
+import { getAttribution } from '../../utils/attribution';
 
 const ServiceRequestPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -90,12 +91,20 @@ const ServiceRequestPage: React.FC = () => {
         }
         
         let managerId: string | undefined = undefined;
-        if (serviceType && allPartners) {
+        // Only assign generic manager for services that do not have a dedicated partner
+        if (!partnerId && serviceType && allPartners) {
              const manager = allPartners.find(p => p.type === 'service_manager');
             if (manager) {
                 managerId = manager.id;
             }
         }
+
+        const attribution = getAttribution({
+            source: propertyId ? 'property_page' : 'inquiry_form',
+            propertyId: propertyId,
+            propertyTitle: serviceTitle,
+            pageOrigin: window.location.pathname,
+        });
 
         const submissionData = {
             ...formData,
@@ -114,12 +123,13 @@ const ServiceRequestPage: React.FC = () => {
                     userName: formData.customerName,
                     data: {
                         ...submissionData,
-                        serviceType: serviceType,
+                        serviceType: serviceType || 'finishing',
                         serviceTitle: bookingTitle,
                         partnerId: partnerId,
                         managerId: 'platform-finishing-manager-1',
                         tierDetails: tier,
-                        status: 'new'
+                        status: 'new',
+                        ...attribution,
                     }
                 }
             });
@@ -134,31 +144,45 @@ const ServiceRequestPage: React.FC = () => {
                     userName: formData.customerName,
                     data: {
                         ...submissionData,
-                        serviceType: serviceType,
+                        serviceType: serviceType || 'decorations',
                         serviceTitle: `Order: ${workItem.title[language]}`,
                         partnerId: partnerId,
                         managerId: 'decoration-manager-1', 
                         workItem: workItem,
-                        status: 'new'
+                        status: 'new',
+                        ...attribution,
                     }
                 }
             });
         } else {
-            // Standard Lead Submission
+            // Standard Lead Submission with Marketing & Conversion Attribution
             addRequest(RequestType.LEAD, {
                 requesterInfo: { name: formData.customerName, phone: formData.customerPhone },
                 payload: {
+                    customerName: formData.customerName,
+                    customerPhone: formData.customerPhone,
                     contactTime: formData.contactTime,
                     customerNotes: finalNotes,
                     partnerId: partnerId,
                     serviceTitle: serviceTitle,
                     managerId: managerId,
                     propertyId: propertyId,
-                    serviceType: serviceType,
+                    serviceType: serviceType || (propertyId ? 'property' : 'general'),
                     referenceImage: formData.referenceImage,
                     // Add specific fields to payload top-level for easy access in details view
                     dimensions: formData.dimensions,
-                    itemCategory: formData.itemCategory
+                    itemCategory: formData.itemCategory,
+                    // Persisted Attribution Data
+                    source: attribution.source,
+                    utmSource: attribution.utmSource,
+                    utmCampaign: attribution.utmCampaign,
+                    utmMedium: attribution.utmMedium,
+                    utmTerm: attribution.utmTerm,
+                    utmContent: attribution.utmContent,
+                    referrer: attribution.referrer,
+                    landingPage: attribution.landingPage,
+                    pageOrigin: attribution.pageOrigin,
+                    leadQuality: 'new',
                 }
             }).then(() => {
                  showToast(t_modal.successMessage, 'success');

@@ -56,17 +56,25 @@ const DashboardLeadsPage: React.FC = () => {
         return allRequests
             .filter(req => 
                 req.type === RequestType.LEAD && 
-                (req.payload as Lead).partnerId === currentUser.id
+                (req.assignedTo === currentUser.id || 
+                 (req.payload as any)?.partnerId === currentUser.id || 
+                 (req.payload as any)?.assignedTo === currentUser.id)
             )
             .map(req => {
-                const leadPayload = req.payload as Lead;
+                const leadPayload = (req.payload || {}) as Lead;
                 return {
                     ...leadPayload,
                     id: req.id, // Use the top-level Request ID
-                    customerName: req.requesterInfo.name,
-                    customerPhone: req.requesterInfo.phone,
+                    customerName: req.requesterInfo?.name || (leadPayload as any).customerName || 'Anonymous',
+                    customerPhone: req.requesterInfo?.phone || (leadPayload as any).customerPhone || '',
                     createdAt: req.createdAt,
-                    status: leadPayload.status || req.status as any || 'new', 
+                    status: (leadPayload.status || req.status || 'new') as any,
+                    source: (leadPayload as any).source,
+                    utmSource: (leadPayload as any).utmSource || (leadPayload as any).utm_source,
+                    utmCampaign: (leadPayload as any).utmCampaign || (leadPayload as any).utm_campaign,
+                    utmMedium: (leadPayload as any).utmMedium || (leadPayload as any).utm_medium,
+                    landingPage: (leadPayload as any).landingPage || (leadPayload as any).landing_page,
+                    referrer: (leadPayload as any).referrer || (leadPayload as any).referral,
                 };
             });
     }, [allRequests, currentUser]);

@@ -15,6 +15,7 @@ const AdminPartnerFormPage = React.lazy(() => import('./partners/AdminPartnerFor
 const AdminPartnerRequestDetailsPage = React.lazy(() => import('./requests/AdminPartnerRequestDetailsPage'));
 const AdminPlanEditPage = React.lazy(() => import('./AdminPlanEditPage'));
 const AdminInquiryManagementPage = React.lazy(() => import('./inquiryManagement/AdminInquiryManagementPage'));
+const AdminLeadsPage = React.lazy(() => import('./AdminLeadsPage'));
 
 const AdminPropertiesLayout = React.lazy(() => import('./properties/AdminPropertiesLayout'));
 const AdminPropertiesDashboard = React.lazy(() => import('./properties/AdminPropertiesDashboard'));
@@ -78,6 +79,7 @@ const AdminRoutes: React.FC = () => {
                 <Route index element={<AdminHomePage />} />
                 <Route path="analytics" element={<AdminAnalyticsPage />} />
                 <Route path="reports" element={<AdminReportsPage />} />
+                <Route path="leads" element={<AdminLeadsPage />} />
                 
                 {/* Partners Management */}
                 <Route path="partners" element={<AdminPartnersLayout />}>

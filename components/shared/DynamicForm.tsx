@@ -16,6 +16,7 @@ import { Checkbox } from '../ui/Checkbox';
 import FormField, { inputClasses, selectClasses } from '../ui/FormField';
 import { PATTERNS, MESSAGES, CONFIG } from '../../utils/validation';
 import { uploadFile } from '../../services/upload';
+import { getAttribution } from '../../utils/attribution';
 
 interface DynamicFormProps {
     slug: string;
@@ -113,7 +114,12 @@ const DynamicForm: FC<DynamicFormProps> = ({
                         requesterInfo,
                         payload: { ...payload, inquiryType: 'client' }
                     });
-                case 'crm_leads':
+                case 'crm_leads': {
+                     const attr = getAttribution({
+                         source: payload.propertyId ? 'property_page' : 'inquiry_form',
+                         propertyId: payload.propertyId as string | undefined,
+                         pageOrigin: window.location.pathname,
+                     });
                      return addRequest(RequestType.LEAD, {
                         requesterInfo,
                         payload: {
@@ -121,9 +127,11 @@ const DynamicForm: FC<DynamicFormProps> = ({
                             customerPhone: requesterInfo.phone,
                             serviceType: (payload.serviceType as any) || 'general',
                             serviceTitle: (payload.serviceTitle as string) || `${formDef.title.en} Submission`,
-                            ...payload
+                            ...payload,
+                            ...attr,
                         }
                     });
+                }
                 case 'crm_partners':
                     return addRequest(RequestType.PARTNER_APPLICATION, {
                         requesterInfo,

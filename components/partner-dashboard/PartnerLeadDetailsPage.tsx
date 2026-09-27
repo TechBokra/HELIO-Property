@@ -160,6 +160,26 @@ const PartnerLeadDetailsPage: React.FC = () => {
                              )}
                         </CardContent>
                     </Card>
+
+                    {/* Attribution & Marketing Origin */}
+                    <Card>
+                         <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-700">
+                            <CardTitle className="text-sm font-bold flex items-center justify-between">
+                                <span>{language === 'ar' ? 'مصدر العميل والوساطة' : 'Attribution & Origin'}</span>
+                                <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-mono px-2 py-0.5 rounded">
+                                    {lead.source || 'Direct'}
+                                </span>
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-4 space-y-3 text-sm">
+                            <DetailItem label={language === 'ar' ? 'القناة' : 'Channel'} value={lead.source} />
+                            {lead.utmSource && <DetailItem label="UTM Source" value={lead.utmSource} />}
+                            {lead.utmCampaign && <DetailItem label="UTM Campaign" value={lead.utmCampaign} />}
+                            {lead.utmMedium && <DetailItem label="UTM Medium" value={lead.utmMedium} />}
+                            {lead.landingPage && <DetailItem label={language === 'ar' ? 'صفحة الهبوط' : 'Landing Page'} value={lead.landingPage} />}
+                            {lead.referrer && <DetailItem label={language === 'ar' ? 'الموقع المحيل' : 'Referrer'} value={lead.referrer} />}
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* Right Column: Conversation / Timeline */}

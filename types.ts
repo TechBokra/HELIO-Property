@@ -240,7 +240,7 @@ export interface Lead {
     partnerId: string;
     managerId?: string;
     propertyId?: string;
-    serviceType: 'finishing' | 'decorations' | 'property';
+    serviceType: 'finishing' | 'decorations' | 'property' | 'general' | 'property_search' | string;
     customerName: string;
     customerPhone: string;
     contactTime?: string;
@@ -255,10 +255,16 @@ export interface Lead {
     dimensions?: string;
     referenceImage?: string;
     assignedTo?: string;
-    source?: 'property_page' | 'whatsapp' | 'call' | 'inquiry_form' | 'contact_page';
+    source?: 'property_page' | 'whatsapp' | 'call' | 'inquiry_form' | 'contact_page' | string;
     utmSource?: string;
     utmCampaign?: string;
-    leadQuality?: 'new' | 'contacted' | 'qualified' | 'viewing' | 'won' | 'lost';
+    utmMedium?: string;
+    utmTerm?: string;
+    utmContent?: string;
+    referrer?: string;
+    landingPage?: string;
+    pageOrigin?: string;
+    leadQuality?: 'new' | 'contacted' | 'qualified' | 'viewing' | 'won' | 'lost' | string;
 }
 
 export interface PartnerRequest {

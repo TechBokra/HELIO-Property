@@ -11,6 +11,7 @@ import { useLanguage } from './components/shared/LanguageContext';
 import { adminNavLinks, partnerNavLinks } from './data/navigation';
 import LoadingFallback from './components/shared/LoadingFallback';
 import { useAuthStore } from './store/useAuthStore';
+import { initAttribution } from './utils/attribution';
 
 // --- Layouts (Static Imports to fix #525) ---
 import DashboardLayout from './components/shared/DashboardLayout';
@@ -47,6 +48,7 @@ const App = () => {
 
     useEffect(() => {
         initializeAuth();
+        initAttribution();
     }, [initializeAuth]);
 
     return (

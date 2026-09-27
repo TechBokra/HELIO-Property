@@ -69,7 +69,9 @@ const PropertyDetailsPage: React.FC = () => {
                 state: {
                     partnerId: property?.partnerId, 
                     serviceTitle: `${t_page.inquiryAbout} "${property?.title[language]}"`,
-                    propertyId: property?.id
+                    propertyId: property?.id,
+                    serviceType: 'property',
+                    propertyTitle: property?.title[language]
                 } 
             });
             return;
@@ -81,7 +83,9 @@ const PropertyDetailsPage: React.FC = () => {
                 state: {
                     partnerId: property?.partnerId, 
                     serviceTitle: `${t_page.inquiryAbout} "${property?.title[language]}"`,
-                    propertyId: property?.id
+                    propertyId: property?.id,
+                    serviceType: 'property',
+                    propertyTitle: property?.title[language]
                 } 
             });
         } else {

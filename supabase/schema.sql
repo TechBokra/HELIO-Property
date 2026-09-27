@@ -221,6 +221,7 @@ CREATE POLICY "Partners manage their own properties" ON public.properties FOR AL
 
 -- Requests
 ALTER TABLE public.requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can create a request or inquiry" ON public.requests FOR INSERT WITH CHECK (true);
 CREATE POLICY "Assigned partners can view their requests" ON public.requests FOR SELECT USING (auth.uid() = assigned_to);
 CREATE POLICY "Admins can view all requests" ON public.requests FOR ALL USING (
     EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND role = 'super_admin')
