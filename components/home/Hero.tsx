@@ -31,7 +31,7 @@ const Hero: React.FC = () => {
                             onContextMenu={(e) => e.preventDefault()}
                             // Optimization: Priority load the first image, lazy load the rest
                             loading={index === 0 ? "eager" : "lazy"}
-                            fetchPriority={index === 0 ? "high" : "auto"}
+                            {...(index === 0 ? { fetchpriority: "high" } : {})}
                             decoding={index === 0 ? "sync" : "async"}
                             aria-hidden={index !== currentImageIndex}
                             role="img"
