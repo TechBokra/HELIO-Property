@@ -1,13 +1,14 @@
-
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { Lead, LeadStatus } from '../../types';
 import { useAuth } from '../auth/AuthContext';
 import ExportDropdown from '../shared/ExportDropdown';
 import { getAllRequests } from '../../services/requests';
+import { updateLead } from '../../services/leads';
 import { RequestType } from '../../types';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '../shared/LanguageContext';
+import { useToast } from '../shared/ToastContext';
 import { Select } from '../ui/Select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/Table';
 import { Card, CardContent, CardFooter } from '../ui/Card';
@@ -18,6 +19,7 @@ import TableSkeleton from '../shared/TableSkeleton';
 import { Input } from '../ui/Input';
 import { StatusBadge } from '../ui/StatusBadge';
 import ErrorState from '../shared/ErrorState';
+import { WhatsAppIcon, PhoneIcon } from '../ui/Icons';
 
 type SortConfig = {
     key: keyof Lead;
@@ -28,11 +30,24 @@ const DashboardLeadsPage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_dash = t.dashboard;
     const { currentUser } = useAuth();
+    const { showToast } = useToast();
+    const queryClient = useQueryClient();
 
     const { data: allRequests, isLoading: loading, isError, refetch } = useQuery({
         queryKey: ['allRequests'],
         queryFn: getAllRequests,
         enabled: !!currentUser,
+    });
+
+    const statusMutation = useMutation({
+        mutationFn: ({ id, status }: { id: string; status: LeadStatus }) => updateLead(id, { status }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['allRequests'] });
+            showToast(language === 'ar' ? 'تم تحديث حالة العميل بنجاح' : 'Lead status updated', 'success');
+        },
+        onError: () => {
+            showToast(language === 'ar' ? 'حدث خطأ أثناء تحديث الحالة' : 'Failed to update lead status', 'error');
+        }
     });
 
     const partnerLeads = useMemo((): Lead[] => {
@@ -51,11 +66,24 @@ const DashboardLeadsPage: React.FC = () => {
                     customerName: req.requesterInfo.name,
                     customerPhone: req.requesterInfo.phone,
                     createdAt: req.createdAt,
-                    // Ensure status exists
-                    status: leadPayload.status || 'new', 
+                    status: leadPayload.status || req.status as any || 'new', 
                 };
             });
     }, [allRequests, currentUser]);
+
+    // ROI Performance metrics for partner
+    const metrics = useMemo(() => {
+        const total = partnerLeads.length;
+        const contacted = partnerLeads.filter(l => l.status !== 'new').length;
+        const viewing = partnerLeads.filter(l => l.status === 'site-visit' || l.status === 'completed').length;
+        const won = partnerLeads.filter(l => l.status === 'completed').length;
+
+        const contactedRate = total > 0 ? Math.round((contacted / total) * 100) : 0;
+        const viewingRate = total > 0 ? Math.round((viewing / total) * 100) : 0;
+        const wonRate = total > 0 ? Math.round((won / total) * 100) : 0;
+
+        return { total, contactedRate, viewingRate, wonRate };
+    }, [partnerLeads]);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -79,8 +107,8 @@ const DashboardLeadsPage: React.FC = () => {
 
         if (sortConfig !== null) {
             filteredLeads.sort((a, b) => {
-                const aValue = a[sortConfig.key] || ''; // Provide fallback
-                const bValue = b[sortConfig.key] || ''; // Provide fallback
+                const aValue = a[sortConfig.key] || '';
+                const bValue = b[sortConfig.key] || '';
                 if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
                 if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
                 return 0;
@@ -89,7 +117,7 @@ const DashboardLeadsPage: React.FC = () => {
         return filteredLeads;
     }, [partnerLeads, searchTerm, statusFilter, sortConfig]);
 
-    const exportData = useMemo(() => (sortedAndFilteredLeads || []).map(lead => ({
+    const exportData = useMemo(() => sortedAndFilteredLeads.map(lead => ({
         ...lead,
         status: t_dash.leadStatus[lead.status] || lead.status,
         createdAt: new Date(lead.createdAt).toLocaleDateString(language),
@@ -107,6 +135,24 @@ const DashboardLeadsPage: React.FC = () => {
         return <ErrorState onRetry={refetch} />;
     }
 
+    const getWhatsAppUrl = (phone: string, name: string) => {
+        const clean = phone.replace(/[^0-9]/g, '');
+        const msg = encodeURIComponent(
+            language === 'ar'
+                ? `مرحبًا أستاذ ${name}، بخصوص استفسارك على منصة ONLY HELIO.`
+                : `Hello ${name}, regarding your inquiry on ONLY HELIO.`
+        );
+        return `https://wa.me/${clean}?text=${msg}`;
+    };
+
+    const statusOptions: { value: LeadStatus; label: string }[] = [
+        { value: 'new', label: language === 'ar' ? 'جديد (New)' : 'New' },
+        { value: 'contacted', label: language === 'ar' ? 'تم التواصل (Contacted)' : 'Contacted' },
+        { value: 'site-visit', label: language === 'ar' ? 'معاينة (Viewing)' : 'Viewing' },
+        { value: 'completed', label: language === 'ar' ? 'تم التعاقد (Won)' : 'Deal Closed (Won)' },
+        { value: 'cancelled', label: language === 'ar' ? 'ملغي / خسارة (Lost)' : 'Lost / Cancelled' },
+    ];
+
     const renderCard = (lead: Lead) => (
         <Card key={lead.id} className="p-0 hover:shadow-md transition-shadow duration-200">
             <CardContent className="p-4 space-y-3">
@@ -114,7 +160,25 @@ const DashboardLeadsPage: React.FC = () => {
                      <div>
                         <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{t_dash.leadTable.customer}</p>
                         <p className="font-bold text-gray-900 dark:text-white">{lead.customerName}</p>
-                        <p className="text-sm text-gray-500 font-mono" dir="ltr">{lead.customerPhone}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-sm text-gray-500 font-mono" dir="ltr">{lead.customerPhone}</span>
+                            <a 
+                                href={getWhatsAppUrl(lead.customerPhone, lead.customerName)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+                                title="WhatsApp"
+                            >
+                                <WhatsAppIcon className="w-3.5 h-3.5" />
+                            </a>
+                            <a 
+                                href={`tel:${lead.customerPhone}`}
+                                className="p-1 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                                title="Call"
+                            >
+                                <PhoneIcon className="w-3.5 h-3.5" />
+                            </a>
+                        </div>
                     </div>
                     <StatusBadge status={lead.status} />
                 </div>
@@ -122,13 +186,25 @@ const DashboardLeadsPage: React.FC = () => {
                     <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{t_dash.leadTable.service}</p>
                     <p className="font-medium text-gray-800 dark:text-gray-200 line-clamp-2">{lead.serviceTitle}</p>
                 </div>
-                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-                     <p className="text-xs text-gray-400 text-right">{new Date(lead.createdAt).toLocaleDateString(language)}</p>
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                     <p className="text-xs text-gray-400">{new Date(lead.createdAt).toLocaleDateString(language)}</p>
+                     <div className="flex items-center gap-1">
+                        <select
+                            value={lead.status}
+                            onChange={(e) => statusMutation.mutate({ id: lead.id, status: e.target.value as LeadStatus })}
+                            disabled={statusMutation.isPending}
+                            className="text-xs py-1 px-2 border rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+                        >
+                            {statusOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                     </div>
                 </div>
             </CardContent>
             <CardFooter className="p-2 bg-gray-50 dark:bg-gray-800/50">
                 <Link to={`/dashboard/leads/${lead.id}`} className="w-full">
-                    <Button variant="ghost" className="w-full">
+                    <Button variant="ghost" className="w-full text-xs">
                         View Details
                     </Button>
                 </Link>
@@ -145,17 +221,36 @@ const DashboardLeadsPage: React.FC = () => {
                         <TableHead>{t_dash.leadTable.service}</TableHead>
                         <TableHead>{t_dash.leadTable.date}</TableHead>
                         <TableHead>{t_dash.leadTable.status}</TableHead>
+                        <TableHead>{language === 'ar' ? 'تحديث الحالة السريع' : 'Quick Status'}</TableHead>
                         <TableHead>{t_dash.leadTable.actions}</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {loading ? (
-                        <TableRow><TableCell colSpan={5} className="text-center p-8">Loading leads...</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={6} className="text-center p-8">Loading leads...</TableCell></TableRow>
                     ) : leads.map(lead => (
                         <TableRow key={lead.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                             <TableCell className="font-medium text-gray-900 whitespace-nowrap dark:text-white">
                                 <div>{lead.customerName}</div>
-                                <div className="font-normal text-gray-500 dark:text-gray-400 text-xs" dir="ltr">{lead.customerPhone}</div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="font-normal text-gray-500 dark:text-gray-400 text-xs font-mono" dir="ltr">{lead.customerPhone}</span>
+                                    <a 
+                                        href={getWhatsAppUrl(lead.customerPhone, lead.customerName)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+                                        title="WhatsApp"
+                                    >
+                                        <WhatsAppIcon className="w-3.5 h-3.5" />
+                                    </a>
+                                    <a 
+                                        href={`tel:${lead.customerPhone}`}
+                                        className="p-1 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                                        title="Call"
+                                    >
+                                        <PhoneIcon className="w-3.5 h-3.5" />
+                                    </a>
+                                </div>
                             </TableCell>
                             <TableCell className="max-w-xs truncate" title={lead.serviceTitle}>{lead.serviceTitle}</TableCell>
                             <TableCell>{new Date(lead.createdAt).toLocaleDateString(language)}</TableCell>
@@ -163,7 +258,19 @@ const DashboardLeadsPage: React.FC = () => {
                                 <StatusBadge status={lead.status} />
                             </TableCell>
                             <TableCell>
-                                <Link to={`/dashboard/leads/${lead.id}`} className="font-medium text-amber-600 hover:text-amber-700 hover:underline">
+                                <select
+                                    value={lead.status}
+                                    onChange={(e) => statusMutation.mutate({ id: lead.id, status: e.target.value as LeadStatus })}
+                                    disabled={statusMutation.isPending}
+                                    className="text-xs py-1 px-2 border rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-1 focus:ring-amber-500"
+                                >
+                                    {statusOptions.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            </TableCell>
+                            <TableCell>
+                                <Link to={`/dashboard/leads/${lead.id}`} className="font-medium text-amber-600 hover:text-amber-700 hover:underline text-xs">
                                     View Details
                                 </Link>
                             </TableCell>
@@ -180,7 +287,7 @@ const DashboardLeadsPage: React.FC = () => {
                 {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
             </div>
             <div className="hidden lg:block">
-                <TableSkeleton cols={5} />
+                <TableSkeleton cols={6} />
             </div>
         </>
     );
@@ -195,25 +302,69 @@ const DashboardLeadsPage: React.FC = () => {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t_dash.leadsTitle}</h1>
-                    <p className="text-gray-500 dark:text-gray-400">{t_dash.leadsSubtitle}</p>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t_dash.leads}</h1>
+                    <p className="text-sm text-gray-500 mt-1">
+                        {language === 'ar' ? 'إدارة العملاء المحتملين وتحديث مسار التحويل' : 'Manage inquiries and monitor conversion ROI'}
+                    </p>
                 </div>
-                <ExportDropdown data={exportData} columns={exportColumns} filename="my-leads" />
+                <ExportDropdown 
+                    data={exportData} 
+                    columns={exportColumns} 
+                    filename="partner_leads_report" 
+                />
             </div>
 
-            <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-4">
-                <Input type="text" placeholder={t_dash.filter.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-xs" />
-                <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="max-w-xs">
-                    <option value="all">{t_dash.filter.filterByStatus} ({t_dash.filter.all})</option>
-                    {Object.entries(t_dash.leadStatus).map(([key, value]) => (<option key={key} value={key}>{value as string}</option>))}
-                </Select>
+            {/* Partner ROI Metrics Strip */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'إجمالي العملاء' : 'Total Leads'}</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{metrics.total}</p>
+                </div>
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'نسبة التواصل' : 'Contacted Rate'}</p>
+                    <p className="text-2xl font-bold text-blue-600 mt-1">{metrics.contactedRate}%</p>
+                </div>
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'نسبة المعاينات' : 'Viewing Rate'}</p>
+                    <p className="text-2xl font-bold text-purple-600 mt-1">{metrics.viewingRate}%</p>
+                </div>
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{language === 'ar' ? 'نسبة إتمام الصفقات' : 'Deals Won'}</p>
+                    <p className="text-2xl font-bold text-emerald-600 mt-1">{metrics.wonRate}%</p>
+                </div>
             </div>
-            
+
+            <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-grow">
+                    <Input
+                        type="text"
+                        placeholder={t_dash.leadTable.searchPlaceholder}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full"
+                    />
+                </div>
+                <div className="w-full md:w-48">
+                    <Select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="w-full"
+                    >
+                        <option value="all">{t_dash.leadTable.allStatuses}</option>
+                        <option value="new">{t_dash.leadStatus.new}</option>
+                        <option value="contacted">{t_dash.leadStatus.contacted}</option>
+                        <option value="site-visit">{t_dash.leadStatus['site-visit']}</option>
+                        <option value="completed">{t_dash.leadStatus.completed}</option>
+                        <option value="cancelled">{t_dash.leadStatus.cancelled}</option>
+                    </Select>
+                </div>
+            </div>
+
             {loading ? loadingSkeletons : (
                 <ResponsiveList
                     items={sortedAndFilteredLeads}
-                    renderCard={renderCard}
                     renderTable={renderTable}
+                    renderCard={renderCard}
                     emptyState={emptyState}
                 />
             )}

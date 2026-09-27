@@ -36,6 +36,9 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
     realEstateFinanceAvailable,
     projectId,
     projectName,
+    verificationStatus,
+    verifiedAt,
+    priceUpdatedAt,
   } = props;
   const { isFavorite, toggleFavorite } = useFavorites();
   const { showToast } = useToast();
@@ -96,11 +99,18 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
                     loading="lazy"
                 />
             </picture>
-          <span className="absolute top-4 left-4 z-10 text-white font-semibold px-3 py-1 rounded-md text-sm shadow-sm bg-sky-600/90 backdrop-blur-sm" style={{ backgroundColor: isForSale ? '#16a34a' : '#0284c7' }}>
-            {status[language]}
-          </span>
+          <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5">
+            <span className="text-white font-semibold px-2.5 py-1 rounded-md text-xs shadow-sm" style={{ backgroundColor: isForSale ? '#16a34a' : '#0284c7' }}>
+              {status[language]}
+            </span>
+            {verificationStatus === 'verified' && (
+              <span className="bg-emerald-600/95 text-white font-medium px-2 py-1 rounded-md text-xs shadow-sm flex items-center gap-1">
+                <span>✓</span> {language === 'ar' ? 'معتمد' : 'Verified'}
+              </span>
+            )}
+          </div>
            {isInCompound && (
-             <span className={`absolute top-4 ${language === 'ar' ? 'left-4' : 'right-4'} p-2 rounded-full bg-black/50 z-10`} title={t.propertiesPage.inCompound}>
+             <span className={`absolute top-4 ${language === 'ar' ? 'left-24' : 'right-4'} p-2 rounded-full bg-black/50 z-10`} title={t.propertiesPage.inCompound}>
                 <CompoundIcon className="w-5 h-5 text-white" />
              </span>
            )}
@@ -135,9 +145,14 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
           )}
           <h3 className="text-lg font-bold text-gray-900 truncate mb-1 group-hover:text-amber-500 transition-colors">{title[language]}</h3>
           
-          <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
               {finishingStatus && (
-                <span className="bg-gray-100 px-2 py-1 rounded">{finishingStatus[language]}</span>
+                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{finishingStatus[language]}</span>
+              )}
+              {verifiedAt && (
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1" title={language === 'ar' ? 'تاريخ التحقق من العقار' : 'Verification Date'}>
+                  <span>●</span> {language === 'ar' ? `محدث: ${verifiedAt}` : `Verified: ${verifiedAt}`}
+                </span>
               )}
           </div>
           

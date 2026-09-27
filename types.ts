@@ -151,6 +151,11 @@ export interface Property {
     contactMethod?: 'platform' | 'direct';
     ownerPhone?: string;
     leadCount?: number;
+    sourceType?: 'developer' | 'broker' | 'partner_direct' | 'platform_admin';
+    verificationStatus?: 'pending' | 'verified' | 'rejected';
+    verifiedAt?: string;
+    priceUpdatedAt?: string;
+    availabilityStatus?: 'available' | 'reserved' | 'sold';
 }
 
 export interface PortfolioItem {
@@ -250,6 +255,10 @@ export interface Lead {
     dimensions?: string;
     referenceImage?: string;
     assignedTo?: string;
+    source?: 'property_page' | 'whatsapp' | 'call' | 'inquiry_form' | 'contact_page';
+    utmSource?: string;
+    utmCampaign?: string;
+    leadQuality?: 'new' | 'contacted' | 'qualified' | 'viewing' | 'won' | 'lost';
 }
 
 export interface PartnerRequest {

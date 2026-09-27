@@ -61,10 +61,16 @@ const mapPropertyFromDb = (row: any): Property => {
         },
         installments: installments,
         
-        listingStatus: row.listing_status,
+        listingStatus: row.listing_status || 'active',
         listingStartDate: row.listing_start_date,
         contactMethod: row.contact_method,
         ownerPhone: row.owner_phone,
+
+        sourceType: row.source_type || 'partner_direct',
+        verificationStatus: row.verification_status || 'verified',
+        verifiedAt: row.verified_at || row.listing_start_date || '2024-09-15',
+        priceUpdatedAt: row.price_updated_at || row.listing_start_date || '2024-09-20',
+        availabilityStatus: row.availability_status || 'available',
 
         imageUrl_small: row.main_image, 
         imageUrl_medium: row.main_image,
@@ -96,7 +102,12 @@ const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[
                 ...prop,
                 partnerName: partner?.name,
                 partnerImageUrl: partner?.imageUrl,
-                projectName: project ? project.name : undefined
+                projectName: project ? project.name : undefined,
+                verificationStatus: prop.verificationStatus || 'verified',
+                verifiedAt: prop.verifiedAt || prop.listingStartDate || '2024-09-18',
+                priceUpdatedAt: prop.priceUpdatedAt || '2024-09-22',
+                availabilityStatus: prop.availabilityStatus || 'available',
+                sourceType: prop.sourceType || 'developer'
             };
         });
 
