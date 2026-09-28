@@ -20,6 +20,7 @@ const PartnerLeadDetailsPage = React.lazy(() => import('./PartnerLeadDetailsPage
 const AllNotificationsPage = React.lazy(() => import('../shared/AllNotificationsPage'));
 const PartnerTeamPage = React.lazy(() => import('./PartnerTeamPage'));
 const PartnerTeamFormPage = React.lazy(() => import('./PartnerTeamFormPage'));
+const PartnerCapabilitiesPage = React.lazy(() => import('./PartnerCapabilitiesPage'));
 
 const PartnerRoutes: React.FC = () => {
     return (
@@ -27,6 +28,7 @@ const PartnerRoutes: React.FC = () => {
             <Routes>
                 <Route index element={<DashboardHomePage />} />
                 <Route path="profile" element={<DashboardProfilePage />} />
+                <Route path="capabilities" element={<PartnerCapabilitiesPage />} />
                 
                 <Route path="team" element={<PartnerTeamPage />} />
                 <Route path="team/new" element={<PartnerTeamFormPage />} />

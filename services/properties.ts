@@ -1,13 +1,10 @@
-
+const isDev = Boolean((import.meta as any)?.env?.DEV);
 import { supabase } from '../lib/supabase';
 import { getAllPartners } from './partners'; 
 import { getAllProjects } from './projects';
 import type { Property, PropertyFiltersType, Partner, Project, PropertyHistoryEntry } from '../types';
 import { filterProperties } from '../utils/propertyFilters';
 import { propertiesData as fallbackProperties } from '../data/properties';
-
-const PROPERTY_HISTORY_KEY = 'onlyhelio_property_history';
-const PROPERTY_META_KEY = 'onlyhelio_property_meta';
 
 export const generatePropertyReference = (id: string): string => {
     if (!id) return 'HEL-0001';
@@ -25,75 +22,160 @@ export const generatePropertySlug = (titleEn: string, id: string): string => {
     return `${baseSlug}-${shortId}`;
 };
 
-export const getPropertyHistory = (propertyId: string): PropertyHistoryEntry[] => {
+/**
+ * Audit history retrieval from Supabase (single source of truth)
+ */
+export const getPropertyHistory = async (propertyId: string): Promise<PropertyHistoryEntry[]> => {
+    if (!propertyId) return [];
     try {
-        if (typeof window === 'undefined') return [];
-        const raw = localStorage.getItem(PROPERTY_HISTORY_KEY);
-        if (!raw) return [];
-        const all: PropertyHistoryEntry[] = JSON.parse(raw);
-        return all.filter(h => h.propertyId === propertyId);
-    } catch {
+        // First try the dedicated property_history table
+        const { data, error } = await supabase
+            .from('property_history')
+            .select('*')
+            .eq('property_id', propertyId)
+            .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+            return data.map((row: any) => ({
+                id: row.id,
+                propertyId: row.property_id,
+                changedBy: row.changed_by,
+                changedAt: row.created_at,
+                createdAt: row.created_at,
+                changeType: row.change_type,
+                field: row.field_name,
+                fieldName: row.field_name,
+                oldValue: row.old_value,
+                newValue: row.new_value,
+                note: row.note
+            }));
+        }
+
+        // Secondary database fallback: check embedded audit log in property installments_info._meta
+        const { data: propData } = await supabase
+            .from('properties')
+            .select('installments_info')
+            .eq('id', propertyId)
+            .maybeSingle();
+
+        if (propData?.installments_info) {
+            const raw = typeof propData.installments_info === 'string'
+                ? JSON.parse(propData.installments_info)
+                : propData.installments_info;
+            if (raw?._meta?.history && Array.isArray(raw._meta.history)) {
+                return raw._meta.history;
+            }
+        }
+
+        return [];
+    } catch (e) {
+        console.warn("Failed to retrieve property history from Supabase:", e);
         return [];
     }
 };
 
-export const recordPropertyHistory = (entry: Omit<PropertyHistoryEntry, 'id' | 'changedAt'>): void => {
+/**
+ * Record property history in Supabase (persists across refreshes, devices, and logins)
+ */
+export const recordPropertyHistory = async (entry: Omit<PropertyHistoryEntry, 'id' | 'changedAt'>): Promise<void> => {
     try {
-        if (typeof window === 'undefined') return;
-        const raw = localStorage.getItem(PROPERTY_HISTORY_KEY);
-        const all: PropertyHistoryEntry[] = raw ? JSON.parse(raw) : [];
-        const newEntry: PropertyHistoryEntry = {
-            ...entry,
-            id: `hist-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            changedAt: new Date().toISOString()
+        const now = new Date().toISOString();
+        const historyId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : `hist-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+        const changeType = entry.changeType || entry.field || 'update';
+        const fieldName = entry.fieldName || entry.field || 'general';
+
+        const historyRow = {
+            id: historyId,
+            property_id: entry.propertyId,
+            changed_by: entry.changedBy || 'system',
+            change_type: changeType,
+            field_name: fieldName,
+            old_value: entry.oldValue,
+            new_value: entry.newValue,
+            note: entry.note || '',
+            created_at: now
         };
-        all.unshift(newEntry);
-        localStorage.setItem(PROPERTY_HISTORY_KEY, JSON.stringify(all.slice(0, 500)));
+
+        // 1. Insert into property_history table
+        try {
+            await supabase.from('property_history').insert(historyRow);
+        } catch {
+            // Table may be pending migration in some environments
+        }
+
+        // 2. Also append to the property's installments_info._meta.history in Supabase for guaranteed persistence
+        try {
+            const { data: propData } = await supabase
+                .from('properties')
+                .select('installments_info')
+                .eq('id', entry.propertyId)
+                .maybeSingle();
+
+            if (propData) {
+                const rawInst = typeof propData.installments_info === 'string'
+                    ? JSON.parse(propData.installments_info)
+                    : propData.installments_info || {};
+                const existingMeta = rawInst._meta || {};
+                const existingHist = Array.isArray(existingMeta.history) ? existingMeta.history : [];
+
+                const newHistEntry: PropertyHistoryEntry = {
+                    id: historyId,
+                    propertyId: entry.propertyId,
+                    changedBy: entry.changedBy,
+                    changedAt: now,
+                    createdAt: now,
+                    changeType,
+                    field: fieldName,
+                    fieldName,
+                    oldValue: entry.oldValue,
+                    newValue: entry.newValue,
+                    note: entry.note
+                };
+
+                const updatedMeta = {
+                    ...existingMeta,
+                    history: [newHistEntry, ...existingHist].slice(0, 100)
+                };
+
+                await supabase.from('properties').update({
+                    installments_info: { ...rawInst, _meta: updatedMeta }
+                }).eq('id', entry.propertyId);
+            }
+        } catch (innerErr) {
+            console.warn("Could not embed history into property row in Supabase:", innerErr);
+        }
     } catch (e) {
         console.error("Failed to record property history:", e);
     }
 };
 
-const getLocalPropertyMeta = (propertyId: string) => {
-    try {
-        if (typeof window === 'undefined') return {};
-        const raw = localStorage.getItem(`${PROPERTY_META_KEY}_${propertyId}`);
-        return raw ? JSON.parse(raw) : {};
-    } catch {
-        return {};
-    }
-};
-
-const setLocalPropertyMeta = (propertyId: string, meta: Record<string, any>) => {
-    try {
-        if (typeof window === 'undefined') return;
-        const existing = getLocalPropertyMeta(propertyId);
-        localStorage.setItem(`${PROPERTY_META_KEY}_${propertyId}`, JSON.stringify({ ...existing, ...meta }));
-    } catch (e) {
-        console.error("Failed to save property meta:", e);
-    }
-};
-
+/**
+ * Transforms Supabase database row into canonical Property interface
+ */
 const mapPropertyFromDb = (row: any): Property => {
     const amenities = typeof row.amenities === 'string' ? JSON.parse(row.amenities) : row.amenities || { ar: [], en: [] };
     const location = typeof row.location === 'string' ? JSON.parse(row.location) : row.location || { lat: 0, lng: 0 };
-    const installments = typeof row.installments_info === 'string' ? JSON.parse(row.installments_info) : row.installments_info;
+    const installmentsRaw = typeof row.installments_info === 'string' ? JSON.parse(row.installments_info) : row.installments_info;
+    const meta = installmentsRaw?._meta || {};
 
-    const priceNumeric = Number(row.price);
+    const priceNumeric = Number(row.price) || 0;
     const price = {
         en: `EGP ${priceNumeric.toLocaleString('en-US')}`,
         ar: `${priceNumeric.toLocaleString('ar-EG')} ج.م`
     };
 
-    const localMeta = getLocalPropertyMeta(row.id);
-    const isVerified = row.is_verified === true || localMeta.verificationStatus === 'verified' || row.verification_status === 'verified';
-    const availabilityStatus = localMeta.availabilityStatus || row.availability_status || (row.listing_status === 'sold' ? 'sold' : 'available');
-    const verificationStatus = isVerified ? 'verified' : (localMeta.verificationStatus || row.verification_status || 'pending');
+    const isVerified = row.is_verified === true || meta.verificationStatus === 'verified' || row.verification_status === 'verified';
+    const availabilityStatus = row.availability_status || meta.availabilityStatus || (row.listing_status === 'sold' ? 'sold' : 'available');
+    const publicationStatus = row.publication_status || meta.publicationStatus || (row.listing_status === 'draft' ? 'draft' : (row.listing_status === 'inactive' ? 'archived' : 'published'));
+    const verificationStatus = isVerified ? 'verified' : (row.verification_status || meta.verificationStatus || 'pending');
 
     return {
         id: row.id,
-        referenceNumber: localMeta.referenceNumber || row.reference_number || generatePropertyReference(row.id),
-        slug: localMeta.slug || row.slug || generatePropertySlug(row.title_en, row.id),
+        referenceNumber: row.reference_number || meta.referenceNumber || generatePropertyReference(row.id),
+        slug: row.slug || meta.slug || generatePropertySlug(row.title_en, row.id),
         partnerId: row.partner_id,
         projectId: row.project_id,
         imageUrl: row.main_image,
@@ -104,8 +186,8 @@ const mapPropertyFromDb = (row: any): Property => {
         address: { ar: row.address_ar, en: row.address_en },
         
         status: { 
-            en: row.status as any, 
-            ar: row.status === 'For Sale' ? 'للبيع' : 'إيجار' 
+            en: (row.status === 'For Rent' || row.status === 'rent') ? 'For Rent' : 'For Sale', 
+            ar: (row.status === 'For Rent' || row.status === 'rent') ? 'إيجار' : 'للبيع' 
         },
         type: {
             en: row.type,
@@ -118,7 +200,7 @@ const mapPropertyFromDb = (row: any): Property => {
 
         price: price,
         priceNumeric: priceNumeric,
-        area: Number(row.area),
+        area: Number(row.area) || 0,
         beds: row.beds,
         baths: row.baths,
         floor: row.floor,
@@ -134,22 +216,31 @@ const mapPropertyFromDb = (row: any): Property => {
             isImmediate: row.delivery_immediate,
             date: row.delivery_date
         },
-        installments: installments,
+        installments: installmentsRaw ? {
+            downPayment: installmentsRaw.downPayment || 0,
+            monthlyInstallment: installmentsRaw.monthlyInstallment || 0,
+            years: installmentsRaw.years || 0
+        } : undefined,
         
         listingStatus: row.listing_status || 'active',
-        publicationStatus: row.listing_status === 'draft' ? 'draft' : row.listing_status === 'inactive' ? 'archived' : 'published',
+        publicationStatus: publicationStatus,
+        availabilityStatus: availabilityStatus,
+        verificationStatus: verificationStatus,
+        
         listingStartDate: row.listing_start_date,
         contactMethod: row.contact_method,
         ownerPhone: row.owner_phone,
 
-        sourceType: localMeta.sourceType || row.source_type || 'partner_direct',
-        verificationStatus: verificationStatus,
-        verifiedAt: localMeta.verifiedAt || row.verified_at || (isVerified ? row.updated_at || row.created_at || '2024-09-15' : undefined),
-        lastVerifiedAt: localMeta.lastVerifiedAt || row.last_verified_at || (isVerified ? row.updated_at : undefined),
-        priceUpdatedAt: localMeta.priceUpdatedAt || row.price_updated_at || row.updated_at || row.created_at || '2024-09-20',
-        lastPriceConfirmedAt: localMeta.lastPriceConfirmedAt || localMeta.priceUpdatedAt || row.updated_at,
-        availabilityStatus: availabilityStatus,
-        lastAvailabilityConfirmedAt: localMeta.lastAvailabilityConfirmedAt || row.updated_at,
+        sourceType: row.source_type || meta.sourceType || 'partner_direct',
+        sourceRequestId: row.source_request_id || meta.sourceRequestId,
+        verifiedAt: row.verified_at || meta.verifiedAt || (isVerified ? row.updated_at || row.created_at : undefined),
+        lastVerifiedAt: row.last_verified_at || meta.lastVerifiedAt || (isVerified ? row.updated_at : undefined),
+        priceUpdatedAt: row.price_updated_at || meta.priceUpdatedAt || row.updated_at || row.created_at,
+        lastPriceConfirmedAt: row.last_price_confirmed_at || meta.lastPriceConfirmedAt || row.updated_at,
+        lastAvailabilityConfirmedAt: row.last_availability_confirmed_at || meta.lastAvailabilityConfirmedAt || row.updated_at,
+        createdBy: row.created_by || meta.createdBy,
+        updatedBy: row.updated_by || meta.updatedBy,
+        history: meta.history || [],
 
         imageUrl_small: row.main_image, 
         imageUrl_medium: row.main_image,
@@ -157,7 +248,9 @@ const mapPropertyFromDb = (row: any): Property => {
     };
 };
 
-// Optimization: Batch hydration to avoid N+1 requests
+/**
+ * Hydrates partner & project details in batch
+ */
 const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[]> => {
     if (properties.length === 0) return [];
 
@@ -182,11 +275,6 @@ const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[
                 partnerName: partner?.name,
                 partnerImageUrl: partner?.imageUrl,
                 projectName: project ? project.name : undefined,
-                verificationStatus: prop.verificationStatus || 'verified',
-                verifiedAt: prop.verifiedAt || prop.listingStartDate || '2024-09-18',
-                priceUpdatedAt: prop.priceUpdatedAt || '2024-09-22',
-                availabilityStatus: prop.availabilityStatus || 'available',
-                sourceType: prop.sourceType || 'developer'
             };
         });
 
@@ -196,85 +284,184 @@ const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[
     }
 };
 
+/**
+ * Fetches all properties for Admin management
+ */
 export const getAllProperties = async (): Promise<Property[]> => {
     try {
-        const { data, error } = await supabase.from('properties').select('*').order('created_at', { ascending: false });
+        const { data, error } = await supabase
+            .from('properties')
+            .select('*')
+            .order('created_at', { ascending: false });
         
-        if (error || !data || data.length === 0) {
-            // Fallback to local data if DB is empty or fails
+        if (error) {
+            console.error("Supabase error in getAllProperties:", error);
+            if (isDev) {
+                return hydratePropertiesBatch(fallbackProperties);
+            }
+            return [];
+        }
+
+        if (!data || data.length === 0) {
+            if (isDev) {
+                return hydratePropertiesBatch(fallbackProperties);
+            }
+            return [];
+        }
+
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        console.error("Failed to fetch all properties:", e);
+        if (isDev) {
             return hydratePropertiesBatch(fallbackProperties);
         }
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
-        return hydratePropertiesBatch(fallbackProperties);
+        return [];
     }
 };
 
+/**
+ * Fetches publicly visible properties (active or sold listings, never drafts or archived)
+ */
 export const getProperties = async (): Promise<Property[]> => {
     try {
-        const { data, error } = await supabase.from('properties').select('*').eq('listing_status', 'active');
-        if (error || !data || data.length === 0) {
+        const { data, error } = await supabase
+            .from('properties')
+            .select('*')
+            .in('listing_status', ['active', 'sold'])
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Supabase error in getProperties:", error);
+            if (isDev) {
+                return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active' || p.listingStatus === 'sold'));
+            }
+            return [];
+        }
+
+        if (!data || data.length === 0) {
+            if (isDev) {
+                return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active' || p.listingStatus === 'sold'));
+            }
+            return [];
+        }
+
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        console.error("Failed to get public properties:", e);
+        if (isDev) {
             return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active'));
         }
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
-        return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active'));
+        return [];
     }
 };
 
+/**
+ * Fetches properties belonging strictly to a specific partner (enforcing partner isolation)
+ */
 export const getPropertiesByPartnerId = async (partnerId: string): Promise<Property[]> => {
+    if (!partnerId) return [];
     try {
-        const { data, error } = await supabase.from('properties').select('*').eq('partner_id', partnerId);
-        if (error || !data || data.length === 0) {
+        const { data, error } = await supabase
+            .from('properties')
+            .select('*')
+            .eq('partner_id', partnerId)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Supabase error in getPropertiesByPartnerId:", error);
+            if (isDev) {
+                return hydratePropertiesBatch(fallbackProperties.filter(p => p.partnerId === partnerId));
+            }
+            return [];
+        }
+
+        if (!data || data.length === 0) {
+            return [];
+        }
+
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        console.error("Failed to get partner properties:", e);
+        if (isDev) {
             return hydratePropertiesBatch(fallbackProperties.filter(p => p.partnerId === partnerId));
         }
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
-        return hydratePropertiesBatch(fallbackProperties.filter(p => p.partnerId === partnerId));
+        return [];
     }
 };
 
+/**
+ * Fetches properties belonging to a specific development project
+ */
 export const getPropertiesByProjectId = async (projectId: string): Promise<Property[]> => {
+    if (!projectId) return [];
     try {
-        const { data, error } = await supabase.from('properties').select('*').eq('project_id', projectId);
+        const { data, error } = await supabase
+            .from('properties')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: false });
+
         if (error || !data || data.length === 0) {
+            if (isDev) {
+                return hydratePropertiesBatch(fallbackProperties.filter(p => p.projectId === projectId));
+            }
+            return [];
+        }
+
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        if (isDev) {
             return hydratePropertiesBatch(fallbackProperties.filter(p => p.projectId === projectId));
         }
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
-        return hydratePropertiesBatch(fallbackProperties.filter(p => p.projectId === projectId));
+        return [];
     }
 };
 
+/**
+ * Fetches single property by ID
+ */
 export const getPropertyById = async (id: string): Promise<Property | undefined> => {
+    if (!id) return undefined;
     try {
-        const { data, error } = await supabase.from('properties').select('*').eq('id', id).single();
+        const { data, error } = await supabase
+            .from('properties')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
+
         if (error || !data) {
-            const fallback = fallbackProperties.find(p => p.id === id);
-            return fallback ? (await hydratePropertiesBatch([fallback]))[0] : undefined;
+            if (isDev) {
+                const fallback = fallbackProperties.find(p => p.id === id);
+                return fallback ? (await hydratePropertiesBatch([fallback]))[0] : undefined;
+            }
+            return undefined;
         }
+
         const rawProp = mapPropertyFromDb(data);
         const hydratedArray = await hydratePropertiesBatch([rawProp]);
         return hydratedArray[0];
     } catch (e) {
-        const fallback = fallbackProperties.find(p => p.id === id);
-        return fallback ? (await hydratePropertiesBatch([fallback]))[0] : undefined;
+        if (isDev) {
+            const fallback = fallbackProperties.find(p => p.id === id);
+            return fallback ? (await hydratePropertiesBatch([fallback]))[0] : undefined;
+        }
+        return undefined;
     }
 };
 
+/**
+ * Paginated property filtering for public marketplace
+ */
 export const getPaginatedProperties = async (options: {
   page: number;
   limit: number;
   filters: PropertyFiltersType;
   disablePagination?: boolean;
 }): Promise<{ properties: Property[]; total: number }> => {
-    // In a real production app, filtering should be done on the DB side (Supabase).
-    // For this implementation, we fetch all and filter in memory to support complex JSON logic easier, 
-    // but in a high-scale app, this should be refactored to SQL queries.
     const allProps = await getProperties();
     const filtered = filterProperties(allProps, options.filters);
     
@@ -288,7 +475,10 @@ export const getPaginatedProperties = async (options: {
     return { properties: filtered.slice(start, end), total };
 };
 
-const mapPropertyToDbPayload = (property: Partial<Property>) => {
+/**
+ * Maps frontend Property to database payload, embedding canonical business metadata safely
+ */
+const mapPropertyToDbPayload = (property: Partial<Property>, existingMeta: Record<string, any> = {}) => {
     const payload: any = {};
     
     if (property.partnerId) payload.partner_id = property.partnerId;
@@ -332,8 +522,6 @@ const mapPropertyToDbPayload = (property: Partial<Property>) => {
         payload.delivery_date = property.delivery.date;
     }
     
-    if (property.installments) payload.installments_info = property.installments;
-    
     if (property.listingStatus) payload.listing_status = property.listingStatus;
     if (property.contactMethod) payload.contact_method = property.contactMethod;
     if (property.ownerPhone !== undefined) payload.owner_phone = property.ownerPhone;
@@ -344,11 +532,38 @@ const mapPropertyToDbPayload = (property: Partial<Property>) => {
         payload.is_verified = property.verificationStatus === 'verified';
     }
 
+    // Prepare unified business metadata to be persisted in installments_info._meta
+    const baseInstallments = property.installments || existingMeta.installments || {};
+    const updatedMeta = {
+        ...existingMeta,
+        referenceNumber: property.referenceNumber || existingMeta.referenceNumber,
+        slug: property.slug || existingMeta.slug,
+        sourceType: property.sourceType || existingMeta.sourceType,
+        sourceRequestId: property.sourceRequestId || existingMeta.sourceRequestId,
+        publicationStatus: property.publicationStatus || existingMeta.publicationStatus,
+        availabilityStatus: property.availabilityStatus || existingMeta.availabilityStatus,
+        verificationStatus: property.verificationStatus || existingMeta.verificationStatus,
+        verifiedAt: property.verifiedAt || existingMeta.verifiedAt,
+        priceUpdatedAt: property.priceUpdatedAt || existingMeta.priceUpdatedAt,
+        lastPriceConfirmedAt: property.lastPriceConfirmedAt || existingMeta.lastPriceConfirmedAt,
+        lastAvailabilityConfirmedAt: property.lastAvailabilityConfirmedAt || existingMeta.lastAvailabilityConfirmedAt,
+        createdBy: property.createdBy || existingMeta.createdBy,
+        updatedBy: property.updatedBy || existingMeta.updatedBy,
+        history: property.history || existingMeta.history || []
+    };
+
+    payload.installments_info = {
+        ...baseInstallments,
+        _meta: updatedMeta
+    };
+
     return payload;
 };
 
+/**
+ * Creates new property and persists all canonical business state in Supabase
+ */
 export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl'>): Promise<Property> => {
-    // Generate valid RFC-4122 UUID for PostgreSQL compatibility
     const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
         ? crypto.randomUUID()
         : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -360,30 +575,39 @@ export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' 
     const referenceNumber = property.referenceNumber || generatePropertyReference(id);
     const slug = property.slug || generatePropertySlug(property.title?.en || '', id);
 
-    setLocalPropertyMeta(id, {
+    const initialHistoryEntry: PropertyHistoryEntry = {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}`,
+        propertyId: id,
+        changedBy: property.partnerId || 'system',
+        changedAt: now,
+        createdAt: now,
+        changeType: 'creation',
+        field: 'creation',
+        fieldName: 'creation',
+        oldValue: null,
+        newValue: { title: property.title?.en, price: property.priceNumeric, status: property.listingStatus },
+        note: 'Property created'
+    };
+
+    const initialMeta = {
         referenceNumber,
         slug,
         verificationStatus: property.verificationStatus || 'pending',
         availabilityStatus: property.availabilityStatus || 'available',
+        publicationStatus: property.publicationStatus || (property.listingStatus === 'draft' ? 'draft' : 'published'),
         priceUpdatedAt: now,
         lastPriceConfirmedAt: now,
         lastAvailabilityConfirmedAt: now,
         verifiedAt: property.verificationStatus === 'verified' ? now : undefined,
-        sourceType: property.sourceType || 'partner_direct'
-    });
-
-    recordPropertyHistory({
-        propertyId: id,
-        changedBy: property.partnerId || 'system',
-        field: 'creation',
-        oldValue: null,
-        newValue: { title: property.title?.en, price: property.priceNumeric, status: property.listingStatus },
-        note: 'Property created'
-    });
+        sourceType: property.sourceType || 'partner_direct',
+        sourceRequestId: property.sourceRequestId,
+        createdBy: property.createdBy || property.partnerId,
+        history: [initialHistoryEntry]
+    };
 
     const dbPayload = {
         id,
-        ...mapPropertyToDbPayload(property),
+        ...mapPropertyToDbPayload(property, initialMeta),
         created_at: now,
         updated_at: now
     };
@@ -391,48 +615,61 @@ export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' 
     try {
         const { data, error } = await supabase.from('properties').insert(dbPayload).select().single();
         if (error) {
-            console.error("Supabase property insert error, using local fallback persistence:", error);
-            const localProp: Property = {
-                ...property,
-                id,
-                referenceNumber,
-                slug,
-                verificationStatus: property.verificationStatus || 'pending',
-                availabilityStatus: property.availabilityStatus || 'available',
-                priceUpdatedAt: now,
-                listingStartDate: property.listingStartDate || now,
-                imageUrl_small: property.imageUrl,
-                imageUrl_medium: property.imageUrl,
-                imageUrl_large: property.imageUrl,
-            };
-            return localProp;
+            console.error("Supabase property insert error:", error);
+            throw error;
         }
+
+        // Try direct insert to property_history table
+        try {
+            await supabase.from('property_history').insert({
+                id: initialHistoryEntry.id,
+                property_id: id,
+                changed_by: initialHistoryEntry.changedBy,
+                change_type: 'creation',
+                field_name: 'creation',
+                old_value: null,
+                new_value: initialHistoryEntry.newValue,
+                note: initialHistoryEntry.note,
+                created_at: now
+            });
+        } catch {
+            // Table may be pending migration
+        }
+
         return mapPropertyFromDb(data);
     } catch (e) {
         console.error("Failed to insert property into Supabase:", e);
-        const localProp: Property = {
-            ...property,
-            id,
-            referenceNumber,
-            slug,
-            verificationStatus: property.verificationStatus || 'pending',
-            availabilityStatus: property.availabilityStatus || 'available',
-            priceUpdatedAt: now,
-            listingStartDate: property.listingStartDate || now,
-            imageUrl_small: property.imageUrl,
-            imageUrl_medium: property.imageUrl,
-            imageUrl_large: property.imageUrl,
-        };
-        return localProp;
+        throw e;
     }
 };
 
+/**
+ * Updates existing property and records database-backed audit log
+ */
 export const updateProperty = async (propertyId: string, updates: Partial<Property>): Promise<Property | undefined> => {
     const now = new Date().toISOString();
     const existing = await getPropertyById(propertyId).catch(() => undefined);
     
-    // Save metadata locally
-    const metaUpdates: Record<string, any> = {};
+    // Existing metadata from the property itself (persisted in Supabase)
+    const existingMeta = (existing as any)?.installments_info?._meta || {
+        referenceNumber: existing?.referenceNumber,
+        slug: existing?.slug,
+        sourceType: existing?.sourceType,
+        sourceRequestId: existing?.sourceRequestId,
+        publicationStatus: existing?.publicationStatus,
+        availabilityStatus: existing?.availabilityStatus,
+        verificationStatus: existing?.verificationStatus,
+        verifiedAt: existing?.verifiedAt,
+        priceUpdatedAt: existing?.priceUpdatedAt,
+        lastPriceConfirmedAt: existing?.lastPriceConfirmedAt,
+        lastAvailabilityConfirmedAt: existing?.lastAvailabilityConfirmedAt,
+        createdBy: existing?.createdBy,
+        updatedBy: existing?.updatedBy,
+        history: existing?.history || []
+    };
+
+    // Calculate metadata updates
+    const metaUpdates: Record<string, any> = { ...existingMeta };
     if (updates.verificationStatus) {
         metaUpdates.verificationStatus = updates.verificationStatus;
         if (updates.verificationStatus === 'verified') {
@@ -444,55 +681,77 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
         metaUpdates.availabilityStatus = updates.availabilityStatus;
         metaUpdates.lastAvailabilityConfirmedAt = now;
     }
+    if (updates.publicationStatus) {
+        metaUpdates.publicationStatus = updates.publicationStatus;
+    }
     if (updates.priceNumeric !== undefined && existing?.priceNumeric !== updates.priceNumeric) {
         metaUpdates.priceUpdatedAt = now;
         metaUpdates.lastPriceConfirmedAt = now;
     }
     if (updates.sourceType) metaUpdates.sourceType = updates.sourceType;
+    if (updates.sourceRequestId) metaUpdates.sourceRequestId = updates.sourceRequestId;
     if (updates.referenceNumber) metaUpdates.referenceNumber = updates.referenceNumber;
     if (updates.slug) metaUpdates.slug = updates.slug;
+    if (updates.updatedBy) metaUpdates.updatedBy = updates.updatedBy;
 
-    if (Object.keys(metaUpdates).length > 0) {
-        setLocalPropertyMeta(propertyId, metaUpdates);
-    }
-
-    // Record audit history entries
+    // Track audit entries
+    const historyEntries: PropertyHistoryEntry[] = [];
     if (existing) {
         if (updates.priceNumeric !== undefined && updates.priceNumeric !== existing.priceNumeric) {
-            recordPropertyHistory({
+            historyEntries.push({
+                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}-1`,
                 propertyId,
-                changedBy: updates.partnerId || 'admin',
+                changedBy: updates.updatedBy || updates.partnerId || 'admin',
+                changedAt: now,
+                createdAt: now,
+                changeType: 'price',
                 field: 'price',
+                fieldName: 'price',
                 oldValue: existing.priceNumeric,
                 newValue: updates.priceNumeric,
                 note: `Price updated from ${existing.priceNumeric} to ${updates.priceNumeric}`
             });
         }
         if (updates.availabilityStatus !== undefined && updates.availabilityStatus !== existing.availabilityStatus) {
-            recordPropertyHistory({
+            historyEntries.push({
+                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}-2`,
                 propertyId,
-                changedBy: updates.partnerId || 'admin',
+                changedBy: updates.updatedBy || updates.partnerId || 'admin',
+                changedAt: now,
+                createdAt: now,
+                changeType: 'availability',
                 field: 'availability',
+                fieldName: 'availability',
                 oldValue: existing.availabilityStatus || 'available',
                 newValue: updates.availabilityStatus,
                 note: `Availability changed to ${updates.availabilityStatus}`
             });
         }
         if (updates.verificationStatus !== undefined && updates.verificationStatus !== existing.verificationStatus) {
-            recordPropertyHistory({
+            historyEntries.push({
+                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}-3`,
                 propertyId,
-                changedBy: 'admin',
+                changedBy: updates.updatedBy || 'admin',
+                changedAt: now,
+                createdAt: now,
+                changeType: 'verification',
                 field: 'verification',
+                fieldName: 'verification',
                 oldValue: existing.verificationStatus || 'pending',
                 newValue: updates.verificationStatus,
                 note: `Verification status changed to ${updates.verificationStatus}`
             });
         }
         if (updates.listingStatus !== undefined && updates.listingStatus !== existing.listingStatus) {
-            recordPropertyHistory({
+            historyEntries.push({
+                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}-4`,
                 propertyId,
-                changedBy: updates.partnerId || 'admin',
+                changedBy: updates.updatedBy || updates.partnerId || 'admin',
+                changedAt: now,
+                createdAt: now,
+                changeType: 'publication',
                 field: 'publication',
+                fieldName: 'publication',
                 oldValue: existing.listingStatus,
                 newValue: updates.listingStatus,
                 note: `Listing status changed to ${updates.listingStatus}`
@@ -500,30 +759,49 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
         }
     }
 
+    if (historyEntries.length > 0) {
+        metaUpdates.history = [...historyEntries, ...(existingMeta.history || [])].slice(0, 100);
+        // Persist history entries to property_history table
+        historyEntries.forEach(async (h) => {
+            try {
+                await supabase.from('property_history').insert({
+                    id: h.id,
+                    property_id: h.propertyId,
+                    changed_by: h.changedBy,
+                    change_type: h.changeType,
+                    field_name: h.fieldName,
+                    old_value: h.oldValue,
+                    new_value: h.newValue,
+                    note: h.note,
+                    created_at: h.createdAt
+                });
+            } catch {
+                // Table might be pending schema reload
+            }
+        });
+    }
+
     const dbUpdates = {
-        ...mapPropertyToDbPayload(updates),
+        ...mapPropertyToDbPayload(updates, metaUpdates),
         updated_at: now
     };
     
     try {
         const { data, error } = await supabase.from('properties').update(dbUpdates).eq('id', propertyId).select().single();
         if (error) {
-            console.warn("Supabase update returned error (possibly RLS or missing columns), persisting locally:", error);
-            if (existing) {
-                return { ...existing, ...updates, ...metaUpdates };
-            }
-            return undefined;
+            console.error("Supabase update error:", error);
+            throw error;
         }
         return mapPropertyFromDb(data);
     } catch (e) {
         console.error("Error updating property in Supabase:", e);
-        if (existing) {
-            return { ...existing, ...updates, ...metaUpdates };
-        }
-        return undefined;
+        throw e;
     }
 };
 
+/**
+ * Deletes property from Supabase
+ */
 export const deleteProperty = async (propertyId: string): Promise<boolean> => {
     const { error } = await supabase.from('properties').delete().eq('id', propertyId);
     if (error) {

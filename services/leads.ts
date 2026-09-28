@@ -47,6 +47,10 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
         partnerId: payload.partnerId || row.assigned_to,
         managerId: payload.managerId,
         propertyId: payload.propertyId,
+        propertyTitle: payload.propertyTitle,
+        tierDetails: payload.tierDetails,
+        pricingModel: payload.pricingModel,
+        estimatedCost: payload.estimatedCost,
         serviceType: payload.serviceType || 'general',
         customerName: row.requester_name || payload.customerName || 'Anonymous',
         customerPhone: row.requester_phone || payload.customerPhone || '',
@@ -189,8 +193,12 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
     // Lead Routing Logic:
     // If a property-specific partnerId exists, route directly to that listing partner.
     // If assignedTo is explicitly set, honor it.
-    // Otherwise fallback to managerId or general pool.
-    const routedPartner = leadData.partnerId || leadData.assignedTo || leadData.managerId;
+    // If serviceType is finishing, route to Platform Finishing Manager by default for triage
+    const PLATFORM_FINISHING_MANAGER = '3e554896-eee8-4545-9c7f-0a79a4c1a9f1';
+    let routedPartner = leadData.partnerId || leadData.assignedTo || leadData.managerId;
+    if (leadData.serviceType === 'finishing' && (!routedPartner || !isValidUUID(routedPartner) || routedPartner === 'admin-user' || routedPartner === 'platform-finishing-manager-1')) {
+        routedPartner = PLATFORM_FINISHING_MANAGER;
+    }
     const dbAssignedTo = isValidUUID(routedPartner) ? routedPartner : null;
     
     // Enrich with marketing attribution
@@ -212,9 +220,13 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
             serviceTitle: leadData.serviceTitle,
             contactTime: leadData.contactTime,
             customerNotes: leadData.customerNotes,
-            partnerId: leadData.partnerId,
-            managerId: leadData.managerId,
+            partnerId: routedPartner,
+            managerId: leadData.managerId || (leadData.serviceType === 'finishing' ? PLATFORM_FINISHING_MANAGER : undefined),
             propertyId: leadData.propertyId,
+            propertyTitle: leadData.propertyTitle,
+            tierDetails: (leadData as any).tierDetails,
+            pricingModel: (leadData as any).pricingModel,
+            estimatedCost: (leadData as any).estimatedCost,
             referenceImage: leadData.referenceImage,
             itemCategory: leadData.itemCategory,
             dimensions: leadData.dimensions,

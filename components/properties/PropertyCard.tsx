@@ -99,10 +99,19 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
                     loading="lazy"
                 />
             </picture>
-          <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5">
+          <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-1.5">
             <span className="text-white font-semibold px-2.5 py-1 rounded-md text-xs shadow-sm" style={{ backgroundColor: isForSale ? '#16a34a' : '#0284c7' }}>
               {status[language]}
             </span>
+            {props.availabilityStatus === 'sold' ? (
+              <span className="bg-red-600 text-white font-bold px-2 py-1 rounded-md text-xs shadow-sm">
+                {language === 'ar' ? 'تم البيع' : 'Sold'}
+              </span>
+            ) : props.availabilityStatus === 'reserved' ? (
+              <span className="bg-amber-600 text-white font-bold px-2 py-1 rounded-md text-xs shadow-sm">
+                {language === 'ar' ? 'محجوز' : 'Reserved'}
+              </span>
+            ) : null}
             {verificationStatus === 'verified' && (
               <span className="bg-emerald-600/95 text-white font-medium px-2 py-1 rounded-md text-xs shadow-sm flex items-center gap-1">
                 <span>✓</span> {language === 'ar' ? 'معتمد' : 'Verified'}

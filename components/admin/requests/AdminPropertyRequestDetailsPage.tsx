@@ -139,9 +139,12 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
             const validPartnerId = actionAssignee || (partners && partners[0] ? partners[0].id : (currentUser?.id || '3e554896-eee8-4545-9c7f-0a79a4c1a9f1'));
             const newProperty: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl' | 'projectName'> = {
                 partnerId: validPartnerId,
-                sourceType: 'partner_direct',
+                sourceType: 'owner_public',
+                sourceRequestId: request.id,
+                publicationStatus: 'draft',
                 verificationStatus: 'pending',
-                availabilityStatus: 'available', 
+                availabilityStatus: 'available',
+                createdBy: currentUser?.id || 'admin',
                 title: { 
                     en: `[DRAFT] ${pd.propertyType?.en || 'Property'} - ${pd.address || 'New Heliopolis'}`, 
                     ar: `[مسودة] ${pd.propertyType?.ar || 'عقار'} - ${pd.address || 'هليوبوليس الجديدة'}` 
@@ -196,9 +199,20 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
             };
 
             const createdProperty = await addPropertyMutation.mutateAsync(newProperty);
-            await updateRequestStatusMutation.mutateAsync('approved');
+            
+            // Link both ways: update request with status 'approved' and createdPropertyId
+            await updateRequest(request.id, {
+                status: 'approved',
+                payload: {
+                    ...payload,
+                    createdPropertyId: createdProperty.id
+                }
+            });
+            queryClient.invalidateQueries({ queryKey: ['propertyRequests'] });
+            queryClient.invalidateQueries({ queryKey: ['request', requestId] });
+            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
 
-            showToast('Request accepted. Property created as Draft in Platform Properties.', 'success');
+            showToast('Request accepted. Draft property created with explicit traceability link.', 'success');
             setTimeout(() => {
                 navigate(`/admin/properties/edit/${createdProperty.id}`);
             }, 1000);
@@ -268,17 +282,27 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
                         <ArrowLeftIcon className="w-5 h-5" />
                         {t.adminShared.backToRequests}
                     </Link>
-                    <div className={`px-4 py-1.5 rounded-full text-sm font-bold capitalize flex items-center gap-2 ${
-                        request.status === 'approved' ? 'bg-green-100 text-green-700' : 
-                        request.status === 'rejected' ? 'bg-red-100 text-red-700' : 
-                        'bg-amber-100 text-amber-700'
-                    }`}>
-                        <span className={`w-2 h-2 rounded-full ${
-                            request.status === 'approved' ? 'bg-green-500' : 
-                            request.status === 'rejected' ? 'bg-red-500' : 
-                            'bg-amber-500'
-                        }`}></span>
-                        Status: {request.status}
+                    <div className="flex items-center gap-3">
+                        {payload.createdPropertyId && (
+                            <Link 
+                                to={`/admin/properties/edit/${payload.createdPropertyId}`} 
+                                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+                            >
+                                <span>{language === 'ar' ? 'عرض المسودة العقارية المنشأة ←' : 'View Created Draft Property →'}</span>
+                            </Link>
+                        )}
+                        <div className={`px-4 py-1.5 rounded-full text-sm font-bold capitalize flex items-center gap-2 ${
+                            request.status === 'approved' ? 'bg-green-100 text-green-700' : 
+                            request.status === 'rejected' ? 'bg-red-100 text-red-700' : 
+                            'bg-amber-100 text-amber-700'
+                        }`}>
+                            <span className={`w-2 h-2 rounded-full ${
+                                request.status === 'approved' ? 'bg-green-500' : 
+                                request.status === 'rejected' ? 'bg-red-500' : 
+                                'bg-amber-500'
+                            }`}></span>
+                            Status: {request.status}
+                        </div>
                     </div>
                 </div>
 

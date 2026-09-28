@@ -125,6 +125,11 @@ const AdminRequestDetailsPage: React.FC = () => {
 
                      const newProperty: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl' | 'projectName'> = {
                         partnerId: 'individual-listings',
+                        sourceType: 'owner_public',
+                        sourceRequestId: request.id,
+                        publicationStatus: 'draft',
+                        verificationStatus: 'pending',
+                        availabilityStatus: 'available',
                         title: { 
                             en: getEn(pd.title) || 'Untitled Property', 
                             ar: getAr(pd.title) || 'عقار بدون عنوان' 
@@ -175,12 +180,17 @@ const AdminRequestDetailsPage: React.FC = () => {
                         imageUrl_medium: mainImage,
                         imageUrl_large: mainImage,
                         gallery: r.images ? r.images.slice(1) : [],
-                        listingStatus: 'active',
+                        listingStatus: 'draft',
                         contactMethod: pd.contactMethod || 'platform',
                         ownerPhone: pd.ownerPhone,
                         listingStartDate: pd.listingStartDate || new Date().toISOString().split('T')[0],
                     };
-                    await addProperty(newProperty);
+                    const createdProp = await addProperty(newProperty);
+                    await updateRequest(request.id, { 
+                        status: action,
+                        payload: { ...(request.payload as any), createdPropertyId: createdProp.id }
+                    });
+                    return;
                 }
             }
             await updateRequest(request.id, { status: action });

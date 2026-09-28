@@ -121,8 +121,36 @@ CREATE TABLE IF NOT EXISTS public.properties (
     listing_end_date TIMESTAMPTZ,
     contact_method TEXT DEFAULT 'platform',
     owner_phone TEXT,
+    reference_number TEXT,
+    slug TEXT,
+    source_type TEXT DEFAULT 'partner_direct', -- 'developer', 'broker', 'partner_direct', 'platform_admin', 'direct_owner', 'owner_public'
+    publication_status TEXT DEFAULT 'draft', -- 'draft', 'pending_review', 'published', 'rejected', 'archived'
+    availability_status TEXT DEFAULT 'available', -- 'available', 'reserved', 'sold'
+    verification_status TEXT DEFAULT 'pending', -- 'pending', 'verified', 'rejected'
+    is_verified BOOLEAN DEFAULT FALSE,
+    verified_at TIMESTAMPTZ,
+    last_verified_at TIMESTAMPTZ,
+    price_updated_at TIMESTAMPTZ DEFAULT NOW(),
+    last_price_confirmed_at TIMESTAMPTZ,
+    last_availability_confirmed_at TIMESTAMPTZ,
+    created_by UUID REFERENCES public.partners(id) ON DELETE SET NULL,
+    updated_by UUID REFERENCES public.partners(id) ON DELETE SET NULL,
+    source_request_id UUID REFERENCES public.requests(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Main: Property Audit History
+CREATE TABLE IF NOT EXISTS public.property_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    property_id UUID REFERENCES public.properties(id) ON DELETE CASCADE NOT NULL,
+    changed_by TEXT NOT NULL,
+    change_type TEXT,
+    field_name TEXT NOT NULL,
+    old_value JSONB,
+    new_value JSONB,
+    note TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Main: Portfolio Items (Finishing partners)
@@ -137,6 +165,25 @@ CREATE TABLE IF NOT EXISTS public.portfolio_items (
     price NUMERIC,
     dimensions TEXT,
     availability TEXT DEFAULT 'Made to Order',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Main: Canonical Finishing Services
+CREATE TABLE IF NOT EXISTS public.finishing_services (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title_en TEXT NOT NULL,
+    title_ar TEXT NOT NULL,
+    description_en TEXT,
+    description_ar TEXT,
+    category TEXT DEFAULT 'turnkey', -- turnkey, architectural, consultation, commercial, renovation
+    pricing_model TEXT DEFAULT 'per_sqm', -- per_sqm, fixed_package, custom_quote
+    base_price NUMERIC DEFAULT 0,
+    currency TEXT DEFAULT 'EGP',
+    pricing_tiers JSONB DEFAULT '[]'::jsonb,
+    features JSONB DEFAULT '[]'::jsonb,
+    is_active BOOLEAN DEFAULT TRUE,
+    display_order INTEGER DEFAULT 0,
+    target_partner_id UUID REFERENCES public.partners(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -200,9 +247,83 @@ CREATE TABLE IF NOT EXISTS public.site_content (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Main: Finishing Services & Packages
+CREATE TABLE IF NOT EXISTS public.finishing_services (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title_en TEXT NOT NULL,
+    title_ar TEXT NOT NULL,
+    description_en TEXT,
+    description_ar TEXT,
+    category TEXT DEFAULT 'turnkey', -- 'turnkey', 'commercial', 'renovation', 'consultation', 'smart_home'
+    pricing_model TEXT NOT NULL DEFAULT 'per_sqm', -- 'per_sqm', 'package', 'custom_quote'
+    base_price NUMERIC NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'EGP',
+    pricing_tiers JSONB DEFAULT '[]', -- [{ unitType: { ar, en }, areaRange: { ar, en }, price: number }]
+    features JSONB DEFAULT '[]', -- [{ ar: string, en: string, included: boolean }]
+    is_active BOOLEAN DEFAULT TRUE,
+    display_order INTEGER DEFAULT 0,
+    is_popular BOOLEAN DEFAULT FALSE,
+    image_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+-- Finishing: Partner Service Capabilities & Geographic Coverage
+CREATE TABLE IF NOT EXISTS public.partner_capabilities (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE NOT NULL UNIQUE,
+    categories TEXT[] DEFAULT '{}',
+    service_areas TEXT[] DEFAULT '{}',
+    min_budget NUMERIC DEFAULT 0,
+    max_budget NUMERIC,
+    turnkey_capacity INTEGER DEFAULT 5,
+    warranty_years INTEGER DEFAULT 2,
+    has_in_house_architects BOOLEAN DEFAULT TRUE,
+    is_verified_contractor BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Finishing: Quotes & Bids
+CREATE TABLE IF NOT EXISTS public.finishing_quotes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    request_id UUID REFERENCES public.requests(id) ON DELETE CASCADE NOT NULL,
+    partner_id UUID REFERENCES public.partners(id) ON DELETE CASCADE NOT NULL,
+    partner_name TEXT NOT NULL,
+    total_price NUMERIC NOT NULL,
+    price_per_sqm NUMERIC,
+    currency TEXT DEFAULT 'EGP',
+    execution_timeline_days INTEGER NOT NULL,
+    warranty_months INTEGER DEFAULT 24,
+    scope_items JSONB DEFAULT '[]'::jsonb,
+    terms_and_conditions TEXT,
+    status TEXT DEFAULT 'submitted', -- 'draft', 'submitted', 'under_review', 'accepted', 'rejected'
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Finishing: Request History & Audit Trail
+CREATE TABLE IF NOT EXISTS public.finishing_request_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    request_id UUID REFERENCES public.requests(id) ON DELETE CASCADE NOT NULL,
+    action_type TEXT NOT NULL, -- 'created', 'status_change', 'partner_assigned', 'quote_submitted', 'quote_accepted', 'quote_rejected', 'site_visit_scheduled', 'note_added'
+    changed_by TEXT NOT NULL,
+    old_value JSONB,
+    new_value JSONB,
+    note TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 4. INDEXES
 CREATE INDEX IF NOT EXISTS idx_properties_partner ON public.properties(partner_id);
 CREATE INDEX IF NOT EXISTS idx_properties_listing_status ON public.properties(listing_status);
+CREATE INDEX IF NOT EXISTS idx_properties_source_request ON public.properties(source_request_id);
+CREATE INDEX IF NOT EXISTS idx_properties_reference ON public.properties(reference_number);
+CREATE INDEX IF NOT EXISTS idx_properties_slug ON public.properties(slug);
+CREATE INDEX IF NOT EXISTS idx_property_history_prop ON public.property_history(property_id);
+CREATE INDEX IF NOT EXISTS idx_finishing_services_active ON public.finishing_services(is_active, display_order);
+CREATE INDEX IF NOT EXISTS idx_partner_capabilities_partner ON public.partner_capabilities(partner_id);
+CREATE INDEX IF NOT EXISTS idx_finishing_quotes_req ON public.finishing_quotes(request_id);
+CREATE INDEX IF NOT EXISTS idx_finishing_quotes_partner ON public.finishing_quotes(partner_id);
+CREATE INDEX IF NOT EXISTS idx_finishing_req_hist_req ON public.finishing_request_history(request_id);
 CREATE INDEX IF NOT EXISTS idx_requests_assigned ON public.requests(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON public.notifications(user_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_transactions_user ON public.transactions(user_id);
@@ -214,10 +335,55 @@ ALTER TABLE public.partners ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.partners FOR SELECT USING (status = 'active');
 CREATE POLICY "Users can update their own profile" ON public.partners FOR UPDATE USING (auth.uid() = id);
 
+-- Partner Capabilities
+ALTER TABLE public.partner_capabilities ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public can view partner capabilities" ON public.partner_capabilities FOR SELECT USING (true);
+CREATE POLICY "Partners update own capabilities" ON public.partner_capabilities FOR ALL USING (auth.uid() = partner_id);
+CREATE POLICY "Admins manage all partner capabilities" ON public.partner_capabilities FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'platform_finishing_manager' OR role = 'finishing_market_manager'))
+);
+
 -- Properties
 ALTER TABLE public.properties ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public properties are viewable by everyone" ON public.properties FOR SELECT USING (listing_status = 'active');
+CREATE POLICY "Public properties are viewable by everyone" ON public.properties FOR SELECT USING (listing_status IN ('active', 'sold'));
 CREATE POLICY "Partners manage their own properties" ON public.properties FOR ALL USING (auth.uid() = partner_id);
+CREATE POLICY "Admins manage all properties" ON public.properties FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND role = 'super_admin')
+);
+
+-- Property History
+ALTER TABLE public.property_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins view all property history" ON public.property_history FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND role = 'super_admin')
+);
+CREATE POLICY "Partners view own property history" ON public.property_history FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.properties WHERE id = property_history.property_id AND partner_id = auth.uid())
+);
+CREATE POLICY "Authenticated users record property history" ON public.property_history FOR INSERT WITH CHECK (true);
+
+-- Finishing Services
+ALTER TABLE public.finishing_services ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public finishing services are viewable by everyone" ON public.finishing_services FOR SELECT USING (is_active = true);
+CREATE POLICY "Admins and managers manage finishing services" ON public.finishing_services FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'platform_finishing_manager' OR role = 'finishing_market_manager'))
+);
+
+-- Finishing Quotes
+ALTER TABLE public.finishing_quotes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Partners manage own finishing quotes" ON public.finishing_quotes FOR ALL USING (auth.uid() = partner_id);
+CREATE POLICY "Admins view and manage all finishing quotes" ON public.finishing_quotes FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'platform_finishing_manager' OR role = 'finishing_market_manager'))
+);
+
+-- Finishing Request History
+ALTER TABLE public.finishing_request_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins view all finishing request history" ON public.finishing_request_history FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'platform_finishing_manager' OR role = 'finishing_market_manager'))
+);
+CREATE POLICY "Partners view history of assigned requests" ON public.finishing_request_history FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.requests WHERE id = finishing_request_history.request_id AND assigned_to = auth.uid())
+);
+CREATE POLICY "Authenticated users insert finishing request history" ON public.finishing_request_history FOR INSERT WITH CHECK (true);
 
 -- Requests
 ALTER TABLE public.requests ENABLE ROW LEVEL SECURITY;
@@ -240,3 +406,6 @@ CREATE TRIGGER update_partners_updated_at BEFORE UPDATE ON public.partners FOR E
 CREATE TRIGGER update_properties_updated_at BEFORE UPDATE ON public.properties FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON public.projects FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 CREATE TRIGGER update_requests_updated_at BEFORE UPDATE ON public.requests FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_finishing_services_updated_at BEFORE UPDATE ON public.finishing_services FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_partner_capabilities_updated_at BEFORE UPDATE ON public.partner_capabilities FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_finishing_quotes_updated_at BEFORE UPDATE ON public.finishing_quotes FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();

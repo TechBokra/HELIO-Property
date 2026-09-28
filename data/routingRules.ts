@@ -31,7 +31,7 @@ export let routingRulesData: RoutingRule[] = [
             { field: 'payload.serviceType', operator: 'equals', value: 'decorations' },
         ],
         action: {
-            assignTo: 'decoration-manager-1',
+            assignTo: 'f476c295-e80a-41ca-a63b-61ff2f579f71', // decoration_manager
         }
     },
 
@@ -48,7 +48,7 @@ export let routingRulesData: RoutingRule[] = [
             { field: 'payload.serviceType', operator: 'equals', value: 'finishing' },
         ],
         action: {
-            assignTo: 'platform-finishing-manager-1',
+            assignTo: '3e554896-eee8-4545-9c7f-0a79a4c1a9f1', // platform_finishing_manager
         }
     },
 
@@ -64,7 +64,7 @@ export let routingRulesData: RoutingRule[] = [
             { field: 'type', operator: 'equals', value: 'PROPERTY_LISTING_REQUEST' },
         ],
         action: {
-            assignTo: 'platform-real-estate-manager-1',
+            assignTo: '0a497a3e-c563-4996-af33-cb7bdb435632', // listings_manager
         }
     },
 
@@ -80,7 +80,7 @@ export let routingRulesData: RoutingRule[] = [
             { field: 'type', operator: 'equals', value: 'PARTNER_APPLICATION' },
         ],
         action: {
-            assignTo: 'partner-relations-manager-1',
+            assignTo: 'd31a10be-aa1a-4039-96e3-ced2fc763f2f', // partner_relations_manager
         }
     },
 
@@ -97,7 +97,7 @@ export let routingRulesData: RoutingRule[] = [
             { field: 'payload.details', operator: 'contains', value: 'villa' }, // Simple heuristic
         ],
         action: {
-            assignTo: 'real-estate-market-manager-1',
+            assignTo: '45b6ecf3-7e58-4a1a-993f-9b1e75cfd5bf', // customer_relations_manager
         }
     },
 ];

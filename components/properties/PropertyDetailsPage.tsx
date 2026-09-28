@@ -22,6 +22,7 @@ import { isCommercial } from '../../utils/propertyUtils';
 import { Button } from '../ui/Button';
 import StackedImageGallery from './StackedImageGallery';
 import UnifiedMap from '../shared/UnifiedMap';
+import { useAuth } from '../auth/AuthContext';
 import { trackPropertyView, trackWhatsAppClick, trackCallClick } from '../../services/analytics';
 
 const PropertyDetailsPage: React.FC = () => {
@@ -30,6 +31,7 @@ const PropertyDetailsPage: React.FC = () => {
     const t_page = t.propertyDetailsPage;
     const { isFavorite, toggleFavorite } = useFavorites();
     const { showToast } = useToast();
+    const { currentUser } = useAuth();
     const navigate = useNavigate();
 
     const fetchProperty = useCallback(() => getPropertyById(propertyId!), [propertyId]);
@@ -178,6 +180,33 @@ const PropertyDetailsPage: React.FC = () => {
         );
     }
 
+    const isPublished = property.listingStatus === 'active' || property.listingStatus === 'sold' || property.publicationStatus === 'published';
+    const isOwner = !!(currentUser?.id && currentUser.id === property.partnerId);
+    const isAdmin = !!(currentUser?.role === 'super_admin' || currentUser?.role?.includes('_manager'));
+    const canView = isPublished || isOwner || isAdmin;
+
+    if (!canView) {
+        return (
+            <div className="text-center py-20 container mx-auto px-4">
+                <SEO title="عقار قيد المراجعة | Property Under Review" description="This listing is under review and not published yet." />
+                <div className="max-w-md mx-auto bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-8">
+                    <span className="text-3xl">🔒</span>
+                    <h1 className="text-2xl font-bold mt-4 text-gray-900 dark:text-white">
+                        {language === 'ar' ? 'العقار غير متاح للعرض العام حالياً' : 'Listing Not Publicly Available'}
+                    </h1>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        {language === 'ar' 
+                            ? 'هذا العقار في مرحلة المسودة أو قيد المراجعة والتدقيق الإداري.' 
+                            : 'This listing is currently in draft or undergoing administrative review.'}
+                    </p>
+                    <Link to="/properties" className="mt-6 inline-block bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold px-6 py-2.5 rounded-lg transition-colors">
+                        {t_page.backButton}
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     return (
       <>
         <SEO 
@@ -187,6 +216,16 @@ const PropertyDetailsPage: React.FC = () => {
             canonicalUrl={propertyUrl}
             structuredData={structuredData}
         />
+        {!isPublished && (
+            <div className="bg-amber-500 text-gray-950 font-bold text-center py-2.5 px-4 text-sm flex items-center justify-center gap-2 shadow-md">
+                <span>⚠️</span>
+                <span>
+                    {language === 'ar' 
+                        ? 'وضع المعاينة الإدارية: هذا العقار مسودة وغير منشور للمستخدمين في السوق العام بعد.' 
+                        : 'Preview Mode: This listing is currently a Draft and is not published to the public marketplace.'}
+                </span>
+            </div>
+        )}
         {lightboxOpen && <Lightbox images={allImages} startIndex={lightboxStartIndex} onClose={() => setLightboxOpen(false)} />}
         
         {contactModalOpen && partner?.contactMethods && (
@@ -401,6 +440,32 @@ const PropertyDetailsPage: React.FC = () => {
                                 {property.finishingStatus && <DetailItem label={t.propertiesPage.finishing} value={property.finishingStatus[language]} icon={<WrenchScrewdriverIcon className="w-5 h-5"/>}/>}
                                 {property.floor !== undefined && (property.type.en === 'Apartment' || property.type.en === 'Commercial') && <DetailItem label={t_page.floor} value={property.floor} icon={<FloorIcon className="w-5 h-5"/>}/>}
                                 {property.isInCompound && <DetailItem label={t_page.inCompound} value={t_page.yes} icon={<CompoundIcon className="w-5 h-5"/>}/>}
+                                
+                                <div className="mt-3 p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5">
+                                        <div>
+                                            <p className="font-bold text-gray-900 dark:text-amber-300 text-xs">
+                                                {language === 'ar' ? 'باقات التشطيب والتصميم الداخلي' : 'Finishing & Interior Packages'}
+                                            </p>
+                                            <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                                                {language === 'ar' ? `احصل على مقايسة دقيقة لمساحة ${property.area} م²` : `Get a verified quote for ${property.area} m²`}
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate('/finishing', {
+                                                state: {
+                                                    propertyId: property.id,
+                                                    propertyTitle: property.title[language],
+                                                    propertyArea: property.area
+                                                }
+                                            })}
+                                            className="px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold text-xs shadow-sm transition-colors whitespace-nowrap"
+                                        >
+                                            {language === 'ar' ? 'طلب باقة تشطيب' : 'Request Finishing'}
+                                        </button>
+                                    </div>
+                                </div>
                             </DetailSection>
 
                             <DetailSection title={t_page.deliveryPayment}>

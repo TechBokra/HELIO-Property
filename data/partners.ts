@@ -139,7 +139,7 @@ export let partnersData: (Omit<Partner, 'name' | 'description' | 'role'> & { pas
 
     // Decoration Manager
     {
-        id: 'decoration-manager-1',
+        id: 'f476c295-e80a-41ca-a63b-61ff2f579f71',
         imageUrl: 'https://images.unsplash.com/photo-1531891437562-b1a5b0648509?q=75&w=1974&auto.format&fit=crop',
         email: 'decor@onlyhelio.com',
         password: 'password',
@@ -151,7 +151,7 @@ export let partnersData: (Omit<Partner, 'name' | 'description' | 'role'> & { pas
     
     // Platform Finishing Manager (Internal)
     {
-        id: 'platform-finishing-manager-1',
+        id: '3e554896-eee8-4545-9c7f-0a79a4c1a9f1',
         imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=75&w=1974&auto.format&fit=crop',
         email: 'fin-platform@onlyhelio.com',
         password: 'password',

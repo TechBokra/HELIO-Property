@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Property, FilterOption } from '../../types';
@@ -56,6 +56,7 @@ const PropertyFormPage: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const { currentUser, hasPermission } = useAuth();
+    const isAdmin = hasPermission(Permission.MANAGE_ALL_PROPERTIES);
     const { language, t } = useLanguage();
     const { showToast } = useToast();
     const queryClient = useQueryClient();
@@ -177,7 +178,6 @@ const PropertyFormPage: React.FC = () => {
                  navigate(redirectPath);
                  showToast("You don't have permission to edit this property", "error");
             }
-        } else if (!propertyId) {
              // New Property Defaults
              reset({
                 projectId: searchParams.get('projectId') || undefined,
@@ -192,12 +192,12 @@ const PropertyFormPage: React.FC = () => {
                 delivery: { isImmediate: 'true', date: '' },
                 installments: { downPayment: 0, monthlyInstallment: 0, years: 0 },
                 contactMethod: 'platform', ownerPhone: '',
-                listingStatus: 'active',
+                listingStatus: isAdmin ? 'active' : 'draft',
                 priceNumeric: 0,
                 title: { ar: '', en: '' }, description: { ar: '', en: '' }, address: { ar: '', en: '' }
             });
         }
-    }, [propertyId, propertyToEdit, currentUser, navigate, reset, searchParams, hasPermission]);
+    }, [propertyId, propertyToEdit, currentUser, navigate, reset, searchParams, hasPermission, isAdmin]);
     
     // Image Handlers
     const handleMainImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -278,8 +278,21 @@ const PropertyFormPage: React.FC = () => {
             en: `EGP ${pricePerMeterNumeric.toLocaleString('en-US')}/m²`,
         } : undefined;
 
+        const isPartner = !isAdmin;
+        const initialStatus = isPartner && !propertyId ? 'draft' : formData.listingStatus;
+        const verificationStatus = isAdmin 
+            ? (propertyToEdit?.verificationStatus || 'pending') 
+            : (propertyToEdit?.verificationStatus || 'pending');
+
         const propertyData: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl'> = {
             ...formData,
+            sourceRequestId: propertyToEdit?.sourceRequestId || (!propertyId ? searchParams.get('sourceRequestId') || undefined : undefined),
+            sourceType: propertyToEdit?.sourceType || (isPartner ? (currentUser.type === 'developer' ? 'developer' : 'broker') : 'platform_admin'),
+            verificationStatus,
+            listingStatus: initialStatus as any,
+            publicationStatus: initialStatus === 'draft' ? 'draft' : initialStatus === 'inactive' ? 'archived' : 'published',
+            createdBy: propertyToEdit?.createdBy || currentUser.id,
+            updatedBy: currentUser.id,
             status: { 
                 en: formData.status.en as 'For Sale' | 'For Rent', 
                 ar: formData.status.ar as 'للبيع' | 'إيجار' 
@@ -300,7 +313,6 @@ const PropertyFormPage: React.FC = () => {
             imageUrl_medium: finalMainImage, 
             imageUrl_large: finalMainImage, 
             gallery: finalGalleryImages,
-            listingStatus: formData.listingStatus as any,
             type: { en: formData.type.en as any, ar: formData.type.ar },
             beds: formData.beds || 0,
             baths: formData.baths || 0,
@@ -316,7 +328,6 @@ const PropertyFormPage: React.FC = () => {
 
     if ((isLoadingContext || loadingProperty) && !projects) return <div className="p-8 text-center">Loading form...</div>;
 
-    const isAdmin = hasPermission(Permission.MANAGE_ALL_PROPERTIES);
     if (isLimitReached && !propertyId && !isAdmin) {
         return <UpgradeNotice />;
     }
@@ -331,6 +342,27 @@ const PropertyFormPage: React.FC = () => {
                     onLocationSelect={handleLocationSelect} 
                     initialLocation={watch('location')}
                 />
+            )}
+
+            {propertyToEdit?.sourceRequestId && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <p className="text-xs uppercase font-bold tracking-wider text-amber-700 dark:text-amber-400">
+                            {language === 'ar' ? 'أصل العقار: طلب إضافة عقار عام' : 'Origin: Public Listing Request'}
+                        </p>
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mt-0.5">
+                            {language === 'ar' 
+                                ? `تم إنشاء هذا العقار من الطلب رقم #${propertyToEdit.sourceRequestId.slice(0, 8)}` 
+                                : `This listing was generated from public request #${propertyToEdit.sourceRequestId.slice(0, 8)}`}
+                        </p>
+                    </div>
+                    <Link 
+                        to={`/admin/requests/property-listing-request/${propertyToEdit.sourceRequestId}`}
+                        className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold text-xs inline-flex items-center gap-1.5 transition-colors self-start sm:self-auto shadow-sm"
+                    >
+                        <span>{language === 'ar' ? 'عرض تفاصيل الطلب الأصلي ←' : 'View Original Request Details →'}</span>
+                    </Link>
+                </div>
             )}
 
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">{propertyId ? td.editTitle : td.addTitle}</h1>

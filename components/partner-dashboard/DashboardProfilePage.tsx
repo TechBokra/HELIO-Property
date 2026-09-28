@@ -10,7 +10,7 @@ import { updatePartner } from '../../services/partners';
 import { useToast } from '../shared/ToastContext';
 import { useLanguage } from '../shared/LanguageContext';
 import { Button } from '../ui/Button';
-import { WhatsAppIcon, PhoneIcon, ClipboardDocumentListIcon, ShieldCheckIcon } from '../ui/Icons';
+import { WhatsAppIcon, PhoneIcon, ClipboardDocumentListIcon, ShieldCheckIcon, WrenchScrewdriverIcon } from '../ui/Icons';
 import { ToggleSwitch } from '../ui/ToggleSwitch';
 import { uploadFile } from '../../services/upload';
 
@@ -330,6 +330,25 @@ const DashboardProfilePage: React.FC = () => {
                             </Link>
                         </div>
                     ) : <p className="text-sm text-gray-500">No active subscription.</p>}
+
+                    {/* Finishing Capabilities Card */}
+                    <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                            <WrenchScrewdriverIcon className="w-5 h-5 text-amber-500" />
+                            {language === 'ar' ? 'قدرات وتغطية التشطيب' : 'Finishing Capabilities & Scope'}
+                        </h3>
+                        <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                            {language === 'ar'
+                                ? 'حدد مجالات العمل (تسليم مفتاح، ديكور، تجاري، ترميم) والمدن وميزانيات المشاريع.'
+                                : 'Define your disciplines (turnkey, commercial, renovation) and target cities for RFQs.'}
+                        </p>
+                        <Link 
+                            to="/dashboard/capabilities"
+                            className="inline-flex items-center justify-center w-full text-center bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-semibold px-4 py-2.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors text-xs"
+                        >
+                            {language === 'ar' ? 'إدارة التخصصات ومناطق الخدمة ⚙' : 'Configure Capabilities & Areas ⚙'}
+                        </Link>
+                    </div>
                 </div>
             </div>
         </div>

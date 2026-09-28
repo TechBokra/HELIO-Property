@@ -44,11 +44,23 @@ const PropertyListItem = memo<Property>((props) => {
                             loading="lazy"
                         />
                     </picture>
-                    <span 
-                        className={`absolute top-3 ${language === 'ar' ? 'left-3' : 'right-3'} text-white font-bold px-2 py-1 rounded text-xs shadow-sm ${isForSale ? 'bg-green-600' : 'bg-sky-600'}`}
-                    >
-                        {status[language]}
-                    </span>
+                    <div className={`absolute top-3 ${language === 'ar' ? 'left-3' : 'right-3'} flex flex-col gap-1 items-start`}>
+                        <span 
+                            className={`text-white font-bold px-2 py-1 rounded text-xs shadow-sm ${isForSale ? 'bg-green-600' : 'bg-sky-600'}`}
+                        >
+                            {status[language]}
+                        </span>
+                        {props.availabilityStatus === 'sold' && (
+                            <span className="bg-red-600 text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                {language === 'ar' ? 'تم البيع' : 'Sold'}
+                            </span>
+                        )}
+                        {props.availabilityStatus === 'reserved' && (
+                            <span className="bg-amber-600 text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                {language === 'ar' ? 'محجوز' : 'Reserved'}
+                            </span>
+                        )}
+                    </div>
                 </div>
                 
                 {/* Content Section */}

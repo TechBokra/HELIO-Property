@@ -12,6 +12,9 @@ import { BanknotesIcon, PhoneIcon, EnvelopeIcon, MapPinIcon, WhatsAppIcon } from
 import DynamicForm from '../shared/DynamicForm';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { getAttribution } from '../../utils/attribution';
+import { PLATFORM_FINISHING_MANAGER_ID } from '../../services/finishing';
+
+const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
 
 const ServiceRequestPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -26,17 +29,41 @@ const ServiceRequestPage: React.FC = () => {
     const { data: siteContent } = useSiteContent();
     const footerContent = siteContent?.footer;
     
-    const { serviceTitle, partnerId, propertyId, workItem, isCustom, serviceType, tier, isBooking, isPurchase, categoryName } = location.state || {};
+    const { 
+        serviceTitle, 
+        partnerId: rawPartnerId, 
+        propertyId, 
+        propertyTitle,
+        workItem, 
+        isCustom, 
+        serviceType, 
+        tier, 
+        isBooking, 
+        isPurchase, 
+        categoryName 
+    } = location.state || {};
+
+    const effectiveServiceType = serviceType || (categoryName?.toLowerCase().includes('finish') ? 'finishing' : 'finishing');
+
+    // Route finishing without specific partner or with mock ID directly to Platform Finishing Manager
+    const partnerId = useMemo(() => {
+        if (!rawPartnerId || rawPartnerId === 'admin-user' || rawPartnerId === 'platform-finishing-manager-1') {
+            if (effectiveServiceType === 'decorations') return DECORATION_MANAGER_ID;
+            return PLATFORM_FINISHING_MANAGER_ID;
+        }
+        return rawPartnerId;
+    }, [rawPartnerId, effectiveServiceType]);
+
     const { data: allPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
     const { showToast } = useToast();
     
     React.useEffect(() => {
-        if (!serviceTitle || !partnerId) {
+        if (!serviceTitle) {
             navigate('/');
         }
-    }, [serviceTitle, partnerId, navigate]);
+    }, [serviceTitle, navigate]);
 
-    if (!serviceTitle || !partnerId) {
+    if (!serviceTitle) {
         return null;
     }
 
@@ -126,8 +153,11 @@ const ServiceRequestPage: React.FC = () => {
                         serviceType: serviceType || 'finishing',
                         serviceTitle: bookingTitle,
                         partnerId: partnerId,
-                        managerId: 'platform-finishing-manager-1',
+                        managerId: PLATFORM_FINISHING_MANAGER_ID,
+                        propertyId: propertyId,
+                        propertyTitle: propertyTitle,
                         tierDetails: tier,
+                        pricingModel: tier?.priceModel || 'fixed_package',
                         status: 'new',
                         ...attribution,
                     }
@@ -147,7 +177,7 @@ const ServiceRequestPage: React.FC = () => {
                         serviceType: serviceType || 'decorations',
                         serviceTitle: `Order: ${workItem.title[language]}`,
                         partnerId: partnerId,
-                        managerId: 'decoration-manager-1', 
+                        managerId: DECORATION_MANAGER_ID, 
                         workItem: workItem,
                         status: 'new',
                         ...attribution,
@@ -158,6 +188,7 @@ const ServiceRequestPage: React.FC = () => {
             // Standard Lead Submission with Marketing & Conversion Attribution
             addRequest(RequestType.LEAD, {
                 requesterInfo: { name: formData.customerName, phone: formData.customerPhone },
+                assignedTo: partnerId,
                 payload: {
                     customerName: formData.customerName,
                     customerPhone: formData.customerPhone,
@@ -165,9 +196,12 @@ const ServiceRequestPage: React.FC = () => {
                     customerNotes: finalNotes,
                     partnerId: partnerId,
                     serviceTitle: serviceTitle,
-                    managerId: managerId,
+                    managerId: managerId || (effectiveServiceType === 'finishing' ? PLATFORM_FINISHING_MANAGER_ID : undefined),
                     propertyId: propertyId,
-                    serviceType: serviceType || (propertyId ? 'property' : 'general'),
+                    propertyTitle: propertyTitle,
+                    serviceType: effectiveServiceType,
+                    tierDetails: tier,
+                    pricingModel: tier?.priceModel,
                     referenceImage: formData.referenceImage,
                     // Add specific fields to payload top-level for easy access in details view
                     dimensions: formData.dimensions,

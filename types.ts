@@ -121,7 +121,10 @@ export interface PropertyHistoryEntry {
     propertyId: string;
     changedBy: string;
     changedAt: string;
+    createdAt?: string;
+    changeType?: string;
     field: string;
+    fieldName?: string;
     oldValue: any;
     newValue: any;
     note?: string;
@@ -168,7 +171,8 @@ export interface Property {
     contactMethod?: 'platform' | 'direct';
     ownerPhone?: string;
     leadCount?: number;
-    sourceType?: 'developer' | 'broker' | 'partner_direct' | 'platform_admin';
+    sourceType?: 'developer' | 'broker' | 'partner_direct' | 'platform_admin' | 'direct_owner' | 'owner_public';
+    sourceRequestId?: string;
     verificationStatus?: VerificationStatus;
     verifiedAt?: string;
     priceUpdatedAt?: string;
@@ -178,6 +182,7 @@ export interface Property {
     lastAvailabilityConfirmedAt?: string;
     createdBy?: string;
     updatedBy?: string;
+    history?: PropertyHistoryEntry[];
 }
 
 export interface PortfolioItem {
@@ -262,6 +267,7 @@ export interface Lead {
     partnerId: string;
     managerId?: string;
     propertyId?: string;
+    propertyTitle?: string;
     serviceType: 'finishing' | 'decorations' | 'property' | 'general' | 'property_search' | string;
     customerName: string;
     customerPhone: string;
@@ -277,6 +283,9 @@ export interface Lead {
     dimensions?: string;
     referenceImage?: string;
     assignedTo?: string;
+    tierDetails?: any;
+    pricingModel?: FinishingPricingModel;
+    estimatedCost?: number;
     source?: 'property_page' | 'whatsapp' | 'call' | 'inquiry_form' | 'contact_page' | string;
     utmSource?: string;
     utmCampaign?: string;
@@ -489,12 +498,149 @@ export interface SiteContent {
     whyNewHeliopolis: any;
     quotes: Quote[];
     footer: any;
-    finishingServices?: any[];
+    finishingServices?: FinishingService[];
     projectsPage?: any;
     finishingPage?: any;
     decorationsPage?: any;
     privacyPolicy?: any;
     termsOfUse?: any;
+}
+
+export type FinishingPricingModel = 'per_sqm' | 'fixed_package' | 'custom_quote';
+
+export interface FinishingPricingTier {
+    id?: string;
+    unitType: { ar: string; en: string };
+    areaRange: { ar: string; en: string };
+    price: number;
+    priceModel?: FinishingPricingModel;
+    description?: { ar?: string; en?: string };
+}
+
+export interface FinishingServiceFeature {
+    ar: string;
+    en: string;
+    included: boolean;
+}
+
+export interface FinishingService {
+    id: string;
+    title: { ar: string; en: string };
+    description: { ar: string; en: string };
+    category?: 'turnkey' | 'commercial' | 'renovation' | 'consultation' | 'smart_home' | 'architectural';
+    pricingModel: FinishingPricingModel;
+    basePrice?: number;
+    currency?: string;
+    pricingTiers: FinishingPricingTier[];
+    features?: FinishingServiceFeature[];
+    isActive?: boolean;
+    displayOrder?: number;
+    targetPartnerId?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface FinishingCategoryDefinition {
+    id: 'turnkey' | 'architectural' | 'commercial' | 'renovation' | 'smart_home' | 'mep_specialized' | string;
+    name: { ar: string; en: string };
+    description: { ar: string; en: string };
+    iconName: string;
+    typicalPricingModel: FinishingPricingModel;
+    warrantyMonths: number;
+    avgDeliveryDays: number;
+}
+
+export interface PartnerFinishingCapability {
+    id?: string;
+    partnerId: string;
+    categories: string[];
+    serviceAreas: string[];
+    minBudget: number;
+    maxBudget?: number;
+    turnkeyCapacity: number;
+    warrantyYears: number;
+    hasInHouseArchitects: boolean;
+    isVerifiedContractor: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface QuoteScopeItem {
+    id: string;
+    category: string; // 'mep' | 'masonry' | 'paint' | 'flooring' | 'carpentry' | 'supervision' | 'materials'
+    description: { ar: string; en: string };
+    amount: number;
+    unit?: string;
+}
+
+export type FinishingQuoteStatus = 'draft' | 'submitted' | 'under_review' | 'accepted' | 'rejected';
+
+export interface FinishingQuote {
+    id: string;
+    requestId: string;
+    partnerId: string;
+    partnerName: string;
+    totalPrice: number;
+    pricePerSqm?: number;
+    currency: string;
+    executionTimelineDays: number;
+    warrantyMonths: number;
+    scopeItems: QuoteScopeItem[];
+    termsAndConditions?: string;
+    status: FinishingQuoteStatus;
+    notes?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface FinishingRequestHistoryEntry {
+    id: string;
+    requestId: string;
+    actionType: 'created' | 'status_change' | 'partner_assigned' | 'quote_submitted' | 'quote_accepted' | 'quote_rejected' | 'site_visit_scheduled' | 'note_added' | 'milestone_updated';
+    changedBy: string;
+    oldValue?: any;
+    newValue?: any;
+    note?: string;
+    createdAt: string;
+}
+
+export type FinishingMilestoneStatus = 'pending' | 'in_progress' | 'completed' | 'delayed';
+export type MilestonePaymentStatus = 'pending' | 'due' | 'paid';
+
+export interface FinishingProjectMilestone {
+    id: string;
+    requestId: string;
+    stageNumber: number;
+    title: { ar: string; en: string };
+    description: { ar: string; en: string };
+    targetDays: number;
+    status: FinishingMilestoneStatus;
+    progressPercentage: number;
+    paymentPercentage: number;
+    paymentStatus: MilestonePaymentStatus;
+    inspectorNotes?: string;
+    completedAt?: string;
+    updatedAt: string;
+}
+
+export interface FinishingEstimateBreakdown {
+    area: number;
+    tier: string;
+    tierName: { ar: string; en: string };
+    pricePerSqm: number;
+    totalEstimatedCost: number;
+    mepCost: number;
+    flooringMasonryCost: number;
+    carpentryAluminumCost: number;
+    paintsDecorCost: number;
+    supervisionWarrantyCost: number;
+    estimatedDays: number;
+    specs: {
+        bedrooms: number;
+        bathrooms: number;
+        style: string;
+        addons: string[];
+    };
 }
 
 export type FormCategory = 'public' | 'lead_gen' | 'partner_app' | 'admin_internal';
@@ -532,7 +678,6 @@ export interface FormDefinition {
     submitButtonLabel?: { ar: string; en: string };
     createdAt: string;
     updatedAt: string;
-    
 }
 
 export interface AIEstimatorItem {

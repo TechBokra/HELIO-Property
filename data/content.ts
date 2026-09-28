@@ -236,39 +236,75 @@ export let siteContentData: SiteContent = {
   },
   finishingServices: [
       {
+          id: 'fs-consultation',
           title: { ar: "الاستشارة ووضع التصور", en: "Consultation & Concept" },
           description: { 
               ar: "جلسات استشارية معمقة مع مهندسينا لفهم رؤيتك ومتطلباتك، نترجمها إلى تصورات مبدئية مبتكرة للتصميم الداخلي مع تقديم مقايسات تقديرية دقيقة للتكاليف وخيارات المواد.", 
-              en: "In-depth consultation sessions with our engineers to understand your vision and requirements, translating them into innovative initial interior design concepts with accurate cost estimates and material options." 
+              en: "In-depth consultation sessions with our engineers to understand your vision and requirements, translating them into innovative initial interior design concepts with accurate cost estimates." 
           },
+          category: 'consultation',
+          pricingModel: 'fixed_package',
+          basePrice: 1500,
+          currency: 'EGP',
+          displayOrder: 1,
+          isActive: true,
           pricingTiers: [
-              { unitType: { ar: "مكالمة استشارية أولية", en: "Initial Consultation Call" }, areaRange: { ar: "حتى 1 ساعة", en: "Up to 1 hour" }, price: 0 },
-              { unitType: { ar: "زيارة معاينة", en: "Site Visit" }, areaRange: { ar: "القاهرة والجيزة", en: "Cairo & Giza" }, price: 1500 },
-              { unitType: { ar: "تصميم Moodboard", en: "Moodboard Design" }, areaRange: { ar: "لكل غرفة", en: "Per Room" }, price: 2500 }
+              { id: 'tier-c1', unitType: { ar: "مكالمة استشارية أولية", en: "Initial Consultation Call" }, areaRange: { ar: "حتى 1 ساعة", en: "Up to 1 hour" }, price: 0, priceModel: 'fixed_package' },
+              { id: 'tier-c2', unitType: { ar: "زيارة معاينة ميدانية", en: "Site Visit" }, areaRange: { ar: "القاهرة والجيزة", en: "Cairo & Giza" }, price: 1500, priceModel: 'fixed_package' },
+              { id: 'tier-c3', unitType: { ar: "تصميم Moodboard", en: "Moodboard Design" }, areaRange: { ar: "لكل غرفة", en: "Per Room" }, price: 2500, priceModel: 'fixed_package' }
+          ],
+          features: [
+              { ar: "معاينة هندسية دقيقة للموقع", en: "Precise engineering survey", included: true },
+              { ar: "مقايسة تكاليف مبدئية شفافة", en: "Transparent cost estimate", included: true },
+              { ar: "مقترحات وتوزيعات للفراغات", en: "Space planning proposals", included: true }
           ]
       },
       {
+          id: 'fs-3d-design',
           title: { ar: "التصميم ثلاثي الأبعاد (3D)", en: "3D Design & Visualization" },
           description: { 
               ar: "تصميمات واقعية ثلاثية الأبعاد تتيح لك رؤية منزلك قبل التنفيذ، مع توزيع الإضاءة والأثاث والألوان، ومخططات تنفيذية شاملة.", 
               en: "Realistic 3D designs allowing you to see your home before execution, including lighting, furniture, and colors, with comprehensive executive plans." 
           },
+          category: 'architectural',
+          pricingModel: 'per_sqm',
+          basePrice: 150,
+          currency: 'EGP',
+          displayOrder: 2,
+          isActive: true,
           pricingTiers: [
-              { unitType: { ar: "شقة", en: "Apartment" }, areaRange: { ar: "حتى 150 متر", en: "Up to 150m" }, price: 15000 },
-              { unitType: { ar: "شقة كبيرة / دوبلكس", en: "Large Apt / Duplex" }, areaRange: { ar: "150 - 250 متر", en: "150 - 250m" }, price: 25000 },
-              { unitType: { ar: "فيلا", en: "Villa" }, areaRange: { ar: "أكبر من 250 متر", en: "Above 250m" }, price: 40000 }
+              { id: 'tier-3d-1', unitType: { ar: "شقة", en: "Apartment" }, areaRange: { ar: "حتى 150 متر", en: "Up to 150m" }, price: 15000, priceModel: 'fixed_package' },
+              { id: 'tier-3d-2', unitType: { ar: "شقة كبيرة / دوبلكس", en: "Large Apt / Duplex" }, areaRange: { ar: "150 - 250 متر", en: "150 - 250m" }, price: 25000, priceModel: 'fixed_package' },
+              { id: 'tier-3d-3', unitType: { ar: "فيلا", en: "Villa" }, areaRange: { ar: "أكبر من 250 متر", en: "Above 250m" }, price: 40000, priceModel: 'fixed_package' }
+          ],
+          features: [
+              { ar: "لقطات ثلاثية الأبعاد واقعية لكل فراغ", en: "Realistic 3D renders for every space", included: true },
+              { ar: "مخططات تنفيذية تفصيلية للكهرباء والسباكة", en: "Executive MEP drawings", included: true },
+              { ar: "قائمة توصيف الخامات وأكواد الدهانات", en: "Material & paint specification sheet", included: true }
           ]
       },
       {
+          id: 'fs-turnkey',
           title: { ar: "التنفيذ والإشراف الكامل (Turnkey)", en: "Turnkey Execution" },
           description: { 
               ar: "تولي مسؤولية التنفيذ بالكامل من الألف إلى الياء، مع ضمان الجودة والالتزام بالمواعيد والميزانية، وتسليم المفتاح.", 
               en: "Full execution responsibility from A to Z, ensuring quality, deadlines, and budget adherence, delivering turn-key." 
           },
+          category: 'turnkey',
+          pricingModel: 'per_sqm',
+          basePrice: 4500,
+          currency: 'EGP',
+          displayOrder: 3,
+          isActive: true,
           pricingTiers: [
-              { unitType: { ar: "تشطيب اقتصادي", en: "Economic Finishing" }, areaRange: { ar: "سعر المتر", en: "Price per Meter" }, price: 4500 },
-              { unitType: { ar: "تشطيب سوبر لوكس", en: "Super Lux Finishing" }, areaRange: { ar: "سعر المتر", en: "Price per Meter" }, price: 7500 },
-              { unitType: { ar: "تشطيب فندقي / الترا", en: "Ultra / Hotel Finishing" }, areaRange: { ar: "سعر المتر", en: "Price per Meter" }, price: 12000 }
+              { id: 'tier-tk-1', unitType: { ar: "تشطيب اقتصادي", en: "Economic Finishing" }, areaRange: { ar: "سعر المتر", en: "Price per Meter" }, price: 4500, priceModel: 'per_sqm' },
+              { id: 'tier-tk-2', unitType: { ar: "تشطيب سوبر لوكس", en: "Super Lux Finishing" }, areaRange: { ar: "سعر المتر", en: "Price per Meter" }, price: 7500, priceModel: 'per_sqm' },
+              { id: 'tier-tk-3', unitType: { ar: "تشطيب فندقي / الترا", en: "Ultra / Hotel Finishing" }, areaRange: { ar: "سعر المتر", en: "Price per Meter" }, price: 12000, priceModel: 'per_sqm' }
+          ],
+          features: [
+              { ar: "إشراف هندسي مستمر وتقارير دورية", en: "Continuous engineering supervision & reports", included: true },
+              { ar: "ضمان تعاقدي شامل لمدة سنتين", en: "2-year comprehensive contractual warranty", included: true },
+              { ar: "التزام صارم بالجدول الزمني وغرامة تأخير", en: "Strict schedule commitment with penalty clauses", included: true }
           ]
       }
     ]

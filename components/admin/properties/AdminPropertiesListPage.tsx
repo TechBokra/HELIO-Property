@@ -258,7 +258,24 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
                                     </select>
                                 </TableCell>
                                 <TableCell>
-                                    <StatusBadge status={prop.listingStatus} />
+                                    <select
+                                        value={prop.listingStatus}
+                                        onChange={(e) => mutation.mutate({ 
+                                            id: prop.id, 
+                                            status: e.target.value as any 
+                                        })}
+                                        className={`text-xs font-semibold py-1 px-2 rounded border border-gray-200 dark:border-gray-700 ${
+                                            prop.listingStatus === 'active' ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                                            prop.listingStatus === 'draft' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' :
+                                            prop.listingStatus === 'sold' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
+                                            'bg-gray-50 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                        }`}
+                                    >
+                                        <option value="active">{language === 'ar' ? 'منشور (نشط)' : 'Active (Published)'}</option>
+                                        <option value="draft">{language === 'ar' ? 'مسودة' : 'Draft'}</option>
+                                        <option value="inactive">{language === 'ar' ? 'مؤرشف' : 'Archived'}</option>
+                                        <option value="sold">{language === 'ar' ? 'تم البيع' : 'Sold'}</option>
+                                    </select>
                                 </TableCell>
                                 <TableCell>
                                     <div className="flex items-center gap-2">

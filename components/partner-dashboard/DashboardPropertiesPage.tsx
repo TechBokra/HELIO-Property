@@ -137,39 +137,88 @@ const DashboardPropertiesPage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredProperties.map((prop) => {
                         const isForSale = prop.status.en === 'For Sale';
+                        const isVerified = prop.verificationStatus === 'verified';
+                        const availability = prop.availabilityStatus || 'available';
+                        const refCode = prop.referenceNumber || prop.id.slice(0, 8);
+
                         return (
-                            <Card key={prop.id} className="group flex flex-col p-0 overflow-hidden">
+                            <Card key={prop.id} className="group flex flex-col p-0 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                 <div className="relative">
                                     <img src={prop.imageUrl} alt={prop.title[language]} className="w-full h-48 object-cover" />
-                                    <span
-                                        className={`absolute top-3 ${
-                                            language === 'ar' ? 'right-3' : 'left-3'
-                                        } text-white font-semibold px-3 py-1 rounded-md text-xs ${
+                                    <div className={`absolute top-3 ${language === 'ar' ? 'right-3' : 'left-3'} flex flex-col gap-1 items-start`}>
+                                        <span className={`text-white font-semibold px-2.5 py-0.5 rounded-md text-xs shadow-sm ${
                                             isForSale ? 'bg-green-600' : 'bg-sky-600'
-                                        }`}
-                                    >
-                                        {prop.status[language]}
-                                    </span>
+                                        }`}>
+                                            {prop.status[language]}
+                                        </span>
+                                        {availability === 'sold' && (
+                                            <span className="bg-red-600 text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                                {language === 'ar' ? 'تم البيع' : 'Sold'}
+                                            </span>
+                                        )}
+                                        {availability === 'reserved' && (
+                                            <span className="bg-amber-600 text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                                {language === 'ar' ? 'محجوز' : 'Reserved'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className={`absolute top-3 ${language === 'ar' ? 'left-3' : 'right-3'} flex flex-col items-end gap-1`}>
+                                        {isVerified ? (
+                                            <span className="bg-emerald-600 text-white font-bold px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                                ✓ {language === 'ar' ? 'موثق' : 'Verified'}
+                                            </span>
+                                        ) : (
+                                            <span className="bg-gray-800/80 text-gray-200 px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                                {language === 'ar' ? 'قيد المراجعة' : 'In Review'}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 <CardContent className="p-4 flex flex-col flex-grow">
-                                    <h3 className="font-bold text-gray-900 dark:text-white truncate" title={prop.title[language]}>
+                                    <div className="flex justify-between items-start gap-2 mb-1">
+                                        <span className="font-mono text-[11px] font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                                            {refCode}
+                                        </span>
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                            prop.listingStatus === 'active' 
+                                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                                : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                        }`}>
+                                            {prop.listingStatus === 'active' ? (language === 'ar' ? 'منشور' : 'Published') : (language === 'ar' ? 'مسودة' : 'Draft')}
+                                        </span>
+                                    </div>
+                                    <h3 className="font-bold text-gray-900 dark:text-white truncate text-base" title={prop.title[language]}>
                                         {prop.title[language]}
                                     </h3>
-                                    <p className="text-amber-500 font-semibold mt-1">{prop.price[language]}</p>
+                                    <p className="text-amber-500 font-bold mt-1 text-lg">{prop.price[language]}</p>
+                                    {prop.priceUpdatedAt && (
+                                        <p className="text-[11px] text-gray-400 mt-1">
+                                            {language === 'ar' ? 'تأكيد السعر:' : 'Price updated:'} {new Date(prop.priceUpdatedAt).toLocaleDateString()}
+                                        </p>
+                                    )}
                                 </CardContent>
-                                <CardFooter className="p-3 border-t border-gray-200 dark:border-gray-700 justify-end gap-2 bg-gray-50 dark:bg-gray-800/50">
+                                <CardFooter className="p-3 border-t border-gray-200 dark:border-gray-700 justify-between gap-2 bg-gray-50 dark:bg-gray-800/50">
                                     <Link
-                                        to={`/dashboard/properties/edit/${prop.id}`}
-                                        className="font-medium text-amber-600 dark:text-amber-500 hover:underline text-sm px-3 py-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                                        to={`/properties/${prop.id}`}
+                                        target="_blank"
+                                        className="text-xs text-gray-600 dark:text-gray-300 hover:text-amber-600 underline"
                                     >
-                                        {t_dash.propertyTable.edit}
+                                        {language === 'ar' ? 'معاينة' : 'Preview'}
                                     </Link>
-                                    <button
-                                        onClick={() => setPropertyToDelete(prop.id)}
-                                        className="font-medium text-red-600 dark:text-red-500 hover:underline text-sm px-3 py-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/50"
-                                    >
-                                        {t_dash.propertyTable.delete}
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <Link
+                                            to={`/dashboard/properties/edit/${prop.id}`}
+                                            className="font-medium text-amber-600 dark:text-amber-500 hover:underline text-xs px-2.5 py-1 rounded bg-amber-50 dark:bg-amber-950/40"
+                                        >
+                                            {t_dash.propertyTable.edit}
+                                        </Link>
+                                        <button
+                                            onClick={() => setPropertyToDelete(prop.id)}
+                                            className="font-medium text-red-600 dark:text-red-500 hover:underline text-xs px-2.5 py-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40"
+                                        >
+                                            {t_dash.propertyTable.delete}
+                                        </button>
+                                    </div>
                                 </CardFooter>
                             </Card>
                         );

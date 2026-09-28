@@ -5,14 +5,27 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getRequestById, addMessageToLead, updateRequest } from '../../services/requests';
 import { useLanguage } from '../shared/LanguageContext';
 import { useAuth } from '../auth/AuthContext';
-import { RequestStatus, Lead, LeadStatus, RequestType, Role } from '../../types';
-import { ArrowLeftIcon, PhoneIcon, UserPlusIcon, CalendarIcon } from '../ui/Icons';
+import { RequestStatus, Lead, LeadStatus, RequestType, Role, FinishingQuote } from '../../types';
+import { 
+    ArrowLeftIcon, 
+    PhoneIcon, 
+    UserPlusIcon, 
+    CalendarIcon, 
+    BanknotesIcon, 
+    CheckCircleIcon, 
+    ClockIcon, 
+    ClipboardDocumentListIcon,
+    BuildingIcon,
+    PlusIcon
+} from '../ui/Icons';
 import DetailItem from '../shared/DetailItem';
 import ConversationThread from '../shared/ConversationThread';
 import UpdateLeadStatusModal from '../shared/UpdateLeadStatusModal';
 import { Button } from '../ui/Button';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { getQuotesByRequestId } from '../../services/finishing';
+import { SubmitFinishingQuoteModal } from '../finishing/SubmitFinishingQuoteModal';
 
 // Helper to map internal Lead statuses to generic Request statuses
 function mapLeadStatusToRequestStatus(leadStatus: LeadStatus): RequestStatus {
@@ -41,11 +54,32 @@ const PartnerLeadDetailsPage: React.FC = () => {
     });
     
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
 
     const lead = useMemo(() => {
         if (!request || request.type !== RequestType.LEAD) return null;
         return request.payload as Lead;
     }, [request]);
+
+    const { data: quotes = [], refetch: refetchQuotes } = useQuery({
+        queryKey: ['finishingQuotes', leadId],
+        queryFn: () => getQuotesByRequestId(leadId!),
+        enabled: !!leadId
+    });
+
+    const myQuote = useMemo(() => {
+        if (!quotes || !currentUser) return null;
+        return quotes.find(q => q.partnerId === currentUser.id);
+    }, [quotes, currentUser]);
+
+    const isFinishing = useMemo(() => {
+        if (!lead) return false;
+        return lead.serviceType === 'finishing' || 
+               lead.serviceType === 'decoration' || 
+               (lead as any).category === 'turnkey' ||
+               lead.serviceTitle?.includes('تشطيب') ||
+               lead.serviceTitle?.toLowerCase().includes('finishing');
+    }, [lead]);
 
     const updateLeadMutation = useMutation({
         mutationFn: async ({ status, note }: { status: LeadStatus; note: string }) => {
@@ -80,8 +114,16 @@ const PartnerLeadDetailsPage: React.FC = () => {
     if (isLoading) return <div className="p-8 text-center">Loading lead details...</div>;
     if (isError || !request || !lead) return <div className="p-8 text-center text-red-500">Could not load lead details.</div>;
 
-    // Security check: ensure the current partner is the owner of this lead
-    if (currentUser?.id !== lead.partnerId) {
+    // Security check: ensure current user is authorized for this lead
+    const isAuthorized = 
+        currentUser?.id === lead.partnerId || 
+        currentUser?.id === (lead as any).assignedTo || 
+        currentUser?.id === request.assignedTo ||
+        currentUser?.role === Role.PLATFORM_FINISHING_MANAGER ||
+        currentUser?.role === Role.SUPER_ADMIN ||
+        currentUser?.role === Role.FINISHING_PARTNER;
+
+    if (!isAuthorized) {
         return <div className="p-8 text-center text-red-500">You are not authorized to view this lead.</div>;
     }
 
@@ -182,8 +224,163 @@ const PartnerLeadDetailsPage: React.FC = () => {
                     </Card>
                 </div>
 
-                {/* Right Column: Conversation / Timeline */}
-                <div className="lg:col-span-2">
+                {/* Right Column: Finishing Quote Bid & Conversation / Timeline */}
+                <div className="lg:col-span-2 space-y-6">
+                    {/* Finishing Contractor Bid Panel */}
+                    {isFinishing && (
+                        <Card className="border-2 border-amber-500/30 overflow-hidden shadow-sm">
+                            <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 pb-3 border-b border-amber-200 dark:border-amber-800/40">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                    <div>
+                                        <CardTitle className="text-lg flex items-center gap-2 text-gray-900 dark:text-white">
+                                            <BanknotesIcon className="w-5 h-5 text-amber-600" />
+                                            {language === 'ar' ? 'مقايسة وعطاء شركتكم للمشروع' : 'Your Company Quote & Proposal'}
+                                        </CardTitle>
+                                        <p className="text-xs text-gray-500 mt-0.5">
+                                            {language === 'ar'
+                                                ? 'تفاصيل الأسعار وجداول التسليم وبنود التأسيس والتشطيب'
+                                                : 'Detailed cost breakdown, MEP rough-ins, schedule and warranty'}
+                                        </p>
+                                    </div>
+                                    {myQuote && (
+                                        <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
+                                            myQuote.status === 'accepted'
+                                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                                : myQuote.status === 'rejected'
+                                                    ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                                    : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                                        }`}>
+                                            {myQuote.status === 'accepted' 
+                                                ? (language === 'ar' ? 'تمت الترسية والاعتماد ✓' : 'Awarded ✓')
+                                                : myQuote.status === 'rejected'
+                                                    ? (language === 'ar' ? 'مستبعد' : 'Declined')
+                                                    : (language === 'ar' ? 'مقدم للمراجعة' : 'Under Review')}
+                                        </span>
+                                    )}
+                                </div>
+                            </CardHeader>
+                            <CardContent className="pt-4 space-y-4">
+                                {myQuote ? (
+                                    <div className="space-y-4">
+                                        {myQuote.status === 'accepted' && (
+                                            <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 flex items-start gap-3">
+                                                <CheckCircleIcon className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+                                                <div>
+                                                    <h4 className="font-bold text-emerald-900 dark:text-emerald-200 text-sm">
+                                                        {language === 'ar' ? 'مبارك! تم اعتماد عطائك وترسية المشروع رسمياً عليك' : 'Congratulations! Your quote has been awarded!'}
+                                                    </h4>
+                                                    <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                                                        {language === 'ar'
+                                                            ? 'يمكنك الآن التواصل فوراً مع العميل لتحديد موعد المعاينة وتوقيع التعاقد النهائي.'
+                                                            : 'You can now coordinate directly with the client to schedule site visits and sign the contract.'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                <span className="text-[11px] text-gray-500 uppercase block font-semibold">
+                                                    {language === 'ar' ? 'إجمالي المقايسة' : 'Total Quote'}
+                                                </span>
+                                                <p className="text-base font-bold text-amber-600 mt-0.5">
+                                                    {myQuote.totalPrice.toLocaleString()} {myQuote.currency || 'EGP'}
+                                                </p>
+                                            </div>
+                                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                <span className="text-[11px] text-gray-500 uppercase block font-semibold">
+                                                    {language === 'ar' ? 'سعر المتر التقديري' : 'Est. / m²'}
+                                                </span>
+                                                <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">
+                                                    {myQuote.pricePerSqm ? `${myQuote.pricePerSqm.toLocaleString()} ج.م` : '—'}
+                                                </p>
+                                            </div>
+                                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                <span className="text-[11px] text-gray-500 uppercase block font-semibold">
+                                                    {language === 'ar' ? 'مدة التنفيذ' : 'Timeline'}
+                                                </span>
+                                                <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">
+                                                    {myQuote.executionTimelineDays} {language === 'ar' ? 'يوم' : 'days'}
+                                                </p>
+                                            </div>
+                                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                <span className="text-[11px] text-gray-500 uppercase block font-semibold">
+                                                    {language === 'ar' ? 'مدة الضمان' : 'Warranty'}
+                                                </span>
+                                                <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">
+                                                    {myQuote.warrantyMonths} {language === 'ar' ? 'شهراً' : 'months'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Scope Items Breakdown */}
+                                        {myQuote.scopeItems && myQuote.scopeItems.length > 0 && (
+                                            <div className="pt-2">
+                                                <h5 className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                                                    {language === 'ar' ? 'تفصيل بنود ومراحل الأعمال' : 'Scope of Work Breakdown'}
+                                                </h5>
+                                                <div className="space-y-1.5">
+                                                    {myQuote.scopeItems.map((item, idx) => (
+                                                        <div key={item.id || idx} className="flex justify-between items-center text-xs p-2 rounded bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700">
+                                                            <span className="text-gray-800 dark:text-gray-200">
+                                                                {item.description[language] || item.description.ar || item.description.en}
+                                                            </span>
+                                                            <span className="font-bold text-gray-900 dark:text-white font-mono">
+                                                                {item.amount.toLocaleString()} EGP
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {myQuote.termsAndConditions && (
+                                            <div className="text-xs text-gray-500 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 rounded border border-gray-100 dark:border-gray-700">
+                                                <span className="font-semibold text-gray-700 dark:text-gray-300 block mb-1">
+                                                    {language === 'ar' ? 'الشروط والمواصفات:' : 'Terms & Specifications:'}
+                                                </span>
+                                                <p>{myQuote.termsAndConditions}</p>
+                                            </div>
+                                        )}
+
+                                        {myQuote.status !== 'accepted' && (
+                                            <div className="pt-2 flex justify-end">
+                                                <Button 
+                                                    variant="secondary" 
+                                                    onClick={() => setIsQuoteModalOpen(true)}
+                                                    className="text-xs"
+                                                >
+                                                    {language === 'ar' ? 'تعديل عرض المقايسة ✎' : 'Edit Submitted Quote ✎'}
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="p-6 text-center bg-amber-50/30 dark:bg-amber-950/10 rounded-xl border border-dashed border-amber-200 dark:border-amber-800 space-y-3">
+                                        <BanknotesIcon className="w-10 h-10 text-amber-500 mx-auto" />
+                                        <div>
+                                            <h4 className="font-bold text-gray-900 dark:text-white text-base">
+                                                {language === 'ar' ? 'فرصة تقديم مقايسة سعر وعطاء جديد' : 'Submit a Project Bid'}
+                                            </h4>
+                                            <p className="text-xs text-gray-500 max-w-md mx-auto mt-1">
+                                                {language === 'ar'
+                                                    ? 'قدم مقايستك الآن متضمنة الأسعار وبنود التأسيس والتشطيب ومدة التسليم والضمان لدراستها ومقارنتها واعتمادها.'
+                                                    : 'Provide your detailed quote breakdown, timeline, and warranty to compete for this finishing project.'}
+                                            </p>
+                                        </div>
+                                        <Button 
+                                            onClick={() => setIsQuoteModalOpen(true)}
+                                            className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm text-sm"
+                                        >
+                                            <PlusIcon className="w-4 h-4 mr-1.5 rtl:mr-0 rtl:ml-1.5" />
+                                            {language === 'ar' ? 'تقديم عرض مقايسة تفصيلية الآن' : 'Submit Detailed Quote Now'}
+                                        </Button>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
+
                     <Card className="h-full flex flex-col">
                         <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
                             <CardTitle className="text-lg">Activity & Notes</CardTitle>
@@ -198,6 +395,22 @@ const PartnerLeadDetailsPage: React.FC = () => {
                     </Card>
                 </div>
             </div>
+
+            {/* Quote Submission Modal */}
+            {isQuoteModalOpen && currentUser && (
+                <SubmitFinishingQuoteModal
+                    isOpen={isQuoteModalOpen}
+                    onClose={() => setIsQuoteModalOpen(false)}
+                    requestId={lead.id}
+                    partnerId={currentUser.id}
+                    partnerName={currentUser.name || 'Contractor'}
+                    propertyArea={(lead as any).propertyArea || (lead as any).area || 120}
+                    onSuccess={() => {
+                        refetchQuotes();
+                        queryClient.invalidateQueries({ queryKey: ['request', leadId] });
+                    }}
+                />
+            )}
         </div>
     );
 };

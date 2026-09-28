@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import ExportDropdown from '../shared/ExportDropdown';
 import { getAllRequests } from '../../services/requests';
 import { updateLead } from '../../services/leads';
-import { RequestType } from '../../types';
+import { RequestType, Role } from '../../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '../shared/LanguageContext';
 import { useToast } from '../shared/ToastContext';
@@ -50,16 +50,34 @@ const DashboardLeadsPage: React.FC = () => {
         }
     });
 
+    const isFinishingPartner = (currentUser as any)?.type === 'finishing' || currentUser?.role === Role.FINISHING_PARTNER;
+
     const partnerLeads = useMemo((): Lead[] => {
         if (!allRequests || !currentUser) return [];
 
         return allRequests
-            .filter(req => 
-                req.type === RequestType.LEAD && 
-                (req.assignedTo === currentUser.id || 
-                 (req.payload as any)?.partnerId === currentUser.id || 
-                 (req.payload as any)?.assignedTo === currentUser.id)
-            )
+            .filter(req => {
+                if (req.type !== RequestType.LEAD) return false;
+                const payload = (req.payload || {}) as any;
+                const isAssigned = 
+                    req.assignedTo === currentUser.id || 
+                    payload?.partnerId === currentUser.id || 
+                    payload?.assignedTo === currentUser.id;
+
+                if (isAssigned) return true;
+
+                // If user is a finishing partner, allow viewing finishing RFQs
+                if (isFinishingPartner && (
+                    payload?.serviceType === 'finishing' || 
+                    payload?.category === 'turnkey' ||
+                    payload?.serviceTitle?.includes('تشطيب') || 
+                    payload?.serviceTitle?.toLowerCase().includes('finishing')
+                )) {
+                    return true;
+                }
+
+                return false;
+            })
             .map(req => {
                 const leadPayload = (req.payload || {}) as Lead;
                 return {
@@ -77,7 +95,7 @@ const DashboardLeadsPage: React.FC = () => {
                     referrer: (leadPayload as any).referrer || (leadPayload as any).referral,
                 };
             });
-    }, [allRequests, currentUser]);
+    }, [allRequests, currentUser, isFinishingPartner]);
 
     // ROI Performance metrics for partner
     const metrics = useMemo(() => {
@@ -95,6 +113,7 @@ const DashboardLeadsPage: React.FC = () => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [rfqFilter, setRfqFilter] = useState<'all' | 'finishing' | 'standard'>('all');
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'createdAt', direction: 'descending' });
 
     const sortedAndFilteredLeads = useMemo(() => {
@@ -113,6 +132,22 @@ const DashboardLeadsPage: React.FC = () => {
             filteredLeads = filteredLeads.filter(lead => lead.status === statusFilter);
         }
 
+        if (rfqFilter === 'finishing') {
+            filteredLeads = filteredLeads.filter(lead => 
+                lead.serviceType === 'finishing' || 
+                (lead as any).category === 'turnkey' || 
+                lead.serviceTitle?.includes('تشطيب') ||
+                lead.serviceTitle?.toLowerCase().includes('finishing')
+            );
+        } else if (rfqFilter === 'standard') {
+            filteredLeads = filteredLeads.filter(lead => 
+                lead.serviceType !== 'finishing' && 
+                (lead as any).category !== 'turnkey' && 
+                !lead.serviceTitle?.includes('تشطيب') &&
+                !lead.serviceTitle?.toLowerCase().includes('finishing')
+            );
+        }
+
         if (sortConfig !== null) {
             filteredLeads.sort((a, b) => {
                 const aValue = a[sortConfig.key] || '';
@@ -123,7 +158,7 @@ const DashboardLeadsPage: React.FC = () => {
             });
         }
         return filteredLeads;
-    }, [partnerLeads, searchTerm, statusFilter, sortConfig]);
+    }, [partnerLeads, searchTerm, statusFilter, rfqFilter, sortConfig]);
 
     const exportData = useMemo(() => sortedAndFilteredLeads.map(lead => ({
         ...lead,
@@ -192,7 +227,14 @@ const DashboardLeadsPage: React.FC = () => {
                 </div>
                  <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{t_dash.leadTable.service}</p>
-                    <p className="font-medium text-gray-800 dark:text-gray-200 line-clamp-2">{lead.serviceTitle}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-medium text-gray-800 dark:text-gray-200 line-clamp-2">{lead.serviceTitle}</p>
+                        {(lead.serviceType === 'finishing' || (lead as any).category === 'turnkey' || lead.serviceTitle?.includes('تشطيب')) && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700 whitespace-nowrap">
+                                {language === 'ar' ? 'مناقصة تشطيب' : 'Finishing RFQ'}
+                            </span>
+                        )}
+                    </div>
                 </div>
                 <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
                      <p className="text-xs text-gray-400">{new Date(lead.createdAt).toLocaleDateString(language)}</p>
@@ -260,7 +302,16 @@ const DashboardLeadsPage: React.FC = () => {
                                     </a>
                                 </div>
                             </TableCell>
-                            <TableCell className="max-w-xs truncate" title={lead.serviceTitle}>{lead.serviceTitle}</TableCell>
+                            <TableCell className="max-w-xs" title={lead.serviceTitle}>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-medium text-gray-800 dark:text-gray-200">{lead.serviceTitle}</span>
+                                    {(lead.serviceType === 'finishing' || (lead as any).category === 'turnkey' || lead.serviceTitle?.includes('تشطيب')) && (
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700 whitespace-nowrap">
+                                            {language === 'ar' ? 'مناقصة تشطيب' : 'Finishing RFQ'}
+                                        </span>
+                                    )}
+                                </div>
+                            </TableCell>
                             <TableCell>{new Date(lead.createdAt).toLocaleDateString(language)}</TableCell>
                             <TableCell>
                                 <StatusBadge status={lead.status} />
@@ -364,6 +415,17 @@ const DashboardLeadsPage: React.FC = () => {
                         <option value="site-visit">{t_dash.leadStatus['site-visit']}</option>
                         <option value="completed">{t_dash.leadStatus.completed}</option>
                         <option value="cancelled">{t_dash.leadStatus.cancelled}</option>
+                    </Select>
+                </div>
+                <div className="w-full md:w-56">
+                    <Select
+                        value={rfqFilter}
+                        onChange={(e) => setRfqFilter(e.target.value as any)}
+                        className="w-full"
+                    >
+                        <option value="all">{language === 'ar' ? 'جميع الطلبات والمقايسات' : 'All Inquiries & RFQs'}</option>
+                        <option value="finishing">{language === 'ar' ? 'مناقصات التشطيب (RFQs)' : 'Finishing RFQs Only'}</option>
+                        <option value="standard">{language === 'ar' ? 'استفسارات عامة' : 'Standard Inquiries'}</option>
                     </Select>
                 </div>
             </div>

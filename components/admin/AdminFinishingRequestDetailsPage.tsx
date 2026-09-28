@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import type { Lead, LeadStatus, Request } from '../../types';
+import type { Lead, LeadStatus, Request, FinishingQuote } from '../../types';
 import { RequestType, Role } from '../../types';
 import { useQuery } from '@tanstack/react-query';
 import { getAllLeads, updateLead } from '../../services/leads';
-import { ArrowLeftIcon, CalendarIcon, CheckCircleIcon, ClipboardDocumentListIcon, UserPlusIcon } from '../ui/Icons';
+import { ArrowLeftIcon, CalendarIcon, CheckCircleIcon, ClipboardDocumentListIcon, UserPlusIcon, BuildingIcon, BanknotesIcon, PlusIcon } from '../ui/Icons';
 import ConversationThread from '../shared/ConversationThread';
 import { useLanguage } from '../shared/LanguageContext';
 import { useToast } from '../shared/ToastContext';
@@ -15,6 +15,18 @@ import { Button } from '../ui/Button';
 import { useAuth } from '../auth/AuthContext';
 import { StatusBadge } from '../ui/StatusBadge';
 import DetailItem from '../shared/DetailItem';
+import { 
+    getFinishingPartners, 
+    PLATFORM_FINISHING_MANAGER_ID, 
+    getQuotesByRequestId, 
+    getFinishingRequestHistory, 
+    recordFinishingRequestHistory,
+    getProjectMilestones
+} from '../../services/finishing';
+import { FinishingQuoteComparison } from '../finishing/FinishingQuoteComparison';
+import { FinishingRequestTimeline } from '../finishing/FinishingRequestTimeline';
+import { SubmitFinishingQuoteModal } from '../finishing/SubmitFinishingQuoteModal';
+import { FinishingMilestonesTracker } from '../finishing/FinishingMilestonesTracker';
 
 const AdminFinishingRequestDetailsPage: React.FC = () => {
     const { requestId } = useParams<{ requestId: string }>();
@@ -28,19 +40,73 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
     const lead = useMemo(() => (allLeads || []).find(l => l.id === requestId), [allLeads, requestId]);
     
     const [status, setStatus] = useState<LeadStatus>(lead?.status || 'new');
+    const [assignedPartnerId, setAssignedPartnerId] = useState<string>(lead?.partnerId || lead?.assignedTo || '');
+    const [isAddQuoteOpen, setIsAddQuoteOpen] = useState(false);
+
+    const { data: finishingPartners = [] } = useQuery({
+        queryKey: ['finishingPartnersAdmin'],
+        queryFn: getFinishingPartners
+    });
+
+    const { data: quotes = [], refetch: refetchQuotes } = useQuery({
+        queryKey: ['finishingQuotes', requestId],
+        queryFn: () => getQuotesByRequestId(requestId!),
+        enabled: !!requestId
+    });
+
+    const { data: history = [], refetch: refetchHistory } = useQuery({
+        queryKey: ['finishingHistory', requestId],
+        queryFn: () => getFinishingRequestHistory(requestId!),
+        enabled: !!requestId
+    });
 
     React.useEffect(() => {
         if (lead) {
             setStatus(lead.status);
+            setAssignedPartnerId(lead.partnerId || lead.assignedTo || '');
         }
     }, [lead]);
 
     const handleUpdateStatus = async (newStatus: LeadStatus) => {
         if (lead) {
+            const oldStatus = lead.status;
             await updateLead(lead.id, { status: newStatus });
             setStatus(newStatus);
             refetchLeads();
+            await recordFinishingRequestHistory({
+                requestId: lead.id,
+                actionType: 'status_change',
+                changedBy: currentUser?.name || 'Platform Finishing Manager',
+                oldValue: oldStatus,
+                newValue: newStatus,
+                note: language === 'ar' ? `تحديث حالة الطلب إلى: ${newStatus}` : `Status updated to ${newStatus}`
+            });
+            refetchHistory();
             showToast('Status updated successfully', 'success');
+        }
+    };
+
+    const handleAssignPartner = async (newPartnerId: string) => {
+        if (lead) {
+            const assignedPartner = finishingPartners.find(p => p.id === newPartnerId);
+            const partnerName = assignedPartner?.nameAr || assignedPartner?.name || 'Platform Finishing Manager';
+
+            await updateLead(lead.id, { 
+                partnerId: newPartnerId,
+                assignedTo: newPartnerId 
+            });
+            setAssignedPartnerId(newPartnerId);
+            refetchLeads();
+
+            await recordFinishingRequestHistory({
+                requestId: lead.id,
+                actionType: 'partner_assigned',
+                changedBy: currentUser?.name || 'Platform Finishing Manager',
+                newValue: { partnerId: newPartnerId, partnerName },
+                note: language === 'ar' ? `تم إسناد الطلب للشريك المقاول: ${partnerName}` : `Request assigned to partner contractor: ${partnerName}`
+            });
+            refetchHistory();
+            showToast(language === 'ar' ? 'تم إسناد الطلب للشريك بنجاح' : 'Assigned partner updated successfully', 'success');
         }
     };
 
@@ -76,8 +142,38 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{lead.serviceTitle}</h1>
             <p className="text-gray-500 mb-8">Request ID: {lead.id}</p>
 
-             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
+                    {/* Linked Property Card */}
+                    {lead.propertyId && (
+                        <Card className="border-l-4 border-l-blue-500 bg-blue-50/40 dark:bg-blue-900/10">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-base text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                                    <BuildingIcon className="w-5 h-5 text-blue-500" />
+                                    {language === 'ar' ? 'العقار المرتبط بطلب التشطيب' : 'Associated Property Listing'}
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                    <div>
+                                        <p className="font-bold text-gray-900 dark:text-white text-base">
+                                            {lead.propertyTitle || lead.serviceTitle}
+                                        </p>
+                                        <p className="text-xs text-gray-500 font-mono mt-0.5">
+                                            Property ID: {lead.propertyId}
+                                        </p>
+                                    </div>
+                                    <Link 
+                                        to={`/properties/${lead.propertyId}`}
+                                        className="px-3.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-colors whitespace-nowrap"
+                                    >
+                                        {language === 'ar' ? 'عرض تفاصيل العقار ↗' : 'View Property ↗'}
+                                    </Link>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
                     {/* Package Details Card - Highlights specific booking info */}
                     {tierDetails && (
                         <Card className="border-l-4 border-l-amber-500 bg-amber-50/30 dark:bg-amber-900/10">
@@ -103,7 +199,45 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
                         </Card>
                     )}
 
-                     <Card>
+                    {/* Multi-Quotes & Tendering Comparison */}
+                    <div className="space-y-4 pt-2">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-4 rounded-xl border border-amber-200 dark:border-amber-800/40">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <BanknotesIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                    {language === 'ar' ? 'مناقصة ومقايسات المقاولين المعتمدين' : 'Contractor Quotes & Tendering'}
+                                </h3>
+                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                    {language === 'ar'
+                                        ? 'مقارنة العروض المقدمة من شركات ومقاولي التشطيب والترسية المباشرة'
+                                        : 'Evaluate bids, compare timelines and warranties, and award the contract'}
+                                </p>
+                            </div>
+                            {canManage && (
+                                <Button 
+                                    onClick={() => setIsAddQuoteOpen(true)}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white text-xs flex items-center gap-1.5 shadow-sm"
+                                >
+                                    <PlusIcon className="w-4 h-4" />
+                                    {language === 'ar' ? 'إضافة عرض مقايسة جديد' : 'Submit Contractor Bid'}
+                                </Button>
+                            )}
+                        </div>
+
+                        <FinishingQuoteComparison 
+                            requestId={lead.id}
+                            propertyArea={(lead as any).propertyArea || (lead as any).area || (tierDetails ? 120 : undefined)}
+                            quotes={quotes}
+                            canAward={canManage}
+                            onQuoteAction={() => {
+                                refetchQuotes();
+                                refetchHistory();
+                                refetchLeads();
+                            }}
+                        />
+                    </div>
+
+                    <Card>
                         <CardHeader className="border-b border-gray-100 dark:border-gray-700 pb-3">
                             <CardTitle className="text-lg">Detailed Requirements</CardTitle>
                         </CardHeader>
@@ -111,6 +245,9 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
                             <RequestPayloadViewer request={requestMock} />
                         </CardContent>
                     </Card>
+
+                    {/* Timeline & Audit History */}
+                    <FinishingRequestTimeline history={history} />
 
                     <Card>
                          <CardHeader className="border-b border-gray-100 dark:border-gray-700 pb-3 bg-gray-50 dark:bg-gray-800">
@@ -135,6 +272,41 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
                             {lead.contactTime && <DetailItem label="Preferred Time" value={lead.contactTime} />}
                         </CardContent>
                     </Card>
+
+                    {canManage && (
+                        <Card className="border-t-4 border-t-amber-500">
+                            <CardHeader className="pb-2 border-b border-gray-100 dark:border-gray-700">
+                                <CardTitle className="text-base font-bold flex items-center gap-2">
+                                    <UserPlusIcon className="w-5 h-5 text-amber-500"/>
+                                    {language === 'ar' ? 'إسناد الطلب لشركة تشطيب' : 'Assign Contractor'}
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="pt-4 space-y-3">
+                                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">
+                                    {language === 'ar' ? 'المقاول / الشريك المسؤول' : 'Assigned Contractor'}
+                                </label>
+                                <select
+                                    value={assignedPartnerId}
+                                    onChange={e => handleAssignPartner(e.target.value)}
+                                    className="w-full p-2.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                                >
+                                    <option value={PLATFORM_FINISHING_MANAGER_ID}>
+                                        {language === 'ar' ? 'مدير تشطيبات المنصة (إشراف ومطابقة)' : 'Platform Finishing Manager (Triage & Review)'}
+                                    </option>
+                                    {finishingPartners.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.nameAr || p.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-[11px] text-gray-500 leading-normal">
+                                    {language === 'ar'
+                                        ? 'يتم توجيه المحادثات وبيانات المقايسة والتنفيذ لحساب المقاول المعتمد.'
+                                        : 'Communication, quote specifications, and execution are routed to this contractor.'}
+                                </p>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {canManage && (
                         <Card className="border-t-4 border-t-blue-500 sticky top-6">
@@ -185,6 +357,30 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {isAddQuoteOpen && (
+                <SubmitFinishingQuoteModal
+                    isOpen={isAddQuoteOpen}
+                    onClose={() => setIsAddQuoteOpen(false)}
+                    requestId={lead.id}
+                    partnerId={assignedPartnerId && assignedPartnerId !== PLATFORM_FINISHING_MANAGER_ID 
+                        ? assignedPartnerId 
+                        : (finishingPartners[0]?.id || PLATFORM_FINISHING_MANAGER_ID)}
+                    partnerName={
+                        finishingPartners.find(p => p.id === assignedPartnerId)?.nameAr ||
+                        finishingPartners.find(p => p.id === assignedPartnerId)?.name ||
+                        finishingPartners[0]?.nameAr ||
+                        finishingPartners[0]?.name ||
+                        'Platform Certified Partner'
+                    }
+                    propertyArea={(lead as any).propertyArea || (lead as any).area || 120}
+                    onSuccess={() => {
+                        refetchQuotes();
+                        refetchHistory();
+                        refetchLeads();
+                    }}
+                />
+            )}
         </div>
     );
 };

@@ -25,6 +25,7 @@ export const partnerNavLinks: NavLinkItem[] = [
     { name: t => t.nav.properties, href: '/dashboard/properties', icon: BuildingIcon, group: 'Partner', permission: Permission.MANAGE_OWN_PROPERTIES },
     { name: t => t.nav.projects, href: '/dashboard/projects', icon: CubeIcon, group: 'Partner', permission: Permission.MANAGE_OWN_PROJECTS },
     { name: t => t.nav.portfolio, href: '/dashboard/portfolio', icon: PhotoIcon, group: 'Partner', permission: Permission.MANAGE_OWN_PORTFOLIO },
+    { name: t => t.nav?.capabilities || 'تخصصات ومناطق التشطيب', href: '/dashboard/capabilities', icon: WrenchScrewdriverIcon, group: 'Partner', permission: Permission.MANAGE_OWN_PROFILE },
     { name: t => t.nav.leads, href: '/dashboard/leads', icon: InboxIcon, group: 'Partner', permission: Permission.VIEW_OWN_LEADS },
     { name: t => t.nav.subscription, href: '/dashboard/subscription', icon: ClipboardDocumentListIcon, group: 'Partner', permission: Permission.MANAGE_OWN_SUBSCRIPTION },
     { name: t => t.nav.finance, href: '/dashboard/finance', icon: BanknotesIcon, group: 'Partner', permission: Permission.MANAGE_OWN_SUBSCRIPTION },

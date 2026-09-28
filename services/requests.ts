@@ -134,15 +134,15 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
     if (!dbPayload.assigned_to) {
         switch(type) {
             case RequestType.PARTNER_APPLICATION:
-                dbPayload.assigned_to = 'partner-relations-manager-1';
+                dbPayload.assigned_to = 'd31a10be-aa1a-4039-96e3-ced2fc763f2f'; // partner_relations_manager
                 break;
             case RequestType.PROPERTY_LISTING_REQUEST:
-                dbPayload.assigned_to = 'platform-real-estate-manager-1';
+                dbPayload.assigned_to = '0a497a3e-c563-4996-af33-cb7bdb435632'; // listings_manager
                 break;
             case RequestType.PROPERTY_INQUIRY:
             case RequestType.CONTACT_MESSAGE:
             default:
-                dbPayload.assigned_to = 'customer-relations-manager-1';
+                dbPayload.assigned_to = '45b6ecf3-7e58-4a1a-993f-9b1e75cfd5bf'; // customer_relations_manager
                 break;
         }
     }
