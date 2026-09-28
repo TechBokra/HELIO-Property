@@ -24,8 +24,9 @@ import UpdateLeadStatusModal from '../shared/UpdateLeadStatusModal';
 import { Button } from '../ui/Button';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
-import { getQuotesByRequestId } from '../../services/finishing';
+import { getQuotesByRequestId, getProjectMilestones } from '../../services/finishing';
 import { SubmitFinishingQuoteModal } from '../finishing/SubmitFinishingQuoteModal';
+import { FinishingMilestonesTracker } from '../finishing/FinishingMilestonesTracker';
 
 // Helper to map internal Lead statuses to generic Request statuses
 function mapLeadStatusToRequestStatus(leadStatus: LeadStatus): RequestStatus {
@@ -67,11 +68,6 @@ const PartnerLeadDetailsPage: React.FC = () => {
         enabled: !!leadId
     });
 
-    const myQuote = useMemo(() => {
-        if (!quotes || !currentUser) return null;
-        return quotes.find(q => q.partnerId === currentUser.id);
-    }, [quotes, currentUser]);
-
     const isFinishing = useMemo(() => {
         if (!lead) return false;
         return lead.serviceType === 'finishing' || 
@@ -80,6 +76,17 @@ const PartnerLeadDetailsPage: React.FC = () => {
                lead.serviceTitle?.includes('تشطيب') ||
                lead.serviceTitle?.toLowerCase().includes('finishing');
     }, [lead]);
+
+    const { data: milestones = [], refetch: refetchMilestones } = useQuery({
+        queryKey: ['finishingMilestones', leadId],
+        queryFn: () => getProjectMilestones(leadId!),
+        enabled: !!leadId && isFinishing
+    });
+
+    const myQuote = useMemo(() => {
+        if (!quotes || !currentUser) return null;
+        return quotes.find(q => q.partnerId === currentUser.id);
+    }, [quotes, currentUser]);
 
     const updateLeadMutation = useMutation({
         mutationFn: async ({ status, note }: { status: LeadStatus; note: string }) => {
@@ -379,6 +386,22 @@ const PartnerLeadDetailsPage: React.FC = () => {
                                 )}
                             </CardContent>
                         </Card>
+                    )}
+
+                    {/* Finishing Execution Milestones & Payment Schedule */}
+                    {isFinishing && (
+                        <div className="space-y-2">
+                            <FinishingMilestonesTracker
+                                requestId={lead.id}
+                                milestones={milestones}
+                                canManage={myQuote?.status === 'accepted'}
+                                userLabel={currentUser?.name || 'Assigned Partner'}
+                                onMilestoneUpdated={() => {
+                                    refetchMilestones();
+                                    queryClient.invalidateQueries({ queryKey: ['request', leadId] });
+                                }}
+                            />
+                        </div>
                     )}
 
                     <Card className="h-full flex flex-col">

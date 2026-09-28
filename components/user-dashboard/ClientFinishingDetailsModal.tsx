@@ -48,7 +48,7 @@ export const ClientFinishingDetailsModal: React.FC<ClientFinishingDetailsModalPr
     const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
 
     const payload = (request.payload || {}) as any;
-    const isFinishing = request.service === 'finishing' || payload.serviceType === 'finishing' || request.type === 'LEAD';
+    const isFinishing = (request as any).service === 'finishing' || payload.serviceType === 'finishing' || request.type === 'LEAD';
 
     // Fetch quotes for this request
     const { 

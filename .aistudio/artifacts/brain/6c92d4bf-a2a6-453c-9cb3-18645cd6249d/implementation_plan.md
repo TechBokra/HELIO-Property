@@ -1,6 +1,6 @@
-# Implementation Plan — Finishing Domain & Partner Quotes (P0 & P1)
+# Implementation Plan — Finishing Domain & Partner Quotes (P0, P1 & P2)
 
-Transform the Finishing module in ONLY HELIO from a CMS/Lead-form workflow into a unified business domain with multi-quotes tendering, contractor capabilities, and awarding workflows.
+Transform the Finishing module in ONLY HELIO from a CMS/Lead-form workflow into a unified business domain with multi-quotes tendering, contractor capabilities, dynamic cost estimation, client decision portal, and five-stage project execution milestones.
 
 ---
 
@@ -51,6 +51,34 @@ Transform the Finishing module in ONLY HELIO from a CMS/Lead-form workflow into 
 
 ---
 
-## 3. Verification & Build Quality
+## 3. P2: Client Portal, Cost Estimator & Execution Milestones (Completed)
+
+### A. Interactive Finishing Cost Estimator (`components/finishing/FinishingCostEstimator.tsx`)
+* Real-time calculation engine with area slider (50–500 m²), unit configuration (bedrooms, bathrooms).
+* Tier selection (Economy / Standard / Luxury Turnkey / Ultra-Luxury Hotel-grade).
+* Design styles (Modern, Neo-Classic, Minimalist, Industrial) and luxury add-ons (Smart Automation, Soundproofing, Master Dressing, Concealed HVAC).
+* Stage-by-stage engineering breakdown (Design/Permits 10%, MEP 30%, Plaster/Flooring 25%, Paint/Fixtures 25%, Handover/Audit 10%).
+* Direct RFQ submission bridging calculated specs into immediate contractor tenders.
+
+### B. Client Request Hub & Awarding Portal (`components/user-dashboard/ClientFinishingDetailsModal.tsx`)
+* Tabbed modal integrated directly in `UserRequestsPage.tsx`:
+  - **Contractor Bids Tab**: Compares bids received from verified contractors (m² rates, timelines, warranties, scope breakdowns).
+  - **Awarding Action**: Clients can directly approve and award their preferred contractor with instant celebratory confirmation and direct contractor contacts.
+  - **Milestones Tab**: Interactive project tracking showing real-time stage completion and payment schedules.
+  - **Specifications Tab**: Detailed room counts, add-ons, and linked property information.
+
+### C. 5-Stage Project Execution Milestones (`components/finishing/FinishingMilestonesTracker.tsx`)
+* Standardized 5-phase engineering execution:
+  1. Architectural & Executive MEP Blueprints (10% payment)
+  2. MEP Rough-ins, Electrical & Plumbing Lines (30% payment)
+  3. Plastering, Thermal/Waterproofing & Screed (20% payment)
+  4. Flooring, Paint, Ceiling & Fixtures (30% payment)
+  5. Final Audit, Snagging List & Key Handover (10% payment)
+* Role-aware editing for Super Admins, Platform Finishing Managers, and Awarded Contractors.
+* Integrated across Admin Request Details, Partner Lead Details, and Client Request Hub.
+
+---
+
+## 4. Verification & Build Quality
 * `compile_applet`: Build succeeded with 0 errors.
 * `lint_applet`: ESLint validation completed with 0 errors.

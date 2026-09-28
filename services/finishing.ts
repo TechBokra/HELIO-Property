@@ -910,38 +910,18 @@ export const clientAcceptQuote = async (
     const targetQuote = quotes.find(q => q.id === quoteId);
     if (!targetQuote) return { success: false };
 
-    // Update quote statuses
-    for (const q of quotes) {
-        const isTarget = q.id === quoteId;
-        await updateFinishingQuote(q.id, {
-            status: isTarget ? 'accepted' : 'rejected'
-        });
-    }
+    // Call acceptQuoteAndAward which updates both Supabase and local quotes, logs history, and updates lead status
+    await acceptQuoteAndAward(quoteId, requestId, clientName, targetQuote.partnerName);
 
-    // Update lead status
+    // Ensure partner assignment is saved on the lead
     await updateLead(requestId, {
-        status: 'in_progress',
+        status: 'in-progress',
         assignedTo: targetQuote.partnerId,
         partnerId: targetQuote.partnerId
     });
 
-    // Initialize milestones
+    // Ensure milestones are initialized
     await getProjectMilestones(requestId);
-
-    // Audit log
-    await recordFinishingRequestHistory({
-        requestId,
-        actionType: 'quote_accepted',
-        changedBy: clientName,
-        newValue: {
-            quoteId,
-            partnerId: targetQuote.partnerId,
-            partnerName: targetQuote.partnerName,
-            totalPrice: targetQuote.totalPrice,
-            timelineDays: targetQuote.executionTimelineDays
-        },
-        note: `تم اعتماد عرض المقاول (${targetQuote.partnerName}) بمبلغ إجمالي ${targetQuote.totalPrice.toLocaleString()} ${targetQuote.currency} والبدء في تنفيذ المشروع.`
-    });
 
     return { success: true, winningQuote: targetQuote };
 };

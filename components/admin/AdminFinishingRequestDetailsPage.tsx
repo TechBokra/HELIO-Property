@@ -60,6 +60,12 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
         enabled: !!requestId
     });
 
+    const { data: milestones = [], refetch: refetchMilestones } = useQuery({
+        queryKey: ['finishingMilestones', requestId],
+        queryFn: () => getProjectMilestones(requestId!),
+        enabled: !!requestId
+    });
+
     React.useEffect(() => {
         if (lead) {
             setStatus(lead.status);
@@ -233,6 +239,19 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
                                 refetchQuotes();
                                 refetchHistory();
                                 refetchLeads();
+                            }}
+                        />
+                    </div>
+
+                    {/* Project Execution Milestones & Payment Schedule */}
+                    <div className="pt-2">
+                        <FinishingMilestonesTracker
+                            requestId={lead.id}
+                            milestones={milestones}
+                            canManage={canManage}
+                            onMilestoneUpdated={() => {
+                                refetchMilestones();
+                                refetchHistory();
                             }}
                         />
                     </div>

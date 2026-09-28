@@ -50,7 +50,7 @@ const UserRequestsPage = () => {
                         const title = payload.serviceTitle || payload.propertyDetails?.title?.en || req.type.replace(/_/g, ' ');
                         const typeLabel = t.adminDashboard.requestTypes?.[req.type] || req.type;
                         
-                        const isFinishing = req.service === 'finishing' || 
+                        const isFinishing = (req as any).service === 'finishing' || 
                             payload.serviceType === 'finishing' || 
                             payload.serviceTitle?.includes('تشطيب') ||
                             payload.serviceTitle?.includes('Finishing');
