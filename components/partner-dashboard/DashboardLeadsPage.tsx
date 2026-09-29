@@ -80,11 +80,24 @@ const DashboardLeadsPage: React.FC = () => {
             })
             .map(req => {
                 const leadPayload = (req.payload || {}) as Lead;
+                const isAssignedOrWon = 
+                    req.assignedTo === currentUser.id || 
+                    (leadPayload as any)?.partnerId === currentUser.id || 
+                    (leadPayload as any)?.assignedTo === currentUser.id;
+
+                // P0.4: Mask customer contact details for open RFQs until officially awarded or assigned
+                const customerName = isAssignedOrWon 
+                    ? (req.requesterInfo?.name || (leadPayload as any).customerName || 'Anonymous')
+                    : (language === 'ar' ? 'عميل المنصة (مناقصة)' : 'Platform Client (RFQ)');
+                const customerPhone = isAssignedOrWon 
+                    ? (req.requesterInfo?.phone || (leadPayload as any).customerPhone || '')
+                    : (language === 'ar' ? 'يُكشف بعد الترسية الرسمية' : 'Revealed upon award');
+
                 return {
                     ...leadPayload,
                     id: req.id, // Use the top-level Request ID
-                    customerName: req.requesterInfo?.name || (leadPayload as any).customerName || 'Anonymous',
-                    customerPhone: req.requesterInfo?.phone || (leadPayload as any).customerPhone || '',
+                    customerName,
+                    customerPhone,
                     createdAt: req.createdAt,
                     status: (leadPayload.status || req.status || 'new') as any,
                     source: (leadPayload as any).source,

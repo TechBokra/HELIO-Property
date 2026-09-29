@@ -518,6 +518,23 @@ export const getQuotesByRequestId = async (requestId: string): Promise<Finishing
 export const submitFinishingQuote = async (
     quoteData: Omit<FinishingQuote, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<FinishingQuote> => {
+    // P1.3: Validate commercial integrity
+    if (!quoteData.totalPrice || quoteData.totalPrice <= 0) {
+        throw new Error('Total quote price must be greater than zero.');
+    }
+    if (!quoteData.executionTimelineDays || quoteData.executionTimelineDays <= 0) {
+        throw new Error('Execution timeline must be at least 1 day.');
+    }
+
+    if (quoteData.scopeItems && quoteData.scopeItems.length > 0) {
+        const scopeSum = quoteData.scopeItems.reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
+        if (Math.abs(scopeSum - quoteData.totalPrice) > 1) {
+            throw new Error(
+                `Commercial total mismatch: Quote total (${quoteData.totalPrice.toLocaleString()} EGP) must equal the sum of scope items (${scopeSum.toLocaleString()} EGP).`
+            );
+        }
+    }
+
     const id = `quote-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const now = new Date().toISOString();
 
@@ -528,37 +545,39 @@ export const submitFinishingQuote = async (
         updatedAt: now
     };
 
-    try {
-        const row = {
-            request_id: quoteData.requestId,
-            partner_id: quoteData.partnerId,
-            partner_name: quoteData.partnerName,
-            total_price: quoteData.totalPrice,
-            price_per_sqm: quoteData.pricePerSqm,
-            currency: quoteData.currency || 'EGP',
-            execution_timeline_days: quoteData.executionTimelineDays,
-            warranty_months: quoteData.warrantyMonths,
-            scope_items: quoteData.scopeItems,
-            terms_and_conditions: quoteData.termsAndConditions,
-            status: quoteData.status || 'submitted',
-            notes: quoteData.notes,
-            created_at: now,
-            updated_at: now
-        };
+    const row = {
+        request_id: quoteData.requestId,
+        partner_id: quoteData.partnerId,
+        partner_name: quoteData.partnerName,
+        total_price: quoteData.totalPrice,
+        price_per_sqm: quoteData.pricePerSqm,
+        currency: quoteData.currency || 'EGP',
+        execution_timeline_days: quoteData.executionTimelineDays,
+        warranty_months: quoteData.warrantyMonths,
+        scope_items: quoteData.scopeItems,
+        terms_and_conditions: quoteData.termsAndConditions,
+        status: quoteData.status || 'submitted',
+        notes: quoteData.notes,
+        created_at: now,
+        updated_at: now
+    };
 
-        const { data, error } = await supabase
-            .from('finishing_quotes')
-            .insert(row)
-            .select()
-            .single();
+    const { data, error } = await supabase
+        .from('finishing_quotes')
+        .insert(row)
+        .select()
+        .single();
 
-        if (!error && data) {
-            newQuote.id = data.id;
-        }
-    } catch {
-        // Save locally
+    if (error) {
+        console.error('Error submitting finishing quote to Supabase:', error);
+        throw new Error(`Failed to submit quote: ${error.message}`);
     }
 
+    if (data) {
+        newQuote.id = data.id;
+    }
+
+    // Mirror to local cache for fast UI indexing
     const existing = getLocalQuotes();
     existing.unshift(newQuote);
     saveLocalQuotes(existing);
@@ -586,23 +605,47 @@ export const acceptQuoteAndAward = async (
     adminUserId: string,
     contractorName: string
 ): Promise<void> => {
-    // 1. Mark accepted quote
-    try {
-        await supabase
+    // 1. P0.3: Call Atomic Database RPC Transaction
+    const { data: rpcData, error: rpcError } = await supabase.rpc('accept_finishing_quote', {
+        p_quote_id: quoteId,
+        p_request_id: requestId,
+        p_client_name: adminUserId || 'العميل'
+    });
+
+    if (rpcError) {
+        console.warn('RPC accept_finishing_quote returned error, attempting fallback update:', rpcError);
+
+        // Fallback update with strict error checking
+        const { error: acceptErr } = await supabase
             .from('finishing_quotes')
             .update({ status: 'accepted', updated_at: new Date().toISOString() })
             .eq('id', quoteId);
 
-        // 2. Reject other quotes for this request
+        if (acceptErr) {
+            throw new Error(`Failed to accept quote in database: ${acceptErr.message}`);
+        }
+
+        // Reject other quotes for this request
         await supabase
             .from('finishing_quotes')
             .update({ status: 'rejected', updated_at: new Date().toISOString() })
             .eq('request_id', requestId)
             .neq('id', quoteId);
-    } catch {
-        // Fallback local update
+
+        // Update Request status to in-progress
+        await updateLead(requestId, { status: 'in-progress' });
+
+        // Record history
+        await recordFinishingRequestHistory({
+            requestId,
+            actionType: 'quote_accepted',
+            changedBy: adminUserId,
+            newValue: { quoteId, awardedTo: contractorName },
+            note: `تم اعتماد عرض المقاولة المقدم من ${contractorName} وترسية المشروع وبدء التنفيذ.`
+        });
     }
 
+    // Mirror to local cache
     const local = getLocalQuotes();
     const updatedLocal = local.map(q => {
         if (q.requestId === requestId) {
@@ -615,18 +658,6 @@ export const acceptQuoteAndAward = async (
         return q;
     });
     saveLocalQuotes(updatedLocal);
-
-    // 3. Update Request status to in-progress
-    await updateLead(requestId, { status: 'in-progress' });
-
-    // 4. Record history
-    await recordFinishingRequestHistory({
-        requestId,
-        actionType: 'quote_accepted',
-        changedBy: adminUserId,
-        newValue: { quoteId, awardedTo: contractorName },
-        note: `تم اعتماد عرض المقاولة المقدم من ${contractorName} وترسية المشروع وبدء التنفيذ.`
-    });
 };
 
 /* =========================================================================
@@ -840,14 +871,84 @@ const saveLocalMilestones = (milestones: FinishingProjectMilestone[]) => {
 };
 
 export const getProjectMilestones = async (requestId: string): Promise<FinishingProjectMilestone[]> => {
+    // 1. P0.1: Query database-backed finishing_milestones table in Supabase
+    try {
+        const { data, error } = await supabase
+            .from('finishing_milestones')
+            .select('*')
+            .eq('request_id', requestId)
+            .order('stage_number', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+            return data.map((row: any) => ({
+                id: row.id,
+                requestId: row.request_id,
+                stageNumber: row.stage_number,
+                title: { ar: row.title_ar, en: row.title_en },
+                description: { ar: row.description_ar || '', en: row.description_en || '' },
+                targetDays: row.target_days || 15,
+                status: row.status as FinishingMilestoneStatus,
+                progressPercentage: Number(row.progress_percentage) || 0,
+                paymentPercentage: Number(row.payment_percentage) || 0,
+                paymentStatus: row.payment_status as MilestonePaymentStatus,
+                inspectorNotes: row.inspector_notes || undefined,
+                completedAt: row.completed_at || undefined,
+                updatedAt: row.updated_at
+            }));
+        }
+
+        // Auto-seed default 5 milestones into Supabase
+        const now = new Date().toISOString();
+        const rowsToInsert = DEFAULT_PROJECT_MILESTONES_TEMPLATE.map(t => ({
+            request_id: requestId,
+            stage_number: t.stageNumber,
+            title_ar: t.title.ar,
+            title_en: t.title.en,
+            description_ar: t.description.ar,
+            description_en: t.description.en,
+            target_days: t.targetDays,
+            status: t.status,
+            progress_percentage: t.progressPercentage,
+            payment_percentage: t.paymentPercentage,
+            payment_status: t.paymentStatus,
+            created_at: now,
+            updated_at: now
+        }));
+
+        const { data: inserted, error: insertError } = await supabase
+            .from('finishing_milestones')
+            .insert(rowsToInsert)
+            .select()
+            .order('stage_number', { ascending: true });
+
+        if (!insertError && inserted && inserted.length > 0) {
+            return inserted.map((row: any) => ({
+                id: row.id,
+                requestId: row.request_id,
+                stageNumber: row.stage_number,
+                title: { ar: row.title_ar, en: row.title_en },
+                description: { ar: row.description_ar || '', en: row.description_en || '' },
+                targetDays: row.target_days || 15,
+                status: row.status as FinishingMilestoneStatus,
+                progressPercentage: Number(row.progress_percentage) || 0,
+                paymentPercentage: Number(row.payment_percentage) || 0,
+                paymentStatus: row.payment_status as MilestonePaymentStatus,
+                inspectorNotes: row.inspector_notes || undefined,
+                completedAt: row.completed_at || undefined,
+                updatedAt: row.updated_at
+            }));
+        }
+    } catch (e) {
+        console.error('Error fetching Supabase milestones:', e);
+    }
+
+    // In-memory fallback if database connection is offline
     const all = getLocalMilestones();
     const existing = all.filter(m => m.requestId === requestId);
-
     if (existing.length > 0) {
         return existing.sort((a, b) => a.stageNumber - b.stageNumber);
     }
 
-    // Auto-generate standard 5 milestones for this project
     const now = new Date().toISOString();
     const generated: FinishingProjectMilestone[] = DEFAULT_PROJECT_MILESTONES_TEMPLATE.map((template, idx) => ({
         ...template,
@@ -855,9 +956,6 @@ export const getProjectMilestones = async (requestId: string): Promise<Finishing
         requestId,
         updatedAt: now
     }));
-
-    const updatedAll = [...all, ...generated];
-    saveLocalMilestones(updatedAll);
     return generated;
 };
 
@@ -866,23 +964,54 @@ export const updateProjectMilestone = async (
     milestoneId: string,
     updates: Partial<FinishingProjectMilestone>,
     userLabel: string = 'Platform Finishing Engineer'
-): Promise<FinishingProjectMilestone | null> => {
-    const all = getLocalMilestones();
-    const index = all.findIndex(m => m.id === milestoneId && m.requestId === requestId);
-    if (index === -1) return null;
-
+): Promise<FinishingProjectMilestone> => {
     const now = new Date().toISOString();
+    const progress = updates.progressPercentage !== undefined 
+        ? Math.max(0, Math.min(100, updates.progressPercentage)) 
+        : undefined;
+
+    const dbUpdates: any = {
+        updated_at: now
+    };
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (progress !== undefined) dbUpdates.progress_percentage = progress;
+    if (updates.paymentStatus !== undefined) dbUpdates.payment_status = updates.paymentStatus;
+    if (updates.inspectorNotes !== undefined) dbUpdates.inspector_notes = updates.inspectorNotes;
+    if (updates.status === 'completed') {
+        dbUpdates.completed_at = now;
+        dbUpdates.progress_percentage = 100;
+    }
+
+    const { data, error } = await supabase
+        .from('finishing_milestones')
+        .update(dbUpdates)
+        .eq('id', milestoneId)
+        .eq('request_id', requestId)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Failed to update Supabase milestone:', error);
+        throw new Error(`Failed to update milestone in database: ${error.message}`);
+    }
+
     const updated: FinishingProjectMilestone = {
-        ...all[index],
-        ...updates,
-        updatedAt: now,
-        ...(updates.status === 'completed' && !all[index].completedAt ? { completedAt: now, progressPercentage: 100 } : {})
+        id: data.id,
+        requestId: data.request_id,
+        stageNumber: data.stage_number,
+        title: { ar: data.title_ar, en: data.title_en },
+        description: { ar: data.description_ar || '', en: data.description_en || '' },
+        targetDays: data.target_days,
+        status: data.status,
+        progressPercentage: data.progress_percentage,
+        paymentPercentage: data.payment_percentage,
+        paymentStatus: data.payment_status,
+        inspectorNotes: data.inspector_notes,
+        completedAt: data.completed_at,
+        updatedAt: data.updated_at
     };
 
-    all[index] = updated;
-    saveLocalMilestones(all);
-
-    // Record in history audit
+    // Record audit event in Supabase history
     await recordFinishingRequestHistory({
         requestId,
         actionType: 'milestone_updated',
@@ -905,25 +1034,30 @@ export const clientAcceptQuote = async (
     requestId: string,
     quoteId: string,
     clientName: string = 'العميل'
-): Promise<{ success: boolean; winningQuote?: FinishingQuote }> => {
+): Promise<{ success: boolean; winningQuote?: FinishingQuote; error?: string }> => {
     const quotes = await getQuotesByRequestId(requestId);
     const targetQuote = quotes.find(q => q.id === quoteId);
-    if (!targetQuote) return { success: false };
+    if (!targetQuote) return { success: false, error: 'Quote not found' };
 
-    // Call acceptQuoteAndAward which updates both Supabase and local quotes, logs history, and updates lead status
-    await acceptQuoteAndAward(quoteId, requestId, clientName, targetQuote.partnerName);
+    try {
+        // P0.3: Call atomic acceptQuoteAndAward
+        await acceptQuoteAndAward(quoteId, requestId, clientName, targetQuote.partnerName);
 
-    // Ensure partner assignment is saved on the lead
-    await updateLead(requestId, {
-        status: 'in-progress',
-        assignedTo: targetQuote.partnerId,
-        partnerId: targetQuote.partnerId
-    });
+        // Ensure partner assignment is saved on the lead
+        await updateLead(requestId, {
+            status: 'in-progress',
+            assignedTo: targetQuote.partnerId,
+            partnerId: targetQuote.partnerId
+        });
 
-    // Ensure milestones are initialized
-    await getProjectMilestones(requestId);
+        // Ensure milestones are initialized in database
+        await getProjectMilestones(requestId);
 
-    return { success: true, winningQuote: targetQuote };
+        return { success: true, winningQuote: targetQuote };
+    } catch (err: any) {
+        console.error('Error in clientAcceptQuote:', err);
+        return { success: false, error: err.message || 'Failed to award quote in database' };
+    }
 };
 
 // ==========================================

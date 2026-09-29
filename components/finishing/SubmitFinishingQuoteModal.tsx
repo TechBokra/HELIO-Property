@@ -112,6 +112,18 @@ export const SubmitFinishingQuoteModal: React.FC<SubmitFinishingQuoteModalProps>
             return;
         }
 
+        // P1.3: Validate commercial total integrity
+        const scopeSum = scopeItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+        if (scopeItems.length > 0 && Math.abs(scopeSum - totalPrice) > 1) {
+            showToast(
+                language === 'ar'
+                    ? `إجمالي المقايسة (${totalPrice.toLocaleString()} ج.م) يجب أن يطابق مجموع بنود المصنعيات (${scopeSum.toLocaleString()} ج.م).`
+                    : `Total price (${totalPrice.toLocaleString()} EGP) must match sum of scope items (${scopeSum.toLocaleString()} EGP).`,
+                'error'
+            );
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const pricePerSqm = propertyArea && propertyArea > 0 
@@ -139,8 +151,8 @@ export const SubmitFinishingQuoteModal: React.FC<SubmitFinishingQuoteModalProps>
             );
             onSuccess?.(quote);
             onClose();
-        } catch {
-            showToast(language === 'ar' ? 'فشل تقديم العرض. حاول مرة أخرى.' : 'Failed to submit quote.', 'error');
+        } catch (err: any) {
+            showToast(err?.message || (language === 'ar' ? 'فشل تقديم العرض. حاول مرة أخرى.' : 'Failed to submit quote.'), 'error');
         } finally {
             setIsSubmitting(false);
         }

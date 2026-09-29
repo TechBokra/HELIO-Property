@@ -134,6 +134,22 @@ const PartnerLeadDetailsPage: React.FC = () => {
         return <div className="p-8 text-center text-red-500">You are not authorized to view this lead.</div>;
     }
 
+    const isAssignedOrWon = 
+        currentUser?.id === lead.partnerId || 
+        currentUser?.id === (lead as any).assignedTo || 
+        currentUser?.id === request.assignedTo ||
+        myQuote?.status === 'accepted' ||
+        currentUser?.role === Role.PLATFORM_FINISHING_MANAGER ||
+        currentUser?.role === Role.SUPER_ADMIN;
+
+    const displayName = isAssignedOrWon 
+        ? request.requesterInfo.name 
+        : (language === 'ar' ? 'عميل المنصة الموثق (مناقصة)' : 'Verified Client (Finishing RFQ)');
+
+    const displayPhone = isAssignedOrWon 
+        ? request.requesterInfo.phone 
+        : (language === 'ar' ? 'يُكشف بعد الترسية والاعتماد' : 'Revealed upon award');
+
     return (
         <div className="max-w-5xl mx-auto animate-fadeIn">
             {isModalOpen && (
@@ -154,7 +170,7 @@ const PartnerLeadDetailsPage: React.FC = () => {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <div className="flex items-center gap-3">
-                            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{request.requesterInfo.name}</h1>
+                            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{displayName}</h1>
                             <StatusBadge status={lead.status} className="text-sm px-3 py-1" />
                         </div>
                         <p className="text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-2">
@@ -164,10 +180,12 @@ const PartnerLeadDetailsPage: React.FC = () => {
                         </p>
                     </div>
                     <div className="flex gap-3">
-                        <a href={`tel:${request.requesterInfo.phone}`} className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
-                            <PhoneIcon className="w-4 h-4 mr-2" />
-                            Call
-                        </a>
+                        {isAssignedOrWon && (
+                            <a href={`tel:${request.requesterInfo.phone}`} className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <PhoneIcon className="w-4 h-4 mr-2" />
+                                Call
+                            </a>
+                        )}
                         <Button onClick={() => setIsModalOpen(true)}>Update Status</Button>
                     </div>
                 </div>
@@ -184,9 +202,9 @@ const PartnerLeadDetailsPage: React.FC = () => {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="pt-4 space-y-4">
-                            <DetailItem label="Full Name" value={request.requesterInfo.name} />
-                            <DetailItem label="Phone Number" value={request.requesterInfo.phone} />
-                             {request.requesterInfo.email && <DetailItem label="Email" value={request.requesterInfo.email} />}
+                            <DetailItem label="Full Name" value={displayName} />
+                            <DetailItem label="Phone Number" value={displayPhone} />
+                             {isAssignedOrWon && request.requesterInfo.email && <DetailItem label="Email" value={request.requesterInfo.email} />}
                              <DetailItem label="Preferred Time" value={lead.contactTime} icon={<CalendarIcon className="w-4 h-4 text-gray-400" />} />
                         </CardContent>
                     </Card>

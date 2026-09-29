@@ -79,7 +79,11 @@ export const ClientFinishingDetailsModal: React.FC<ClientFinishingDetailsModalPr
         if (!selectedQuoteForAward) return;
         setIsSubmittingAward(true);
         try {
-            await clientAcceptQuote(request.id, selectedQuoteForAward.id, request.requesterInfo?.name || 'العميل');
+            const res = await clientAcceptQuote(request.id, selectedQuoteForAward.id, request.requesterInfo?.name || 'العميل');
+            if (res && !res.success) {
+                showToast(res.error || (isAr ? 'فشل اعتماد العرض في قاعدة البيانات' : 'Failed to award quote in database'), 'error');
+                return;
+            }
             showToast(
                 isAr ? 'تهانينا! تم اعتماد عرض المقاول بنجاح وتفعيل مراحل المشروع.' : 'Contractor quote accepted and project milestones activated!',
                 'success'
@@ -88,10 +92,11 @@ export const ClientFinishingDetailsModal: React.FC<ClientFinishingDetailsModalPr
             setSelectedQuoteForAward(null);
             refetchQuotes();
             refetchMilestones();
+            queryClient.invalidateQueries({ queryKey: ['myCustomerRequests'] });
             queryClient.invalidateQueries({ queryKey: ['allRequests'] });
             setActiveTab('milestones');
-        } catch {
-            showToast(isAr ? 'حدث خطأ أثناء اعتماد العرض' : 'Failed to accept quote', 'error');
+        } catch (err: any) {
+            showToast(err?.message || (isAr ? 'حدث خطأ أثناء اعتماد العرض' : 'Failed to accept quote'), 'error');
         } finally {
             setIsSubmittingAward(false);
         }

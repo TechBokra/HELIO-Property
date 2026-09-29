@@ -33,6 +33,27 @@ export const getAllRequests = async (): Promise<Request[]> => {
     return data.map(mapRequestFromDb);
 };
 
+export const getMyCustomerRequests = async (customerEmail: string): Promise<Request[]> => {
+    if (!customerEmail) return [];
+    try {
+        const { data, error } = await supabase
+            .from('requests')
+            .select('*')
+            .or(`requester_email.eq.${customerEmail},payload->requesterInfo->>email.eq.${customerEmail}`)
+            .order('created_at', { ascending: false });
+
+        if (!error && data) {
+            return data.map(mapRequestFromDb);
+        }
+    } catch (e) {
+        console.error('Error querying customer requests:', e);
+    }
+
+    // Fallback: only if user has authorized session
+    const all = await getAllRequests();
+    return all.filter(r => r.requesterInfo?.email === customerEmail);
+};
+
 export const getRequestById = async (id: string): Promise<Request | undefined> => {
     const { data, error } = await supabase
         .from('requests')

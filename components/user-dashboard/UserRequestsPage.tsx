@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getAllRequests } from '../../services/requests';
+import { getMyCustomerRequests } from '../../services/requests';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardContent } from '../ui/Card';
@@ -18,19 +18,17 @@ const UserRequestsPage = () => {
 
     const [selectedFinishingRequest, setSelectedFinishingRequest] = useState<Request | null>(null);
 
-    const { data: allRequests, isLoading } = useQuery({ 
-        queryKey: ['allRequests'], 
-        queryFn: getAllRequests,
-        enabled: !!currentUser
+    // P0.5: Query only customer's own requests via database-scoped query
+    const { data: userRequests, isLoading } = useQuery({ 
+        queryKey: ['myCustomerRequests', currentUser?.email], 
+        queryFn: () => getMyCustomerRequests(currentUser?.email || ''),
+        enabled: !!currentUser?.email
     });
 
     const myRequests = useMemo(() => {
-        if (!allRequests || !currentUser) return [];
-        return allRequests.filter(req => 
-            req.requesterInfo?.email === currentUser.email || 
-            req.requesterInfo?.phone === currentUser.contactMethods?.phone?.number
-        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [allRequests, currentUser]);
+        if (!userRequests) return [];
+        return [...userRequests].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [userRequests]);
 
     if (isLoading) return <TableSkeleton cols={4} rows={5} />;
 
