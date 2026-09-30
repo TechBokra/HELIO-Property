@@ -8,7 +8,8 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { Button } from '../ui/Button';
 import TableSkeleton from '../shared/TableSkeleton';
 import ClientFinishingDetailsModal from './ClientFinishingDetailsModal';
-import { SparklesIcon, ClockIcon } from '../ui/Icons';
+import { ClientGeneralRequestDetailsModal } from './ClientGeneralRequestDetailsModal';
+import { SparklesIcon, ChatBubbleLeftRightIcon } from '../ui/Icons';
 import type { Request } from '../../types';
 
 const UserRequestsPage = () => {
@@ -17,6 +18,7 @@ const UserRequestsPage = () => {
     const isAr = language === 'ar';
 
     const [selectedFinishingRequest, setSelectedFinishingRequest] = useState<Request | null>(null);
+    const [selectedGeneralRequest, setSelectedGeneralRequest] = useState<Request | null>(null);
 
     // P0.5: Query only customer's own requests via database-scoped query
     const { data: userRequests, isLoading } = useQuery({ 
@@ -92,9 +94,14 @@ const UserRequestsPage = () => {
                                                 <span>{isAr ? 'عروض المقايسات والمراحل' : 'Bids & Milestones'}</span>
                                             </Button>
                                         ) : (
-                                            <span className="text-xs text-gray-400">
-                                                {isAr ? 'طلب قيد المتابعة' : 'In Review'}
-                                            </span>
+                                            <Button
+                                                onClick={() => setSelectedGeneralRequest(req)}
+                                                variant="secondary"
+                                                className="border border-gray-200 dark:border-gray-700 hover:border-amber-400 font-bold text-xs sm:text-sm py-2 px-4 rounded-xl flex items-center gap-1.5 transition-colors"
+                                            >
+                                                <ChatBubbleLeftRightIcon className="w-4 h-4 text-amber-500" />
+                                                <span>{isAr ? 'التفاصيل والمحادثة' : 'Details & Messages'}</span>
+                                            </Button>
                                         )}
                                     </div>
                                 </CardContent>
@@ -116,6 +123,15 @@ const UserRequestsPage = () => {
                     isOpen={!!selectedFinishingRequest}
                     onClose={() => setSelectedFinishingRequest(null)}
                     request={selectedFinishingRequest}
+                />
+            )}
+
+            {/* Modal for Client General Requests Hub */}
+            {selectedGeneralRequest && (
+                <ClientGeneralRequestDetailsModal
+                    isOpen={!!selectedGeneralRequest}
+                    onClose={() => setSelectedGeneralRequest(null)}
+                    request={selectedGeneralRequest}
                 />
             )}
         </div>

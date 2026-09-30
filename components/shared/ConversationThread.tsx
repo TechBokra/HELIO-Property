@@ -28,9 +28,16 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
     
     const messages = lead.messages || [];
 
+    const isStaff = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role?.includes('_manager');
+    const isPartner = currentUser?.role?.includes('_partner') || (currentUser as any)?.type === 'finishing' || (currentUser as any)?.type === 'agency';
+    const isClient = !isStaff && !isPartner;
+
+    // Filter internal notes if viewer is a client
+    const visibleMessages = isClient ? messages.filter(m => m.type === 'message') : messages;
+
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+    }, [visibleMessages]);
 
     const mutation = useMutation({
         mutationFn: (messageData: Omit<LeadMessage, 'id' | 'timestamp'>) => addMessageToLead(requestId, messageData),
@@ -39,7 +46,7 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
             onMessageSent();
         },
         onError: () => {
-            showToast('Failed to send message.', 'error');
+            showToast(language === 'ar' ? 'فشل إرسال الرسالة.' : 'Failed to send message.', 'error');
         }
     });
 
@@ -47,23 +54,25 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
         e.preventDefault();
         if (!newMessage.trim() || !currentUser) return;
         
-        const senderType = currentUser.role === Role.SUPER_ADMIN || currentUser.role.includes('_manager') ? 'admin' : 'partner';
+        const senderType: 'admin' | 'partner' | 'client' = isStaff ? 'admin' : (isPartner ? 'partner' : 'client');
+        const effectiveType: 'message' | 'note' = isClient ? 'message' : messageType;
         
         mutation.mutate({
             sender: senderType,
             senderId: currentUser.id,
-            type: messageType,
+            type: effectiveType,
             content: newMessage,
         });
     };
     
     const getSenderName = (message: LeadMessage) => {
-        if (message.sender === 'client') return 'Client';
-        if (message.sender === 'system') return 'System';
-        if (message.senderId === currentUser?.id) return 'You';
+        if (message.sender === 'client') return isClient && message.senderId === currentUser?.id ? (language === 'ar' ? 'أنت' : 'You') : (language === 'ar' ? 'العميل' : 'Client');
+        if (message.sender === 'system') return language === 'ar' ? 'النظام' : 'System';
+        if (message.senderId === currentUser?.id) return language === 'ar' ? 'أنت' : 'You';
+        if (message.sender === 'admin') return language === 'ar' ? 'إدارة المنصة' : 'Platform Support';
         
         const senderInfo = t.partnerInfo[message.senderId || ''];
-        return senderInfo?.name || message.sender;
+        return senderInfo?.name || (language === 'ar' ? 'المهندس / الشريك' : 'Partner');
     };
 
     return (
@@ -85,21 +94,26 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
                 </div>
             )}
             <div className="flex-grow flex flex-col gap-3 p-2 bg-white dark:bg-gray-700/50 rounded-lg">
-                {messages.length === 0 ? (
+                {visibleMessages.length === 0 ? (
                      <div className="text-center text-sm text-gray-500 dark:text-gray-400 h-full flex items-center justify-center py-8">
-                        No messages or notes yet.
+                        {language === 'ar' ? 'لا توجد رسائل أو ملاحظات حتى الآن.' : 'No messages or notes yet.'}
                      </div>
                 ) : (
-                    messages.map(msg => (
+                    visibleMessages.map(msg => (
                         <div 
                             key={msg.id}
                             className={`p-3 rounded-lg max-w-[80%] break-words
-                                ${msg.type === 'note' ? (msg.sender === 'system' ? 'chat-bubble-note' : 'chat-bubble-note') : ''}
-                                ${msg.sender === 'system' ? 'chat-bubble-note' : (msg.sender === 'partner' || msg.sender === 'admin' ? 'chat-bubble-sent' : 'chat-bubble-received')}
+                                ${msg.type === 'note' ? 'bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50 text-amber-900 dark:text-amber-200' : ''}
+                                ${msg.type !== 'note' ? (msg.sender === 'client' && isClient ? 'bg-amber-500 text-white ml-auto' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 mr-auto') : 'mx-auto w-full'}
                             `}
                         >
+                            {msg.type === 'note' && (
+                                <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-1">
+                                    {language === 'ar' ? 'ملاحظة داخلية' : 'Internal Note'}
+                                </p>
+                            )}
                             <p className="text-sm">{msg.content}</p>
-                            <p className={`text-xs opacity-70 mt-1 ${msg.type === 'note' || msg.sender === 'system' ? 'text-center' : (msg.sender === 'partner' || msg.sender === 'admin' ? 'text-right' : 'text-left')}`}>
+                            <p className={`text-xs opacity-70 mt-1 ${msg.type === 'note' ? 'text-center' : 'text-right'}`}>
                                 {getSenderName(msg)} - {new Date(msg.timestamp).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })}
                             </p>
                         </div>
@@ -108,18 +122,53 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
                 <div ref={messagesEndRef} />
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className="space-y-2">
+                {!isClient && (
+                    <div className="flex gap-2 text-xs">
+                        <button
+                            type="button"
+                            onClick={() => setMessageType('note')}
+                            className={`px-2.5 py-1 rounded font-medium transition-colors ${
+                                messageType === 'note'
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            {language === 'ar' ? 'ملاحظة داخلية (للفريق)' : 'Internal Note'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setMessageType('message')}
+                            className={`px-2.5 py-1 rounded font-medium transition-colors ${
+                                messageType === 'message'
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            {language === 'ar' ? 'رسالة للعميل' : 'Message to Client'}
+                        </button>
+                    </div>
+                )}
+
                 <Textarea
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder={messageType === 'message' ? 'Add a new note...' : 'Add a new internal note...'}
+                    placeholder={
+                        isClient
+                            ? (language === 'ar' ? 'اكتب استفسارك أو رسالتك لمسؤول الخدمة هنا...' : 'Type your message or inquiry here...')
+                            : (messageType === 'message' ? (language === 'ar' ? 'اكتب رسالة للعميل...' : 'Message to client...') : (language === 'ar' ? 'إضافة ملاحظة داخلية...' : 'Add an internal note...'))
+                    }
                     className="mb-2"
                     rows={3}
                     disabled={mutation.isPending}
                 />
                 <div className="flex justify-end items-center">
                     <Button type="submit" isLoading={mutation.isPending} disabled={!newMessage.trim()}>
-                        Add Note
+                        {isClient
+                            ? (language === 'ar' ? 'إرسال الرسالة' : 'Send Message')
+                            : (messageType === 'message' 
+                                ? (language === 'ar' ? 'إرسال للعميل' : 'Send to Client') 
+                                : (language === 'ar' ? 'إضافة الملاحظة' : 'Add Note'))}
                     </Button>
                 </div>
             </form>

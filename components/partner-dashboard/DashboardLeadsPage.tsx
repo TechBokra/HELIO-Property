@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Lead, LeadStatus } from '../../types';
 import { useAuth } from '../auth/AuthContext';
 import ExportDropdown from '../shared/ExportDropdown';
-import { getAllRequests } from '../../services/requests';
+import { getPartnerLeads } from '../../services/requests';
 import { updateLead } from '../../services/leads';
 import { RequestType, Role } from '../../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,16 +33,17 @@ const DashboardLeadsPage: React.FC = () => {
     const { showToast } = useToast();
     const queryClient = useQueryClient();
 
+    // P0.4: Query getPartnerLeads backed by database partner_leads_view (PII-protected)
     const { data: allRequests, isLoading: loading, isError, refetch } = useQuery({
-        queryKey: ['allRequests'],
-        queryFn: getAllRequests,
+        queryKey: ['partnerLeads', currentUser?.id],
+        queryFn: () => getPartnerLeads(currentUser!.id),
         enabled: !!currentUser,
     });
 
     const statusMutation = useMutation({
         mutationFn: ({ id, status }: { id: string; status: LeadStatus }) => updateLead(id, { status }),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['allRequests'] });
+            queryClient.invalidateQueries({ queryKey: ['partnerLeads'] });
             showToast(language === 'ar' ? 'تم تحديث حالة العميل بنجاح' : 'Lead status updated', 'success');
         },
         onError: () => {

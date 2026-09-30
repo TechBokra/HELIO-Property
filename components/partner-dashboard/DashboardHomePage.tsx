@@ -6,7 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { getAllProperties } from '../../services/properties';
 import { getAllProjects } from '../../services/projects';
-import { getAllLeads } from '../../services/leads';
+import { getLeadsByPartnerId } from '../../services/leads';
 import { getAllPortfolioItems } from '../../services/portfolio';
 import StatCard from '../shared/StatCard';
 import { CubeIcon, BuildingIcon, InboxIcon, ClipboardDocumentListIcon, PhotoIcon } from '../ui/Icons';
@@ -33,12 +33,17 @@ const DashboardHomePage: React.FC = () => {
         refetch: refetchProjs 
     } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects, enabled: !!currentUser });
     
+    // P0.4: Scoped partner leads query with PII protection
     const { 
         data: allLeads, 
         isLoading: loadingLeads, 
         isError: errorLeads, 
         refetch: refetchLeads 
-    } = useQuery({ queryKey: ['allLeadsAdmin'], queryFn: getAllLeads, enabled: !!currentUser });
+    } = useQuery({ 
+        queryKey: ['partnerLeads', currentUser?.id], 
+        queryFn: () => getLeadsByPartnerId(currentUser!.id), 
+        enabled: !!currentUser 
+    });
     
     const { 
         data: allPortfolioItems, 

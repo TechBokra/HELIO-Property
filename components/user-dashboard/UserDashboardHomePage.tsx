@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
-import { getAllRequests } from '../../services/requests';
+import { getMyCustomerRequests } from '../../services/requests';
 import { useFavoritesStore } from '../../store/useFavoritesStore';
 import { useLanguage } from '../shared/LanguageContext';
 import StatCard from '../shared/StatCard';
@@ -14,21 +14,16 @@ const UserDashboardHomePage = () => {
     const { favorites } = useFavoritesStore();
     const t_home = t.dashboardHome;
 
-    const { data: allRequests, isLoading } = useQuery({ 
-        queryKey: ['allRequests'], 
-        queryFn: getAllRequests,
-        enabled: !!currentUser
+    const { data: myCustomerRequests, isLoading } = useQuery({ 
+        queryKey: ['myCustomerRequests', currentUser?.email], 
+        queryFn: () => getMyCustomerRequests(currentUser?.email || ''),
+        enabled: !!currentUser?.email
     });
 
     const userStats = useMemo(() => {
-        if (!allRequests || !currentUser) return null;
+        if (!myCustomerRequests || !currentUser) return null;
         
-        // Filter requests made by this user
-        const myRequests = allRequests.filter(req => 
-            req.requesterInfo.email === currentUser.email || 
-            req.requesterInfo.phone === currentUser.contactMethods?.phone?.number
-        );
-        
+        const myRequests = myCustomerRequests;
         const pendingCount = myRequests.filter(r => ['new', 'pending', 'contacted'].includes(r.status)).length;
         
         // Convert to display format
@@ -53,7 +48,7 @@ const UserDashboardHomePage = () => {
             recentRequests
         };
 
-    }, [allRequests, currentUser, favorites.length]);
+    }, [myCustomerRequests, currentUser, favorites.length]);
 
     if (isLoading || !userStats) return <div>Loading...</div>;
 

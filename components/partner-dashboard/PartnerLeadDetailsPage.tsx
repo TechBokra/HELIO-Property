@@ -21,6 +21,7 @@ import {
 import DetailItem from '../shared/DetailItem';
 import ConversationThread from '../shared/ConversationThread';
 import UpdateLeadStatusModal from '../shared/UpdateLeadStatusModal';
+import { useToast } from '../shared/ToastContext';
 import { Button } from '../ui/Button';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
@@ -46,6 +47,7 @@ const PartnerLeadDetailsPage: React.FC = () => {
     const { leadId } = useParams<{ leadId: string }>();
     const { t, language } = useLanguage();
     const { currentUser } = useAuth();
+    const { showToast } = useToast();
     const queryClient = useQueryClient();
 
     const { data: request, isLoading, isError } = useQuery({
@@ -115,6 +117,10 @@ const PartnerLeadDetailsPage: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['request', leadId] });
             queryClient.invalidateQueries({ queryKey: [`partner-leads-${currentUser?.id}`] });
             setIsModalOpen(false);
+            showToast(language === 'ar' ? 'تم تحديث حالة الطلب بنجاح' : 'Lead updated successfully', 'success');
+        },
+        onError: (err: any) => {
+            showToast(err?.message || (language === 'ar' ? 'فشل تحديث حالة الطلب في قاعدة البيانات' : 'Failed to update lead in database'), 'error');
         },
     });
 

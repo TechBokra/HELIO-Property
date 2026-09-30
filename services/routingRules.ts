@@ -84,3 +84,80 @@ export const reorderRoutingRules = async (id: string, direction: 'up' | 'down'):
     }
     return rules;
 };
+
+/**
+ * P1.2: Evaluates active routing rules against an incoming request or lead context.
+ * Returns the matched assignee partner/manager UUID, or null if no rule matches.
+ */
+export const evaluateRoutingRules = async (requestContext: {
+    type: string;
+    payload?: any;
+    requesterInfo?: any;
+}): Promise<string | null> => {
+    try {
+        const rules = await getAllRoutingRules();
+        const activeRules = rules.filter(r => r.active);
+
+        for (const rule of activeRules) {
+            let allConditionsMet = true;
+
+            for (const cond of rule.conditions) {
+                let actualVal: any;
+                if (cond.field === 'type') {
+                    actualVal = requestContext.type;
+                } else if (cond.field.startsWith('payload.')) {
+                    const key = cond.field.replace('payload.', '');
+                    actualVal = requestContext.payload ? requestContext.payload[key] : undefined;
+                } else if (cond.field.startsWith('requesterInfo.')) {
+                    const key = cond.field.replace('requesterInfo.', '');
+                    actualVal = requestContext.requesterInfo ? requestContext.requesterInfo[key] : undefined;
+                } else {
+                    actualVal = (requestContext as any)[cond.field] ?? requestContext.payload?.[cond.field];
+                }
+
+                if (actualVal === undefined || actualVal === null) {
+                    allConditionsMet = false;
+                    break;
+                }
+
+                const expectedVal = cond.value;
+                let conditionPassed = false;
+
+                switch (cond.operator) {
+                    case 'equals':
+                        conditionPassed = String(actualVal).toLowerCase() === String(expectedVal).toLowerCase();
+                        break;
+                    case 'not_equals':
+                        conditionPassed = String(actualVal).toLowerCase() !== String(expectedVal).toLowerCase();
+                        break;
+                    case 'contains':
+                        conditionPassed = String(actualVal).toLowerCase().includes(String(expectedVal).toLowerCase());
+                        break;
+                    case 'greater_than':
+                        conditionPassed = Number(actualVal) > Number(expectedVal);
+                        break;
+                    case 'less_than':
+                        conditionPassed = Number(actualVal) < Number(expectedVal);
+                        break;
+                    default:
+                        conditionPassed = false;
+                }
+
+                if (!conditionPassed) {
+                    allConditionsMet = false;
+                    break;
+                }
+            }
+
+            if (allConditionsMet && rule.action?.assignTo) {
+                return rule.action.assignTo;
+            }
+        }
+
+        return null;
+    } catch (e) {
+        console.warn('Error evaluating routing rules, falling back:', e);
+        return null;
+    }
+};
+

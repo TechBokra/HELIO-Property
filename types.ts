@@ -604,6 +604,22 @@ export interface FinishingRequestHistoryEntry {
     createdAt: string;
 }
 
+export interface RequestHistoryEntry {
+    id: string;
+    requestId: string;
+    actorId?: string;
+    actorName: string;
+    actorRole?: string;
+    action: string;
+    oldStatus?: string;
+    newStatus?: string;
+    oldAssignedTo?: string;
+    newAssignedTo?: string;
+    metadata?: Record<string, any>;
+    note?: string;
+    createdAt: string;
+}
+
 export type FinishingMilestoneStatus = 'pending' | 'in_progress' | 'completed' | 'delayed';
 export type MilestonePaymentStatus = 'pending' | 'due' | 'paid';
 

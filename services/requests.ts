@@ -1,10 +1,11 @@
 
 import { supabase } from '../lib/supabase';
 import { RequestType, Role } from '../types';
-import type { Request, Lead, LeadMessage } from '../types';
+import type { Request, Lead, LeadMessage, RequestHistoryEntry } from '../types';
 import { addNotification } from './notifications';
 import { getPartnerById } from './partners';
 import { addLead } from './leads';
+import { evaluateRoutingRules } from './routingRules';
 
 // Helper to map DB row to Request object
 const mapRequestFromDb = (row: any): Request => ({
@@ -35,24 +36,65 @@ export const getAllRequests = async (): Promise<Request[]> => {
 
 export const getMyCustomerRequests = async (customerEmail: string): Promise<Request[]> => {
     if (!customerEmail) return [];
-    try {
-        const { data, error } = await supabase
-            .from('requests')
-            .select('*')
-            .or(`requester_email.eq.${customerEmail},payload->requesterInfo->>email.eq.${customerEmail}`)
-            .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+        .from('requests')
+        .select('*')
+        .or(`requester_email.eq.${customerEmail},payload->requesterInfo->>email.eq.${customerEmail}`)
+        .order('created_at', { ascending: false });
 
-        if (!error && data) {
-            return data.map(mapRequestFromDb);
-        }
-    } catch (e) {
-        console.error('Error querying customer requests:', e);
+    if (error) {
+        console.error('Error querying customer requests:', error);
+        throw new Error(`Failed to load requests: ${error.message}`);
     }
 
-    // Fallback: only if user has authorized session
-    const all = await getAllRequests();
-    return all.filter(r => r.requesterInfo?.email === customerEmail);
+    return (data || []).map(mapRequestFromDb);
 };
+
+export const getPartnerLeads = async (partnerId: string): Promise<Request[]> => {
+    // P0.4: Query database view with PII masking for unassigned requests
+    const { data, error } = await supabase
+        .from('partner_leads_view')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error querying partner_leads_view:', error);
+        throw new Error(`Failed to load partner leads: ${error.message}`);
+    }
+
+    return (data || []).map(mapRequestFromDb);
+};
+
+export const getRequestHistory = async (requestId: string): Promise<RequestHistoryEntry[]> => {
+    // P1.1: Query database-backed audit history
+    const { data, error } = await supabase
+        .from('request_history')
+        .select('*')
+        .eq('request_id', requestId)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching request history:', error);
+        return [];
+    }
+
+    return (data || []).map((row: any) => ({
+        id: row.id,
+        requestId: row.request_id,
+        actorId: row.actor_id,
+        actorName: row.actor_name,
+        actorRole: row.actor_role,
+        action: row.action,
+        oldStatus: row.old_status,
+        newStatus: row.new_status,
+        oldAssignedTo: row.old_assigned_to,
+        newAssignedTo: row.new_assigned_to,
+        metadata: row.metadata || {},
+        note: row.note,
+        createdAt: row.created_at
+    }));
+};
+
 
 export const getRequestById = async (id: string): Promise<Request | undefined> => {
     const { data, error } = await supabase
@@ -151,7 +193,19 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
         updated_at: new Date().toISOString()
     };
     
-    // Auto-assignment logic based on type if not provided
+    // P1.2: Connect Automated Routing Rules
+    if (!dbPayload.assigned_to) {
+        const matchedAssignee = await evaluateRoutingRules({
+            type,
+            payload: finalPayload,
+            requesterInfo: data.requesterInfo
+        });
+        if (matchedAssignee) {
+            dbPayload.assigned_to = matchedAssignee;
+        }
+    }
+
+    // Fallback switch if no rule matched
     if (!dbPayload.assigned_to) {
         switch(type) {
             case RequestType.PARTNER_APPLICATION:
@@ -174,7 +228,10 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
         .select()
         .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error('Error inserting request to Supabase:', error);
+        throw new Error(`Failed to create request: ${error.message}`);
+    }
     
     const request = mapRequestFromDb(newReq);
 
@@ -209,7 +266,11 @@ export const updateRequest = async (id: string, updates: Partial<Request>): Prom
         .select()
         .single();
 
-    if (error) return undefined;
+    if (error) {
+        console.error('Error updating request in Supabase:', error);
+        throw new Error(`Failed to update request: ${error.message}`);
+    }
+
     return mapRequestFromDb(data);
 };
 
@@ -236,3 +297,26 @@ export const addMessageToLead = async (requestId: string, messageData: Omit<Lead
     
     return getRequestById(requestId);
 };
+
+export const getRequestMessages = async (requestId: string): Promise<LeadMessage[]> => {
+    const { data, error } = await supabase
+        .from('request_messages')
+        .select('*')
+        .eq('request_id', requestId)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching request messages:', error);
+        return [];
+    }
+
+    return (data || []).map((msg: any) => ({
+        id: msg.id,
+        sender: msg.sender,
+        senderId: msg.sender_id,
+        type: msg.type,
+        content: msg.content,
+        timestamp: msg.created_at
+    }));
+};
+
