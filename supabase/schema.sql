@@ -679,13 +679,67 @@ CREATE TABLE IF NOT EXISTS public.request_history (
 );
 
 ALTER TABLE public.request_history ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Admins and managers view all request history" ON public.request_history FOR SELECT USING (
+
+CREATE POLICY "Admins and managers view scoped request history" ON public.request_history FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM public.partners p 
         WHERE p.id = auth.uid() 
-        AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
+        AND (
+            p.role = 'super_admin'
+            OR (p.role IN ('platform_finishing_manager', 'finishing_market_manager') AND EXISTS (
+                SELECT 1 FROM public.requests r 
+                WHERE r.id = request_history.request_id 
+                AND (
+                    (r.type = 'LEAD' AND (
+                        r.payload->>'serviceType' IN ('finishing', 'renovation', 'turnkey')
+                        OR r.payload->>'category' = 'turnkey'
+                        OR r.payload->>'serviceTitle' ILIKE '%تشطيب%'
+                        OR r.payload->>'serviceTitle' ILIKE '%finishing%'
+                    ))
+                    OR r.assigned_to = auth.uid()
+                )
+            ))
+            OR (p.role = 'decoration_manager' AND EXISTS (
+                SELECT 1 FROM public.requests r 
+                WHERE r.id = request_history.request_id 
+                AND (
+                    (r.type = 'LEAD' AND (
+                        r.payload->>'serviceType' IN ('decorations', 'decoration')
+                        OR r.payload->>'serviceTitle' ILIKE '%ديكور%'
+                        OR r.payload->>'serviceTitle' ILIKE '%decor%'
+                    ))
+                    OR r.assigned_to = auth.uid()
+                )
+            ))
+            OR (p.role IN ('listings_manager', 'platform_real_estate_manager', 'real_estate_market_manager') AND EXISTS (
+                SELECT 1 FROM public.requests r 
+                WHERE r.id = request_history.request_id 
+                AND (
+                    r.type IN ('PROPERTY_LISTING_REQUEST', 'PROPERTY_INQUIRY')
+                    OR (r.type = 'LEAD' AND (r.payload->>'serviceType' = 'property' OR r.payload->>'propertyId' IS NOT NULL))
+                    OR r.assigned_to = auth.uid()
+                )
+            ))
+            OR (p.role = 'partner_relations_manager' AND EXISTS (
+                SELECT 1 FROM public.requests r 
+                WHERE r.id = request_history.request_id 
+                AND (
+                    r.type = 'PARTNER_APPLICATION'
+                    OR r.assigned_to = auth.uid()
+                )
+            ))
+            OR (p.role IN ('customer_relations_manager', 'service_manager') AND EXISTS (
+                SELECT 1 FROM public.requests r 
+                WHERE r.id = request_history.request_id 
+                AND (
+                    r.type IN ('CONTACT_MESSAGE', 'PROPERTY_INQUIRY')
+                    OR r.assigned_to = auth.uid()
+                )
+            ))
+        )
     )
 );
+
 CREATE POLICY "Assigned partners view history of assigned requests" ON public.request_history FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM public.requests r 
@@ -693,6 +747,7 @@ CREATE POLICY "Assigned partners view history of assigned requests" ON public.re
         AND (r.assigned_to = auth.uid() OR (r.payload->>'partnerId')::uuid = auth.uid())
     )
 );
+
 CREATE POLICY "Customers view history of own requests" ON public.request_history FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM public.requests r 
@@ -703,7 +758,6 @@ CREATE POLICY "Customers view history of own requests" ON public.request_history
         )
     )
 );
-CREATE POLICY "Authenticated users insert request history" ON public.request_history FOR INSERT WITH CHECK (true);
 
 -- 6. ATOMIC QUOTE AWARD RPC FUNCTION (P0.3)
 CREATE OR REPLACE FUNCTION public.accept_finishing_quote(
@@ -886,7 +940,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 DROP TRIGGER IF EXISTS log_request_mutation_trigger ON public.requests;
 CREATE TRIGGER log_request_mutation_trigger

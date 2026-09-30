@@ -302,9 +302,8 @@ USING (
     )
 );
 
+-- Do NOT allow direct client INSERT/UPDATE/DELETE; audit logs are generated strictly via database trigger
 DROP POLICY IF EXISTS "Authenticated users insert request history" ON public.request_history;
-CREATE POLICY "Authenticated users insert request history" 
-ON public.request_history FOR INSERT WITH CHECK (true);
 
 -- 7. TRIGGER: LOG REQUEST MUTATIONS IN AUDIT TRAIL (P1.1)
 CREATE OR REPLACE FUNCTION trg_log_request_mutation()
@@ -354,7 +353,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 DROP TRIGGER IF EXISTS log_request_mutation_trigger ON public.requests;
 CREATE TRIGGER log_request_mutation_trigger
