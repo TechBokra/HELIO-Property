@@ -1,98 +1,166 @@
-# خطة العمل وخريطة الطريق التقنية — مزامنة GitHub وتصليد نطاق الديكور والتصميم الداخلي (Decorations Domain)
+# ONLY HELIO — Decorations & Interior Design Hardening & Control Panel Operational Tuning Plan
 
-بناءً على مراجعة ما تم إنجازه بنجاح في نطاقات المنصة (إدارة العقارات، المقاولات والتشطيب، وإدارة الطلبات والعملاء المحتملين وسجل العمليات)، وتوافقاً مع قرارات خريطة الطريق:
-1. **المرحلة التمهيدية**: اعتماد وإتمام حزمة المزامنة مع GitHub للنطاقات المكتملة.
-2. **المرحلة التالية**: الانتقال المباشر لتصليد نطاق **الديكور والتصميم الداخلي والأثاث (Decorations & Interior Design Domain)** إلى المستوى الإنتاجي (Production Hardening) دون المرور بمسارات تجريبية.
+Comprehensive production hardening plan for the **Decorations and Interior Design** domain and unified tuning of the **Admin, Partner, and Customer Control Panels** with design-specific lifecycle stages, reassignment controls, and tamper-proof audit trails.
 
 ---
 
-## 1. ملخص الموقف الحالي للنطاقات (Current Platform State)
+## User Review & Critical Decisions
 
-| النطاق (Domain) | حالة التصليد السحابي | حالة قاعدة البيانات وRLS | الجاهزية للإنتاج |
-| :--- | :---: | :---: | :---: |
-| **إدارة العقارات (Property Management)** | مكتمل | مدعوم بقاعدة البيانات وRLS صارم | **جاهز للإنتاج** |
-| **المقاولات والتشطيب (Finishing Domain)** | مكتمل (P0/P1) | جدول مقايسات، مراحل تنفيذ، وترسية ذرية | **جاهز للإنتاج** |
-| **الطلبات والرسائل (Leads & Requests)** | مكتمل (P0/P1) | حماية RLS للمحادثات، سجل عمليات محمي، حجب PII | **جاهز للمزامنة** |
-| **الديكور والتصميم الداخلي (Decorations)** | **قيد التصليد** | **يحتاج جداول رسمية، RLS، وإزالة البيانات الوهمية** | **الهدف الحالي** |
+> [!IMPORTANT]
+> The following architectural decisions were confirmed through user clarification:
+> - **Prioritized Dashboards**: All control panels across the platform (**Admin**, **Partner**, and **Customer Portal**) are included in the review, hardening, and tuning scope.
+> - **Domain Request Structure**: Interior Design & Decoration requests receive a **dedicated workflow section with design-specific milestone stages** rather than generic lead buckets.
+> - **Primary Operational Focus**: **Status transitions, partner reassignment, and database-level audit logs (`request_history`)** to guarantee end-to-end accountability across stakeholders.
 
----
-
-## 2. المرحلة الأولى: إتمام مزامنة GitHub للنطاقات المكتملة
-
-حزمة التصدير جاهزة بالكامل في ملف الأرشيف المجمع:
-`/leads_requests_hardening_export.tar.gz`
-
-### الملفات الجاهزة للرفع والتحديث:
-1. `supabase/migrations/20260930_leads_requests_hardening.sql`: حماية رسائل الطلبات وربط قواعد التوجيه وإخفاء بيانات العملاء عبر `partner_leads_view`.
-2. `supabase/migrations/20260930_request_history_audit_security.sql`: سد ثغرة الإدراج المباشر في سجل العمليات وتقييده بمشغل قاعدة البيانات الآمن `trg_log_request_mutation()`.
-3. `supabase/schema.sql`: المخطط الكنسي الموحد والمحدث.
-4. `services/requests.ts` و `services/leads.ts`: إزالة التخزين المحلي تماماً وربط محرك التوجيه الذكي وقراءة الرسائل وسجل العمليات.
-5. `services/routingRules.ts`: محرك التقييم التلقائي لقواعد التوجيه.
-6. `components/user-dashboard/ClientGeneralRequestDetailsModal.tsx` و `UserRequestsPage.tsx`: نافذة وتفاصيل متابعة الطلبات العامة والمحادثة المباشرة للعميل.
-7. `components/partner-dashboard/DashboardLeadsPage.tsx` و `PartnerLeadDetailsPage.tsx`: عزل بيانات التواصل وتنبيهات الأخطاء للشركاء.
-8. `components/ui/Icons.tsx` و `tsconfig.json`: حل تعارضات البناء والأيقونات.
+- **Confirmed Decision 1**: Hardening `public.decoration_categories` and `public.portfolio_items` with strict Supabase RLS and eliminating silent fallback mock data.
+- **Confirmed Decision 2**: Implementing five design-specific stages: `Consultation & Brief`, `3D Concept & Moodboard`, `BOQ & Material Selection`, `Execution & Fitting`, and `Handover & Completion`.
+- **Confirmed Decision 3**: Reassignment and status transitions trigger automated audit trail entries in `public.request_history` via secure database triggers, visible across all three portals.
 
 ---
 
-## 3. المرحلة الثانية: تصليد نطاق الديكور والتصميم الداخلي (Decorations Domain P0/P1 Hardening)
+## 1. Overview & Core Concept
 
-كشف الفحص الفعلي لنطاق الديكور الحالي عن النواقص التالية التي تتطلب معالجة إنتاجية فورية:
-- **نقص الجداول في المخطط**: جدول `decoration_categories` يتم الاستعلام عنه في `services/decorations.ts` دون وجود تعريف له في `supabase/schema.sql`.
-- **غياب سياسات الأمان RLS**: جدول `portfolio_items` يفتقر لسياسات الأمان على مستوى الصفوف (Row Level Security).
-- **الاعتماد على Mock Data**: دالة `getAllPortfolioItems` و `getPortfolioByPartnerId` في `services/portfolio.ts` ترتد صامتاً إلى بيانات ملفات ثابتة `fallbackPortfolio`.
-- **معرفات وهمية (Ghost IDs)**: صفحة `DecorationsPage.tsx` ترسل طلبات الشراء والتفصيل المخصص مع معرّف وهمي `'admin-user'` بدلاً من المعرف الرسمي لمدير الديكور بالمنصة (`f476c295-e80a-41ca-a63b-61ff2f579f71`).
-- **ملفات وهمية فارغة**: وجود ملفين فارغين بحجم 0 بايت (`DecorationRequestModal.tsx` و `CustomDecorationRequestModal.tsx`).
+### What It Delivers
+A robust, secure, and production-grade Interior Design and Decoration lifecycle management system in ONLY HELIO. Customers submit custom design briefs or inquiry requests linked to portfolio items; Admin managers triage, assign specialized decoration partners, and track milestones; Partners manage progress, share specifications, and advance stages; and Customers monitor verified progress, review audit timelines, and communicate in real time.
 
-### أهداف التصليد الإنتاجي (P0 / P1 Scope):
+### Target Personas
+1. **Customers**: Homeowners and property investors looking for turnkey interior architecture, custom styling, or bespoke furnishing with milestone transparency.
+2. **Platform Admin & Decoration Managers**: Operational staff responsible for lead verification, designer/partner allocation, and quality governance.
+3. **Interior Design Partners**: Verified studios and decorators receiving assigned project leads, delivering concepts, updating execution stages, and communicating with clients.
 
-### P0 — الأمان وقاعدة البيانات ومصدر الحقيقة
-1. **إنشاء وتوثيق جدول تصنيفات الديكور (`public.decoration_categories`)**:
-   - المعرف الأساسي، الأسماء باللغتين (`name_ar`, `name_en`)، الوصف، والأيقونة/الترتيب.
-   - تفعيل RLS: قراءة عامة للجميع، مع تقييد الإضافة والتعديل والحذف لمشرف المنصة العام ومدير الديكور فقط.
-2. **تأمين وتطوير جدول معرض الأعمال والمنتجات (`public.portfolio_items`)**:
-   - إضافة قيود التحقق (Foreign Keys) مع جدول الشركاء `partners(id)`.
-   - تفعيل RLS:
-     * قراءة عامة لجميع الزوار (Public SELECT).
-     * إضافة وتعديل لشركاء الديكور المسجلين لأعمالهم الخاصة فقط (`partner_id = auth.uid()`).
-     * إدارة شاملة لمدير الديكور (`decoration_manager`) والمشرف العام.
-3. **تطهير التراجعات الوهمية في طبقة الخدمات**:
-   - إزالة أي ارتداد صامت للبيانات الوهمية (`data/portfolio.ts`) في `services/portfolio.ts`.
-   - جعل Supabase هو المصدر الوحيد والنهائي للبيانات مع تصعيد أخطاء الاتصال إلى الواجهة.
-
-### P1 — تدفق الأعمال والربط مع مديري المنصة وتجربة العميل
-1. **القضاء على المعرفات الوهمية (Zero Ghost IDs)**:
-   - ربط طلبات الشراء والاستشارات والتفصيل المخصص بالمعرف المعتمد لمدير الديكور:
-     `DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71'`
-   - إتاحة توجيه الطلب لشريك الديكور المخصص في حال كان العمل معروضاً من قبل شريك محدد.
-2. **تنظيف الملفات الملغاة**:
-   - حذف الملفات الفارغة (0 بايت) `DecorationRequestModal.tsx` و `CustomDecorationRequestModal.tsx` لضمان نظافة المستودع.
-3. **التكامل مع مركز الطلبات والمحادثات الموحد**:
-   - ضمان أن طلبات الديكور (سواء كانت شراء منتج محدد أو طلب تصميم داخلي مخصص) تُدرج كطلبات حقيقية في `requests` بنوع `LEAD` وتصنيف `decorations`.
-   - تمكين العميل من متابعة استفسارات الديكور عبر نافذة `ClientGeneralRequestDetailsModal` مع المحادثة المباشرة وسجل العمليات.
-4. **لوحة تحكم مدير الديكور (`DecorationsManagerHomePage.tsx`)**:
-   - تمكين مدير الديكور من فرز ومتابعة وتوزيع طلبات الديكور والتصميم الداخلي، واعتماد المنتجات الجديدة المرفوعة من الشركاء.
+### Key Value
+Eliminates opaque request states, ghost leads, and hardcoded mock data. Replaces disconnected generic inquiry rows with an integrated design pipeline backed by PostgreSQL RLS, verifiable audit records, and bi-directional customer-partner messaging.
 
 ---
 
-## 4. خطة التحقق والاختبار (Verification Matrix)
+## 2. User Experience & Visual Design
 
-1. **التحقق من البناء والتجميع**:
-   - اجتياز `tsc -b && vite build` بدون أي أخطاء.
-   - اجتياز `eslint .` بدون تحذيرات أو أخطاء.
-2. **التحقق من عدم حدوث تراجعات (Regression Safety)**:
-   - عدم المساس بنطاق إدارة العقارات المغلق مسبقاً.
-   - عدم المساس بنطاق المقاولات والتشطيب المغلق مسبقاً.
-   - الحفاظ على سلامة حزمة تصدير الطلبات والرسائل السابقة.
-3. **التحقق من خادم التطوير**:
-   - استمرار استجابة الخادم على المنفذ 3000 بـ `HTTP 200 OK`.
+Following the **Universal Frontend Design Constitution** and **SaaS Dashboard Architecture**:
+- **Zero-Pill Discipline**: Statuses and stages rendered as crisp typography with semantic status dots and tabular timestamps, avoiding garish candy capsules.
+- **Single-Elevation Depth**: Clean surfaces (`border border-neutral-200 dark:border-neutral-800`), high-density data tables, and tabular numerals (`tabular-nums font-mono`) for dates, phone numbers, and financial quotes.
+- **Consistent Navigation**: Direct breadcrumbs (`Dashboard / Platform Operations / Decorations / Request #...`) and explicit action menus.
+
+### Key User Flows
+
+```
+[Customer Portal]
+  │ Submit Interior Design Brief / Portfolio Inquiry
+  ▼
+[Admin Dashboard]
+  │ Triage in Dedicated "Platform Decorations" Section
+  │ Review Brief & Allocate Design Partner / Specialist
+  │ Mutation logged to `request_history`
+  ▼
+[Partner Dashboard]
+  │ Partner receives assigned interior design lead
+  │ Advances stages: Concept ➔ 3D Rendering ➔ BOQ ➔ Execution ➔ Handover
+  │ Two-way communication via ConversationThread
+  ▼
+[Customer View]
+  │ Real-time stage progress bar & audit trail inspection
+  │ Secure message replies & file inspection
+```
+
+### Visual Identity & Theme Tokens
+- **Background Atmosphere**: Crisp neutral slate canvas (`bg-slate-50 dark:bg-slate-900`) with elevated white/dark panels (`bg-white dark:bg-slate-800`).
+- **Primary Accents**: Warm amber/gold branding accents (`text-amber-600`, `bg-amber-600 hover:bg-amber-700`) honoring the Heliopolis heritage.
+- **Stage Progression Colors**:
+  - `Consultation`: Cool Sky (`#0284C7`)
+  - `Concept & 3D`: Indigo (`#4F46E5`)
+  - `BOQ & Materials`: Purple (`#9333EA`)
+  - `Execution`: Amber (`#D97706`)
+  - `Handover`: Emerald (`#16A34A`)
 
 ---
 
-## 5. مخرجات التسليم القادمة
+## 3. Key Product Decisions & Trade-Offs
 
-عند تنفيذ الخطة:
-* ملف هجرة جديد: `supabase/migrations/20261001_decorations_domain_hardening.sql`.
-* تحديث `supabase/schema.sql` بالجداول والسياسات الجديدة.
-* تحديث `services/decorations.ts` و `services/portfolio.ts`.
-* تحديث `DecorationsPage.tsx` وإزالة الملفات الفارغة.
-* إعداد حزمة التصدير النهائية لـ GitHub.
+### Decision 1: Dedicated Interior Design Pipeline vs. Generic Leads
+- **Chosen Approach**: Build dedicated request detail and workflow components (`AdminDecorationRequestDetailsPage`, `PartnerDecorationStageModal`, and customer stage tracking) with explicit milestone definitions.
+- **Why**: Interior design involves multi-step deliverable cycles (consultation, 3D renderings, material selection, execution) that cannot be represented accurately by a generic 3-state CRM lead.
+
+### Decision 2: Database-Authoritative State & Real-time Audit Trail
+- **Chosen Approach**: All status changes, stage updates, and partner reassignments execute directly against Supabase `public.requests` / `public.leads` and trigger automated entries in `public.request_history`.
+- **Why**: Guarantees zero ghost leads, eliminates client-side tampering, and ensures customers and managers have matching single-source-of-truth timelines.
+
+### Decision 3: Zero Mock Fallbacks in `services/portfolio.ts` & `services/decorations.ts`
+- **Chosen Approach**: Completely remove fallback arrays (`data/portfolio.ts`). In case of network or database errors, bubble informative error boundaries to the UI.
+- **Why**: Eliminates stale browser data and prevents users from interacting with phantom portfolio items.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+### System Layout & Component Hierarchy
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          Supabase PostgreSQL                          │
+│                                                                        │
+│  ┌───────────────────────┐  ┌─────────────────┐  ┌──────────────────┐ │
+│  │ decoration_categories │  │ portfolio_items │  │ request_history  │ │
+│  └───────────┬───────────┘  └────────┬────────┘  └────────▲─────────┘ │
+│              │                       │                    │ (trigger)│
+│              └───────────────┬───────┘                    │          │
+│                              ▼                            │          │
+│                  ┌──────────────────────┐                 │          │
+│                  │  requests / leads    ├─────────────────┘          │
+│                  └──────────┬───────────┘                            │
+└─────────────────────────────┼────────────────────────────────────────┘
+                              │
+               REST / Supabase Client (RLS Protected)
+                              │
+  ┌───────────────────────────┼───────────────────────────┐
+  ▼                           ▼                           ▼
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐
+│ Admin Dashboard  │  │ Partner Portal   │  │ Customer Dashboard   │
+│                  │  │                  │  │                      │
+│ - Triage Queue   │  │ - Assigned Leads │  │ - Request Tracker    │
+│ - Stage Manager  │  │ - Stage Progress │  │ - Stage Progress Bar │
+│ - Reassignment   │  │ - Design Comm.   │  │ - Audit Timeline     │
+│ - Audit Viewer   │  │ - Status Update  │  │ - Direct Reply       │
+└──────────────────┘  └──────────────────┘  └──────────────────────┘
+```
+
+### Data Model & Schema Enhancements
+
+1. **`public.decoration_categories` Table Migration**:
+   - `id`: UUID (Primary Key, default `gen_random_uuid()`)
+   - `name_ar`: TEXT NOT NULL
+   - `name_en`: TEXT NOT NULL
+   - `description_ar`: TEXT, `description_en`: TEXT
+   - `icon`: TEXT, `sort_order`: INT DEFAULT 0
+   - `created_at`: TIMESTAMPTZ DEFAULT now()
+   - **RLS**: Public read; write restricted to `super_admin` and `decoration_manager`.
+
+2. **`public.portfolio_items` Hardening**:
+   - Foreign key constraint: `partner_id REFERENCES partners(id) ON DELETE SET NULL`
+   - **RLS**: Public read; insert/update restricted to assigned partner or platform managers.
+
+3. **Design-Specific Lifecycle Stages**:
+   - `design_consultation`: Initial scope review and customer meeting.
+   - `concept_and_3d`: 2D moodboards and 3D architectural renderings.
+   - `boq_and_materials`: Bill of quantities, material specifications, and budget quote.
+   - `execution_and_fitting`: On-site carpentry, painting, and fitting.
+   - `completed`: Final inspection and project handover.
+   - `cancelled`: Terminated or declined.
+
+### Execution Phases
+
+- **Phase 1: Database Migration & RLS**:
+  - Create migration `20260930_decorations_domain_hardening.sql`.
+  - Provision `decoration_categories` table, apply RLS, and add foreign keys.
+  - Apply stage transition policies and link trigger `trg_log_request_mutation()` for interior design updates.
+
+- **Phase 2: Service Layer Hardening**:
+  - Clean `services/decorations.ts` and `services/portfolio.ts` (remove mock fallbacks, enforce strict typing).
+  - Add `assignDecorationPartner()` and `updateDecorationStage()` with audit trail logging in `services/requests.ts` and `services/leads.ts`.
+
+- **Phase 3: Control Panel Tuning**:
+  - **Admin**: Fix and complete `AdminDecorationRequestDetailsPage.tsx` and `RequestsManagement.tsx` with partner reassignment modal, stage controls, and `RequestHistoryTimeline`.
+  - **Partner**: Enhance `PartnerLeadDetailsPage.tsx` to recognize interior design requests and provide stage advancement controls.
+  - **Customer**: Connect `ClientGeneralRequestDetailsModal.tsx` to render design milestones and stage progress dynamically.
+
+- **Phase 4: Build Verification & Export**:
+  - Full TypeScript compilation, lint validation, and production build check.
+  - Package final export bundle for GitHub sync.

@@ -13,6 +13,8 @@ import { Card, CardContent } from '../ui/Card';
 import ConversationThread from '../shared/ConversationThread';
 import { getRequestHistory, getRequestMessages } from '../../services/requests';
 import type { Request, Lead } from '../../types';
+import { DecorationStageTracker } from '../shared/DecorationStageTracker';
+import { RequestHistoryTimeline } from '../shared/RequestHistoryTimeline';
 
 interface ClientGeneralRequestDetailsModalProps {
     isOpen: boolean;
@@ -143,6 +145,21 @@ export const ClientGeneralRequestDetailsModal: React.FC<ClientGeneralRequestDeta
                 <div className="p-6 overflow-y-auto flex-1 space-y-6">
                     {activeTab === 'details' && (
                         <div className="space-y-4">
+                            {/* Interior Design Milestone Stage Tracker for Customer */}
+                            {(payload.serviceType === 'decorations' || payload.serviceType === 'decoration' || payload.serviceTitle?.includes('ديكور')) && (
+                                <Card className="border border-amber-300 dark:border-amber-700/60 bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/20">
+                                    <CardContent className="p-5 space-y-3">
+                                        <h3 className="font-bold text-amber-900 dark:text-amber-300 text-sm">
+                                            {isAr ? 'مراحل تنفيذ التصميم الداخلي' : 'Interior Design Milestone Progression'}
+                                        </h3>
+                                        <DecorationStageTracker
+                                            currentStage={payload.designStage || 'consultation'}
+                                            canManage={false}
+                                        />
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             <Card>
                                 <CardContent className="p-5 space-y-4">
                                     <h3 className="font-bold text-gray-900 dark:text-white text-base">
@@ -199,32 +216,8 @@ export const ClientGeneralRequestDetailsModal: React.FC<ClientGeneralRequestDeta
                     )}
 
                     {activeTab === 'history' && (
-                        <div className="space-y-3">
-                            {history.length === 0 ? (
-                                <p className="text-center text-sm text-gray-400 py-8">
-                                    {isAr ? 'لا توجد حركات مسجلة لهذا الطلب حتى الآن.' : 'No audit history recorded yet.'}
-                                </p>
-                            ) : (
-                                <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200 dark:before:bg-gray-700">
-                                    {history.map(item => (
-                                        <div key={item.id} className="relative">
-                                            <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-amber-500 border-2 border-white dark:border-gray-900" />
-                                            <div className="bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800 text-xs space-y-1">
-                                                <div className="flex justify-between items-center text-gray-500">
-                                                    <span className="font-semibold text-gray-800 dark:text-gray-200">{item.action}</span>
-                                                    <span>{new Date(item.createdAt).toLocaleDateString(language)} {new Date(item.createdAt).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })}</span>
-                                                </div>
-                                                {item.note && <p className="text-gray-700 dark:text-gray-300">{item.note}</p>}
-                                                {item.newStatus && (
-                                                    <p className="text-[11px] text-gray-400">
-                                                        {isAr ? 'الحالة:' : 'Status:'} <span className="font-mono">{item.newStatus}</span>
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                        <div className="p-2">
+                            <RequestHistoryTimeline requestId={request.id} initialHistory={history} />
                         </div>
                     )}
                 </div>

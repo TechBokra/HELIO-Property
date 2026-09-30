@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getRequestById, addMessageToLead, updateRequest } from '../../services/requests';
 import { useLanguage } from '../shared/LanguageContext';
 import { useAuth } from '../auth/AuthContext';
-import { RequestStatus, Lead, LeadStatus, RequestType, Role, FinishingQuote } from '../../types';
+import { RequestStatus, Lead, LeadStatus, RequestType, Role, FinishingQuote, DecorationStage } from '../../types';
 import { 
     ArrowLeftIcon, 
     PhoneIcon, 
@@ -16,7 +16,8 @@ import {
     ClockIcon, 
     ClipboardDocumentListIcon,
     BuildingIcon,
-    PlusIcon
+    PlusIcon,
+    PaintBrushIcon
 } from '../ui/Icons';
 import DetailItem from '../shared/DetailItem';
 import ConversationThread from '../shared/ConversationThread';
@@ -28,6 +29,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { getQuotesByRequestId, getProjectMilestones } from '../../services/finishing';
 import { SubmitFinishingQuoteModal } from '../finishing/SubmitFinishingQuoteModal';
 import { FinishingMilestonesTracker } from '../finishing/FinishingMilestonesTracker';
+import { DecorationStageTracker } from '../shared/DecorationStageTracker';
+import { RequestHistoryTimeline } from '../shared/RequestHistoryTimeline';
 
 // Helper to map internal Lead statuses to generic Request statuses
 function mapLeadStatusToRequestStatus(leadStatus: LeadStatus): RequestStatus {
@@ -70,14 +73,22 @@ const PartnerLeadDetailsPage: React.FC = () => {
         enabled: !!leadId
     });
 
-    const isFinishing = useMemo(() => {
+    const isDecoration = useMemo(() => {
         if (!lead) return false;
-        return lead.serviceType === 'finishing' || 
+        return lead.serviceType === 'decorations' || 
                lead.serviceType === 'decoration' || 
+               lead.serviceTitle?.includes('ديكور') ||
+               lead.serviceTitle?.toLowerCase().includes('decor') ||
+               lead.serviceTitle?.toLowerCase().includes('interior');
+    }, [lead]);
+
+    const isFinishing = useMemo(() => {
+        if (!lead || isDecoration) return false;
+        return lead.serviceType === 'finishing' || 
                (lead as any).category === 'turnkey' ||
                lead.serviceTitle?.includes('تشطيب') ||
                lead.serviceTitle?.toLowerCase().includes('finishing');
-    }, [lead]);
+    }, [lead, isDecoration]);
 
     const { data: milestones = [], refetch: refetchMilestones } = useQuery({
         queryKey: ['finishingMilestones', leadId],
@@ -115,6 +126,7 @@ const PartnerLeadDetailsPage: React.FC = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['request', leadId] });
+            queryClient.invalidateQueries({ queryKey: ['requestHistory', leadId] });
             queryClient.invalidateQueries({ queryKey: [`partner-leads-${currentUser?.id}`] });
             setIsModalOpen(false);
             showToast(language === 'ar' ? 'تم تحديث حالة الطلب بنجاح' : 'Lead updated successfully', 'success');
@@ -122,6 +134,32 @@ const PartnerLeadDetailsPage: React.FC = () => {
         onError: (err: any) => {
             showToast(err?.message || (language === 'ar' ? 'فشل تحديث حالة الطلب في قاعدة البيانات' : 'Failed to update lead in database'), 'error');
         },
+    });
+
+    const updateStageMutation = useMutation({
+        mutationFn: async (newStage: DecorationStage) => {
+            if (!request || !currentUser || !lead) throw new Error("Missing data for update");
+            const newStatus: LeadStatus = newStage === 'completed'
+                ? 'completed'
+                : newStage === 'cancelled'
+                ? 'cancelled'
+                : 'in-progress';
+
+            const updatedPayload = { ...lead, designStage: newStage, status: newStatus };
+            await updateRequest(request.id, {
+                status: mapLeadStatusToRequestStatus(newStatus),
+                payload: updatedPayload
+            });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['request', leadId] });
+            queryClient.invalidateQueries({ queryKey: ['requestHistory', leadId] });
+            queryClient.invalidateQueries({ queryKey: [`partner-leads-${currentUser?.id}`] });
+            showToast(language === 'ar' ? 'تم تحديث مرحلة التصميم الداخلي وسجل العمليات بنجاح' : 'Design stage and audit trail updated successfully', 'success');
+        },
+        onError: (err: any) => {
+            showToast(err?.message || (language === 'ar' ? 'فشل تحديث مرحلة التصميم' : 'Failed to update design stage'), 'error');
+        }
     });
 
     if (isLoading) return <div className="p-8 text-center">Loading lead details...</div>;
@@ -133,8 +171,11 @@ const PartnerLeadDetailsPage: React.FC = () => {
         currentUser?.id === (lead as any).assignedTo || 
         currentUser?.id === request.assignedTo ||
         currentUser?.role === Role.PLATFORM_FINISHING_MANAGER ||
+        currentUser?.role === Role.DECORATION_MANAGER ||
         currentUser?.role === Role.SUPER_ADMIN ||
-        currentUser?.role === Role.FINISHING_PARTNER;
+        currentUser?.role === Role.FINISHING_PARTNER ||
+        currentUser?.role === Role.DEVELOPER_PARTNER ||
+        currentUser?.role === Role.AGENCY_PARTNER;
 
     if (!isAuthorized) {
         return <div className="p-8 text-center text-red-500">You are not authorized to view this lead.</div>;
@@ -428,6 +469,26 @@ const PartnerLeadDetailsPage: React.FC = () => {
                         </div>
                     )}
 
+                    {/* Interior Design Stage Pipeline */}
+                    {isDecoration && (
+                        <Card className="border border-amber-500/30 overflow-hidden shadow-xs">
+                            <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 pb-3 border-b border-amber-200 dark:border-amber-800/40">
+                                <CardTitle className="text-base flex items-center gap-2 text-gray-900 dark:text-white">
+                                    <PaintBrushIcon className="w-5 h-5 text-amber-600" />
+                                    <span>{language === 'ar' ? 'مراحل تنفيذ التصميم الداخلي والديكور' : 'Interior Design Milestone Progression'}</span>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="pt-4">
+                                <DecorationStageTracker
+                                    currentStage={lead.designStage || 'consultation'}
+                                    canManage={isAssignedOrWon}
+                                    isUpdating={updateStageMutation.isPending}
+                                    onStageChange={(stage) => updateStageMutation.mutate(stage)}
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
+
                     <Card className="h-full flex flex-col">
                         <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
                             <CardTitle className="text-lg">Activity & Notes</CardTitle>
@@ -438,6 +499,18 @@ const PartnerLeadDetailsPage: React.FC = () => {
                                 requestId={request.id}
                                 onMessageSent={() => queryClient.invalidateQueries({ queryKey: ['request', leadId] })} 
                             />
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+                            <CardTitle className="text-base flex items-center gap-2 text-gray-900 dark:text-white">
+                                <ClockIcon className="w-5 h-5 text-amber-600" />
+                                <span>{language === 'ar' ? 'سجل العمليات والتدقيق (Audit Trail)' : 'Audit Trail & Event History'}</span>
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-5">
+                            <RequestHistoryTimeline requestId={request.id} />
                         </CardContent>
                     </Card>
                 </div>

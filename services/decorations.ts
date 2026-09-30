@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabase';
 import type { DecorationCategory } from '../types';
-import { decorationCategoriesData as fallbackCategories } from '../data/decorationCategories';
 
 // Helper to map DB row to DecorationCategory
 const mapCategoryFromDb = (row: any): DecorationCategory => ({
@@ -22,7 +21,7 @@ export const getDecorationCategories = async (): Promise<DecorationCategory[]> =
     }
 
     if (!data || data.length === 0) {
-        return fallbackCategories;
+        return [];
     }
 
     return data.map(mapCategoryFromDb);

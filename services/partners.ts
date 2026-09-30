@@ -3,8 +3,6 @@ import { supabase } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import type { Partner, PartnerStatus, PartnerRequest, AdminPartner, SubscriptionPlan } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
-import { partnersData as fallbackPartners } from '../data/partners';
-import { arTranslations, enTranslations } from '../data/translations';
 
 // --- HELPER: Isolated Client ---
 // We create a temporary client for registration actions to prevent 
@@ -25,7 +23,7 @@ const getTemporaryClient = () => {
             detectSessionInUrl: false
         }
     });
-}
+};
 
 // Mapper to convert DB row to Partner object
 const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
@@ -53,72 +51,64 @@ const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
     };
 };
 
-const mapFallbackPartner = (p: any): Partner | AdminPartner => {
-    // Map fallback data structure to match DB-hydrated structure
-    const enInfo = (enTranslations.partnerInfo as any)[p.id];
-    const arInfo = (arTranslations.partnerInfo as any)[p.id];
-    
-    return {
-        ...p,
-        role: mapPartnerTypeToRole(p.type),
-        name: enInfo?.name || p.id,
-        description: enInfo?.description || '',
-        nameAr: arInfo?.name || p.id,
-        descriptionAr: arInfo?.description || '',
-    };
-};
-
 export const getAllPartners = async (): Promise<Partner[]> => {
-    try {
-        const { data, error } = await supabase.from('partners').select('*');
-        if (error || !data || data.length === 0) {
-             // Fallback
-             return fallbackPartners.map(mapFallbackPartner);
-        }
-        return data.map(mapPartnerFromDb);
-    } catch (e) {
-        return fallbackPartners.map(mapFallbackPartner);
+    const { data, error } = await supabase
+        .from('partners')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching partners from Supabase:', error);
+        throw new Error(`Failed to load partners: ${error.message}`);
     }
+
+    return (data || []).map(mapPartnerFromDb);
 };
 
 export const getAllPartnersForAdmin = async (): Promise<AdminPartner[]> => {
-    try {
-        const { data, error } = await supabase.from('partners').select('*');
-        if (error || !data || data.length === 0) {
-            return fallbackPartners.map(mapFallbackPartner) as AdminPartner[];
-        }
-        return data.map(mapPartnerFromDb) as AdminPartner[];
-    } catch (e) {
-        return fallbackPartners.map(mapFallbackPartner) as AdminPartner[];
+    const { data, error } = await supabase
+        .from('partners')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching admin partners from Supabase:', error);
+        throw new Error(`Failed to load admin partners: ${error.message}`);
     }
+
+    return (data || []).map(mapPartnerFromDb) as AdminPartner[];
 };
 
 export const getPartnerById = async (id: string): Promise<Partner | undefined> => {
-    try {
-        const { data, error } = await supabase.from('partners').select('*').eq('id', id).single();
-        if (error || !data) {
-            const fallback = fallbackPartners.find(p => p.id === id);
-            return fallback ? mapFallbackPartner(fallback) : undefined;
-        }
-        return mapPartnerFromDb(data);
-    } catch (e) {
-         const fallback = fallbackPartners.find(p => p.id === id);
-         return fallback ? mapFallbackPartner(fallback) : undefined;
+    const { data, error } = await supabase
+        .from('partners')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+    if (error) {
+        if (error.code === 'PGRST116') return undefined;
+        console.error('Error fetching partner by ID:', error);
+        throw new Error(`Failed to fetch partner: ${error.message}`);
     }
+
+    return data ? mapPartnerFromDb(data) : undefined;
 };
 
 export const getPartnerByEmail = async (email: string): Promise<Partner | undefined> => {
-     try {
-        const { data, error } = await supabase.from('partners').select('*').eq('email', email).single();
-        if (error || !data) {
-            const fallback = fallbackPartners.find(p => p.email === email);
-            return fallback ? mapFallbackPartner(fallback) : undefined;
-        }
-        return mapPartnerFromDb(data);
-    } catch (e) {
-        const fallback = fallbackPartners.find(p => p.email === email);
-        return fallback ? mapFallbackPartner(fallback) : undefined;
+    const { data, error } = await supabase
+        .from('partners')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+    if (error) {
+        if (error.code === 'PGRST116') return undefined;
+        console.error('Error fetching partner by email:', error);
+        throw new Error(`Failed to fetch partner: ${error.message}`);
     }
+
+    return data ? mapPartnerFromDb(data) : undefined;
 };
 
 // Self-healing function for missing profiles

@@ -253,6 +253,14 @@ export interface Request {
 
 export type LeadStatus = 'new' | 'contacted' | 'site-visit' | 'quoted' | 'in-progress' | 'completed' | 'cancelled';
 
+export type DecorationStage = 
+    | 'consultation' 
+    | 'concept_and_3d' 
+    | 'boq_and_materials' 
+    | 'execution_and_fitting' 
+    | 'completed' 
+    | 'cancelled';
+
 export interface LeadMessage {
     id: string;
     sender: 'client' | 'partner' | 'admin' | 'system';
@@ -275,6 +283,7 @@ export interface Lead {
     serviceTitle: string;
     customerNotes?: string;
     status: LeadStatus;
+    designStage?: DecorationStage;
     createdAt: string;
     updatedAt: string;
     messages: LeadMessage[];

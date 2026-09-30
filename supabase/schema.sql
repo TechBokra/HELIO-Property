@@ -454,6 +454,12 @@ FOR EACH ROW EXECUTE PROCEDURE trg_prevent_accepted_quote_modification();
 ALTER TABLE public.partners ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.partners FOR SELECT USING (status = 'active');
 CREATE POLICY "Users can update their own profile" ON public.partners FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Admins view all partners" ON public.partners FOR SELECT USING (
+    auth.uid() = id OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'partner_relations_manager' OR p.role = 'service_manager'))
+);
+CREATE POLICY "Admins update partners" ON public.partners FOR UPDATE USING (
+    auth.uid() = id OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'partner_relations_manager'))
+);
 
 -- Partner Capabilities
 ALTER TABLE public.partner_capabilities ENABLE ROW LEVEL SECURITY;
@@ -576,6 +582,21 @@ ALTER TABLE public.decoration_categories ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public view decoration categories" ON public.decoration_categories FOR SELECT USING (true);
 CREATE POLICY "Admins and decoration managers manage decoration categories" ON public.decoration_categories FOR ALL USING (
     EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'decoration_manager'))
+);
+
+-- Transactions (Financial Operations)
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Partners view own transactions or admins view all" ON public.transactions FOR SELECT USING (
+    user_id = auth.uid() OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'service_manager' OR p.role = 'partner_relations_manager'))
+);
+CREATE POLICY "Users insert own transactions or admins insert any" ON public.transactions FOR INSERT WITH CHECK (
+    user_id = auth.uid() OR user_id IS NULL OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'service_manager' OR p.role = 'partner_relations_manager'))
+);
+CREATE POLICY "Admins manage transactions" ON public.transactions FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'service_manager' OR p.role = 'partner_relations_manager'))
+);
+CREATE POLICY "Super admins delete transactions" ON public.transactions FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND p.role = 'super_admin')
 );
 
 -- Requests (P0.2 & P0.3 Hardened)

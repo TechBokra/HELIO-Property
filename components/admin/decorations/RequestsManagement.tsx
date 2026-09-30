@@ -14,12 +14,17 @@ import { Card, CardContent, CardFooter } from '../../ui/Card';
 import { Button } from '../../ui/Button';
 import { StatusBadge } from '../../ui/StatusBadge';
 
+import { useToast } from '../../shared/ToastContext';
+import { getAllPartnersForAdmin } from '../../../services/partners';
+
 const ITEMS_PER_PAGE = 10;
 
 const RequestsManagement: React.FC = () => {
     const { language, t: i18n } = useLanguage();
+    const { showToast } = useToast();
     const t = i18n.adminDashboard.decorationsManagement;
     const { data: allLeads, refetch: refetchLeads, isLoading: loadingLeads } = useQuery({ queryKey: ['allLeads'], queryFn: getAllLeads });
+    const { data: allPartners = [] } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
     const loading = loadingLeads;
 
     const decorationLeads = useMemo(() => (allLeads || []).filter(lead => lead.serviceType === 'decorations'), [allLeads]);
@@ -40,16 +45,30 @@ const RequestsManagement: React.FC = () => {
 
     const handleDelete = async (itemId: string) => {
         if (window.confirm(t.confirmDelete)) {
-            await apiDeleteLead(itemId);
-            refetchLeads();
+            try {
+                await apiDeleteLead(itemId);
+                refetchLeads();
+                showToast(language === 'ar' ? 'تم حذف الطلب بنجاح' : 'Request deleted successfully', 'success');
+            } catch (err: any) {
+                showToast(err.message || (language === 'ar' ? 'فشل حذف الطلب' : 'Failed to delete request'), 'error');
+            }
         }
     };
     
     const getRequestNature = (lead: Lead) => {
-        if (lead.serviceTitle.includes(i18n.customDecorationRequestModal.serviceTitle)) {
-             return <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs font-bold">Custom Design</span>;
-        }
-        return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">Product Inquiry</span>;
+        const isCustom = lead.serviceTitle.includes(i18n.customDecorationRequestModal.serviceTitle);
+        return (
+            <div className="flex flex-col gap-1">
+                <span className={`px-2 py-0.5 rounded text-xs font-bold w-fit ${isCustom ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'}`}>
+                    {isCustom ? (language === 'ar' ? 'تصميم مخصص' : 'Custom Design') : (language === 'ar' ? 'طلب منتج' : 'Product Inquiry')}
+                </span>
+                {lead.designStage && (
+                    <span className="text-[11px] font-mono text-amber-600 dark:text-amber-400">
+                        {lead.designStage}
+                    </span>
+                )}
+            </div>
+        );
     };
 
     const renderTable = (items: Lead[]) => (
@@ -59,8 +78,9 @@ const RequestsManagement: React.FC = () => {
                     <TableHeader>
                        <TableRow>
                             <TableHead className="cursor-pointer" onClick={() => requestSort('customerName')}>Customer{getSortIcon('customerName')}</TableHead>
-                            <TableHead>Type</TableHead>
+                            <TableHead>Type & Stage</TableHead>
                             <TableHead className="cursor-pointer" onClick={() => requestSort('serviceTitle')}>Subject{getSortIcon('serviceTitle')}</TableHead>
+                            <TableHead>Assigned Partner</TableHead>
                             <TableHead className="cursor-pointer" onClick={() => requestSort('createdAt')}>Date{getSortIcon('createdAt')}</TableHead>
                             <TableHead className="cursor-pointer" onClick={() => requestSort('status')}>Status{getSortIcon('status')}</TableHead>
                             <TableHead>Actions</TableHead>
@@ -68,23 +88,35 @@ const RequestsManagement: React.FC = () => {
                     </TableHeader>
                     <TableBody>
                         {loading ? (
-                            <TableRow><TableCell colSpan={6} className="text-center p-8">Loading...</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={7} className="text-center p-8">Loading...</TableCell></TableRow>
                         ) : items.length > 0 ? (
-                            items.map(lead => (
-                                <TableRow key={lead.id}>
-                                    <TableCell className="font-medium text-gray-900 dark:text-white">{lead.customerName}<br/><span className="font-normal text-gray-500 text-xs">{lead.customerPhone}</span></TableCell>
-                                    <TableCell>{getRequestNature(lead)}</TableCell>
-                                    <TableCell className="max-w-xs truncate" title={lead.serviceTitle}>{lead.serviceTitle}</TableCell>
-                                    <TableCell>{new Date(lead.createdAt).toLocaleDateString(language)}</TableCell>
-                                    <TableCell><StatusBadge status={lead.status} /></TableCell>
-                                    <TableCell className="space-x-4">
-                                        <Link to={`/admin/platform-decorations/requests/${lead.id}`} className="font-medium text-amber-600 hover:underline">View</Link>
-                                        <button onClick={() => handleDelete(lead.id)} className="font-medium text-red-600 hover:underline">{i18n.adminShared.delete}</button>
-                                    </TableCell>
-                                </TableRow>
-                            ))
+                            items.map(lead => {
+                                const assignedPartner = allPartners.find(p => p.id === lead.assignedTo || p.id === lead.partnerId);
+                                const partnerTitle = assignedPartner ? ((language === 'ar' && assignedPartner.nameAr) ? assignedPartner.nameAr : (assignedPartner.name || assignedPartner.email)) : null;
+
+                                return (
+                                    <TableRow key={lead.id}>
+                                        <TableCell className="font-medium text-gray-900 dark:text-white">{lead.customerName}<br/><span className="font-normal text-gray-500 text-xs">{lead.customerPhone}</span></TableCell>
+                                        <TableCell>{getRequestNature(lead)}</TableCell>
+                                        <TableCell className="max-w-xs truncate" title={lead.serviceTitle}>{lead.serviceTitle}</TableCell>
+                                        <TableCell>
+                                            {partnerTitle ? (
+                                                <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{partnerTitle}</span>
+                                            ) : (
+                                                <span className="text-xs text-amber-600 dark:text-amber-400 italic">Unassigned</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-xs">{new Date(lead.createdAt).toLocaleDateString(language)}</TableCell>
+                                        <TableCell><StatusBadge status={lead.status} /></TableCell>
+                                        <TableCell className="space-x-4 rtl:space-x-reverse">
+                                            <Link to={`/admin/platform-decorations/requests/${lead.id}`} className="font-medium text-amber-600 hover:underline">View</Link>
+                                            <button onClick={() => handleDelete(lead.id)} className="font-medium text-red-600 hover:underline">{i18n.adminShared.delete}</button>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })
                         ) : (
-                            <TableRow><TableCell colSpan={6} className="text-center p-8 text-gray-500">{t.noRequests || "No requests found."}</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={7} className="text-center p-8 text-gray-500">{t.noRequests || "No requests found."}</TableCell></TableRow>
                         )}
                     </TableBody>
                 </Table>

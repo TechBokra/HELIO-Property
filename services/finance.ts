@@ -26,10 +26,10 @@ export const getAllTransactions = async (): Promise<Transaction[]> => {
         .order('created_at', { ascending: false });
 
     if (error) {
-        console.error('Error fetching transactions:', error);
-        return [];
+        console.error('Error fetching transactions from Supabase:', error);
+        throw new Error(`Failed to load transactions: ${error.message}`);
     }
-    return data.map(mapTransactionFromDb);
+    return (data || []).map(mapTransactionFromDb);
 };
 
 export const getTransactionsByUserId = async (userId: string): Promise<Transaction[]> => {
@@ -40,15 +40,13 @@ export const getTransactionsByUserId = async (userId: string): Promise<Transacti
         .order('created_at', { ascending: false });
 
     if (error) {
-        console.error('Error fetching user transactions:', error);
-        return [];
+        console.error('Error fetching user transactions from Supabase:', error);
+        throw new Error(`Failed to load user transactions: ${error.message}`);
     }
-    return data.map(mapTransactionFromDb);
+    return (data || []).map(mapTransactionFromDb);
 };
 
 export const getFinanceStats = async (): Promise<FinanceStats> => {
-    // Fetch all transactions to calculate stats
-    // In a larger app, we would use a Postgres View or RPC for this
     const transactions = await getAllTransactions();
     
     return transactions.reduce((acc, curr) => {
@@ -67,9 +65,10 @@ export const getFinanceStats = async (): Promise<FinanceStats> => {
 };
 
 export const createTransaction = async (data: Omit<Transaction, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<Transaction> => {
-    const dbPayload = {
-        id: `txn-${Date.now()}`,
-        user_id: data.userId,
+    const isValidUUID = (id?: string) => !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+
+    const dbPayload: any = {
+        user_id: isValidUUID(data.userId) ? data.userId : null,
         user_name: data.userName,
         amount: data.amount,
         currency: data.currency || 'EGP',
@@ -89,25 +88,34 @@ export const createTransaction = async (data: Omit<Transaction, 'id' | 'status' 
         .select()
         .single();
 
-    if (error) throw error;
+    if (error || !newTxn) {
+        console.error('Error creating transaction in Supabase:', error);
+        throw new Error(`Failed to create transaction: ${error?.message || 'Unknown database error'}`);
+    }
+
     const transaction = mapTransactionFromDb(newTxn);
 
     // Notify Admin if review needed
     if (transaction.status === 'reviewing') {
-        await addNotification({
-            userId: 'admin-user',
-            message: {
-                ar: `إيصال دفع جديد للمراجعة من ${data.userName}`,
-                en: `New payment receipt for review from ${data.userName}`,
-            },
-            link: '/admin/finance',
-        });
+        const SUPER_ADMIN_DEFAULT_ID = '3e554896-eee8-4545-9c7f-0a79a4c1a9f1';
+        try {
+            await addNotification({
+                userId: SUPER_ADMIN_DEFAULT_ID,
+                message: {
+                    ar: `إيصال دفع جديد للمراجعة من ${data.userName}`,
+                    en: `New payment receipt for review from ${data.userName}`,
+                },
+                link: '/admin/finance',
+            });
+        } catch {
+            // Non-blocking notification
+        }
     }
 
     return transaction;
 };
 
-export const updateTransactionStatus = async (id: string, status: TransactionStatus): Promise<Transaction | undefined> => {
+export const updateTransactionStatus = async (id: string, status: TransactionStatus): Promise<Transaction> => {
     const { data, error } = await supabase
         .from('transactions')
         .update({ status, updated_at: new Date().toISOString() })
@@ -115,19 +123,27 @@ export const updateTransactionStatus = async (id: string, status: TransactionSta
         .select()
         .single();
 
-    if (error) return undefined;
+    if (error || !data) {
+        console.error('Failed to update transaction status in Supabase:', error);
+        throw new Error(`Failed to update transaction: ${error?.message || 'Unknown database error'}`);
+    }
+
     const txn = mapTransactionFromDb(data);
     
     // Notify User
     if (txn && txn.userId) {
-        await addNotification({
-            userId: txn.userId,
-            message: {
-                ar: `تم تحديث حالة الدفع الخاصة بك إلى: ${status}`,
-                en: `Your payment status has been updated to: ${status}`,
-            },
-            link: '/dashboard/finance',
-        });
+        try {
+            await addNotification({
+                userId: txn.userId,
+                message: {
+                    ar: `تم تحديث حالة الدفع الخاصة بك إلى: ${status}`,
+                    en: `Your payment status has been updated to: ${status}`,
+                },
+                link: '/dashboard/finance',
+            });
+        } catch {
+            // Non-blocking notification
+        }
     }
 
     return txn;

@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabase';
 import type { PortfolioItem } from '../types';
-import { portfolioData as fallbackPortfolio } from '../data/portfolio';
 
 const mapPortfolioFromDb = (row: any): PortfolioItem => ({
     id: row.id,
@@ -27,7 +26,7 @@ export const getAllPortfolioItems = async (): Promise<PortfolioItem[]> => {
     }
 
     if (!data || data.length === 0) {
-        return fallbackPortfolio;
+        return [];
     }
 
     return data.map(mapPortfolioFromDb);
@@ -46,7 +45,7 @@ export const getPortfolioByPartnerId = async (partnerId: string): Promise<Portfo
     }
 
     if (!data || data.length === 0) {
-        return fallbackPortfolio.filter(i => i.partnerId === partnerId);
+        return [];
     }
 
     return data.map(mapPortfolioFromDb);

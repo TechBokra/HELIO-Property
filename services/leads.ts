@@ -23,6 +23,7 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
         serviceTitle: payload.serviceTitle || 'Inquiry',
         customerNotes: payload.customerNotes,
         status: row.status,
+        designStage: payload.designStage,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         assignedTo: row.assigned_to,
@@ -266,9 +267,11 @@ export const updateLead = async (leadId: string, updates: Partial<Lead>): Promis
     if (!fetchErr && currentReq) {
         const mergedPayload = { ...(currentReq.payload || {}) };
         if (updates.status) mergedPayload.status = updates.status;
+        if (updates.designStage !== undefined) mergedPayload.designStage = updates.designStage;
         if (updates.customerNotes !== undefined) mergedPayload.customerNotes = updates.customerNotes;
         if (updates.contactTime !== undefined) mergedPayload.contactTime = updates.contactTime;
         if (updates.partnerId !== undefined) mergedPayload.partnerId = updates.partnerId;
+        if (updates.assignedTo !== undefined) mergedPayload.assignedTo = updates.assignedTo;
         dbUpdates.payload = mergedPayload;
     }
 

@@ -196,7 +196,7 @@ const ServiceRequestPage: React.FC = () => {
                     customerNotes: finalNotes,
                     partnerId: partnerId,
                     serviceTitle: serviceTitle,
-                    managerId: managerId || (effectiveServiceType === 'finishing' ? PLATFORM_FINISHING_MANAGER_ID : undefined),
+                    managerId: managerId || (effectiveServiceType === 'finishing' ? PLATFORM_FINISHING_MANAGER_ID : (effectiveServiceType === 'decorations' ? DECORATION_MANAGER_ID : undefined)),
                     propertyId: propertyId,
                     propertyTitle: propertyTitle,
                     serviceType: effectiveServiceType,
