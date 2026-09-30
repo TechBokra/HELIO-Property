@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { DecorationCategory } from '../../../types';
@@ -6,6 +5,7 @@ import { getDecorationCategories, deleteDecorationCategory as apiDeleteDecoratio
 import AdminDecorationCategoryFormModal from '../AdminDecorationCategoryFormModal';
 import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
+import ConfirmationModal from '../../ui/ConfirmationModal';
 
 const CategoriesManagement: React.FC = () => {
     const { language, t } = useLanguage();
@@ -14,21 +14,24 @@ const CategoriesManagement: React.FC = () => {
     const queryClient = useQueryClient();
     const { showToast } = useToast();
     const [modalState, setModalState] = useState<{ isOpen: boolean; categoryToEdit?: DecorationCategory }>({ isOpen: false });
+    const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
 
     const deleteMutation = useMutation({
         mutationFn: apiDeleteDecorationCategory,
         onSuccess: () => {
             showToast('Category deleted successfully!', 'success');
             queryClient.invalidateQueries({ queryKey: ['decorationCategories'] });
+            setCategoryToDelete(null);
         },
         onError: () => {
             showToast('Failed to delete category.', 'error');
+            setCategoryToDelete(null);
         }
     });
 
-    const handleDelete = async (categoryId: string) => {
-        if (window.confirm(t_decor.confirmDelete.replace('item', 'category'))) {
-            deleteMutation.mutate(categoryId);
+    const handleConfirmDelete = () => {
+        if (categoryToDelete) {
+            deleteMutation.mutate(categoryToDelete);
         }
     };
 
@@ -39,10 +42,27 @@ const CategoriesManagement: React.FC = () => {
 
     return (
         <div className="animate-fadeIn">
-            {modalState.isOpen && <AdminDecorationCategoryFormModal categoryToEdit={modalState.categoryToEdit} onClose={() => setModalState({ isOpen: false })} onSave={handleSave} />}
+            {modalState.isOpen && (
+                <AdminDecorationCategoryFormModal 
+                    categoryToEdit={modalState.categoryToEdit} 
+                    onClose={() => setModalState({ isOpen: false })} 
+                    onSave={handleSave} 
+                />
+            )}
+
+            <ConfirmationModal
+                isOpen={!!categoryToDelete}
+                onClose={() => setCategoryToDelete(null)}
+                onConfirm={handleConfirmDelete}
+                title={language === 'ar' ? 'تأكيد الحذف' : 'Confirm Deletion'}
+                message={t_decor.confirmDelete.replace('item', 'category')}
+                confirmText={t.adminShared.delete}
+                cancelText={t.adminShared.cancel}
+                isLoading={deleteMutation.isPending}
+            />
             
             <div className="flex justify-end mb-4">
-                <button onClick={() => setModalState({ isOpen: true })} className="bg-amber-500 text-gray-900 font-semibold px-4 py-2 rounded-lg hover:bg-amber-600">
+                <button onClick={() => setModalState({ isOpen: true })} className="bg-amber-500 text-gray-900 font-semibold px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors">
                     {t_decor.addNewCategory}
                 </button>
             </div>
@@ -59,7 +79,7 @@ const CategoriesManagement: React.FC = () => {
                             </div>
                             <div className="space-x-4">
                                 <button onClick={() => setModalState({ isOpen: true, categoryToEdit: cat })} className="font-medium text-amber-600 hover:underline">{t.adminShared.edit}</button>
-                                <button onClick={() => handleDelete(cat.id)} disabled={deleteMutation.isPending} className="font-medium text-red-600 hover:underline disabled:opacity-50">{t.adminShared.delete}</button>
+                                <button onClick={() => setCategoryToDelete(cat.id)} disabled={deleteMutation.isPending} className="font-medium text-red-600 hover:underline disabled:opacity-50">{t.adminShared.delete}</button>
                             </div>
                         </li>
                     ))}

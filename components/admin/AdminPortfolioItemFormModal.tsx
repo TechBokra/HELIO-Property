@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '../shared/LanguageContext';
 import { Button } from '../ui/Button';
 import { useToast } from '../shared/ToastContext';
+import { useAuth } from '../auth/AuthContext';
 
 interface AdminPortfolioItemFormModalProps {
     itemToEdit?: PortfolioItem;
@@ -31,6 +32,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = ({ itemToEdit, onClose, onSave }) => {
     const { language, t } = useLanguage();
+    const { currentUser } = useAuth();
     const t_dash = t.dashboard;
     const t_admin = t.adminDashboard.decorationsManagement;
     const t_shared = t.adminShared;
@@ -105,9 +107,15 @@ const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = 
             return;
         }
 
+        const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
+        const isValidUUID = (id?: string) => id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : false;
+        const effectivePartnerId = itemToEdit?.partnerId && isValidUUID(itemToEdit.partnerId) 
+            ? itemToEdit.partnerId 
+            : (currentUser?.id && isValidUUID(currentUser.id) ? currentUser.id : DECORATION_MANAGER_ID);
+
         const dataToSave = {
             title: formData.title,
-            partnerId: 'admin-user',
+            partnerId: effectivePartnerId,
             category: selectedCategory.name,
             imageUrl: imageSrc,
             alt: formData.title.en || 'Decoration work',

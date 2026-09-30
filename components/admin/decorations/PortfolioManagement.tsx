@@ -9,6 +9,7 @@ import { getDecorationCategories } from '../../../services/decorations';
 import { useLanguage } from '../../shared/LanguageContext';
 import { TrashIcon, SparklesIcon } from '../../ui/Icons';
 import { useToast } from '../../shared/ToastContext';
+import ConfirmationModal from '../../ui/ConfirmationModal';
 
 const PortfolioManagement: React.FC = () => {
     const { language, t } = useLanguage();
@@ -43,11 +44,21 @@ const PortfolioManagement: React.FC = () => {
         });
     }, [portfolio, decorationCategories, partners]);
 
-    const handleDelete = async (itemId: string) => {
-        if (window.confirm(t_decor.confirmDelete)) {
-            await apiDeletePortfolioItem(itemId);
+    const [itemToDelete, setItemToDelete] = React.useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = React.useState(false);
+
+    const handleConfirmDelete = async () => {
+        if (!itemToDelete) return;
+        setIsDeleting(true);
+        try {
+            await apiDeletePortfolioItem(itemToDelete);
             refetchPortfolio();
             showToast('Item deleted successfully', 'success');
+        } catch (e: any) {
+            showToast(e?.message || 'Failed to delete item', 'error');
+        } finally {
+            setIsDeleting(false);
+            setItemToDelete(null);
         }
     };
 
@@ -57,6 +68,17 @@ const PortfolioManagement: React.FC = () => {
 
     return (
         <div className="animate-fadeIn">
+            <ConfirmationModal
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
+                onConfirm={handleConfirmDelete}
+                title={language === 'ar' ? 'تأكيد الحذف' : 'Confirm Deletion'}
+                message={t_decor.confirmDelete}
+                confirmText={t.adminShared.delete}
+                cancelText={t.adminShared.cancel}
+                isLoading={isDeleting}
+            />
+
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold text-gray-800 dark:text-white">{t_decor.portfolioTab}</h2>
                 <Link to="/admin/platform-decorations/portfolio/new" className="bg-amber-500 text-gray-900 font-semibold px-4 py-2 rounded-lg hover:bg-amber-600 shadow-sm flex items-center gap-2">
@@ -98,7 +120,7 @@ const PortfolioManagement: React.FC = () => {
                                         </div>
                                         <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 bg-gray-50 dark:bg-gray-800/50">
                                             <Link to={`/admin/platform-decorations/portfolio/edit/${item.id}`} className="font-medium text-amber-600 dark:text-amber-500 hover:underline text-sm px-3 py-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/50">{t_decor.editItem}</Link>
-                                            <button onClick={() => handleDelete(item.id)} className="font-medium text-red-600 dark:text-red-500 hover:underline text-sm px-3 py-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/50 flex items-center gap-1">
+                                            <button onClick={() => setItemToDelete(item.id)} disabled={isDeleting} className="font-medium text-red-600 dark:text-red-500 hover:underline text-sm px-3 py-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/50 flex items-center gap-1 disabled:opacity-50">
                                                 <TrashIcon className="w-3 h-3" /> {t.adminShared.delete}
                                             </button>
                                         </div>

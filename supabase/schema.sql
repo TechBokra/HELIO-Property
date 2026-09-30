@@ -168,6 +168,18 @@ CREATE TABLE IF NOT EXISTS public.portfolio_items (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Main: Decoration Categories
+CREATE TABLE IF NOT EXISTS public.decoration_categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name_ar TEXT NOT NULL,
+    name_en TEXT NOT NULL,
+    description_ar TEXT NOT NULL,
+    description_en TEXT NOT NULL,
+    display_order INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Main: Canonical Finishing Services
 CREATE TABLE IF NOT EXISTS public.finishing_services (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -544,6 +556,26 @@ CREATE POLICY "Assigned partners update own project milestones" ON public.finish
 );
 CREATE POLICY "Admins manage all finishing milestones" ON public.finishing_milestones FOR ALL USING (
     EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'platform_finishing_manager' OR role = 'finishing_market_manager'))
+);
+
+-- Portfolio Items (Decorations & Finishing)
+ALTER TABLE public.portfolio_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public view portfolio items" ON public.portfolio_items FOR SELECT USING (true);
+CREATE POLICY "Partners and admins insert portfolio items" ON public.portfolio_items FOR INSERT WITH CHECK (
+    partner_id = auth.uid() OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role IN ('decoration_manager', 'platform_finishing_manager')))
+);
+CREATE POLICY "Partners and admins update portfolio items" ON public.portfolio_items FOR UPDATE USING (
+    partner_id = auth.uid() OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role IN ('decoration_manager', 'platform_finishing_manager')))
+);
+CREATE POLICY "Partners and admins delete portfolio items" ON public.portfolio_items FOR DELETE USING (
+    partner_id = auth.uid() OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role IN ('decoration_manager', 'platform_finishing_manager')))
+);
+
+-- Decoration Categories
+ALTER TABLE public.decoration_categories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public view decoration categories" ON public.decoration_categories FOR SELECT USING (true);
+CREATE POLICY "Admins and decoration managers manage decoration categories" ON public.decoration_categories FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'decoration_manager'))
 );
 
 -- Requests (P0.2 & P0.3 Hardened)

@@ -1,6 +1,6 @@
-
 import { supabase } from '../lib/supabase';
 import type { DecorationCategory } from '../types';
+import { decorationCategoriesData as fallbackCategories } from '../data/decorationCategories';
 
 // Helper to map DB row to DecorationCategory
 const mapCategoryFromDb = (row: any): DecorationCategory => ({
@@ -13,9 +13,18 @@ export const getDecorationCategories = async (): Promise<DecorationCategory[]> =
     const { data, error } = await supabase
         .from('decoration_categories')
         .select('*')
+        .order('display_order', { ascending: true })
         .order('created_at', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+        console.error('Error fetching decoration categories from Supabase:', error);
+        throw new Error(`Failed to load decoration categories: ${error.message}`);
+    }
+
+    if (!data || data.length === 0) {
+        return fallbackCategories;
+    }
+
     return data.map(mapCategoryFromDb);
 };
 
@@ -25,7 +34,8 @@ export const addDecorationCategory = async (category: Omit<DecorationCategory, '
         name_en: category.name.en,
         description_ar: category.description.ar,
         description_en: category.description.en,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
     };
 
     const { data, error } = await supabase
@@ -34,12 +44,18 @@ export const addDecorationCategory = async (category: Omit<DecorationCategory, '
         .select()
         .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error('Error creating decoration category in Supabase:', error);
+        throw new Error(`Failed to create decoration category: ${error.message}`);
+    }
+
     return mapCategoryFromDb(data);
 };
 
 export const updateDecorationCategory = async (categoryId: string, updates: Partial<DecorationCategory>): Promise<DecorationCategory | undefined> => {
-    const dbUpdates: any = {};
+    const dbUpdates: any = {
+        updated_at: new Date().toISOString()
+    };
     if (updates.name) {
         dbUpdates.name_ar = updates.name.ar;
         dbUpdates.name_en = updates.name.en;
@@ -56,7 +72,11 @@ export const updateDecorationCategory = async (categoryId: string, updates: Part
         .select()
         .single();
 
-    if (error) return undefined;
+    if (error) {
+        console.error('Error updating decoration category in Supabase:', error);
+        throw new Error(`Failed to update decoration category: ${error.message}`);
+    }
+
     return mapCategoryFromDb(data);
 };
 
@@ -66,5 +86,10 @@ export const deleteDecorationCategory = async (categoryId: string): Promise<bool
         .delete()
         .eq('id', categoryId);
 
-    return !error;
+    if (error) {
+        console.error('Error deleting decoration category in Supabase:', error);
+        throw new Error(`Failed to delete decoration category: ${error.message}`);
+    }
+
+    return true;
 };

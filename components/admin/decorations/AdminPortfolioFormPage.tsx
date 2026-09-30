@@ -9,6 +9,7 @@ import { addPortfolioItem, updatePortfolioItem, getAllPortfolioItems } from '../
 import { getDecorationCategories } from '../../../services/decorations';
 import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
+import { useAuth } from '../../auth/AuthContext';
 import { Button } from '../../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 
@@ -33,6 +34,7 @@ const AdminPortfolioFormPage: React.FC = () => {
     const { data: portfolioItems } = useQuery({ queryKey: ['portfolio'], queryFn: getAllPortfolioItems });
     const queryClient = useQueryClient();
     const { showToast } = useToast();
+    const { currentUser } = useAuth();
     
     const itemToEdit = itemId ? portfolioItems?.find(i => i.id === itemId) : undefined;
 
@@ -134,9 +136,15 @@ const AdminPortfolioFormPage: React.FC = () => {
             return;
         }
 
+        const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
+        const isValidUUID = (id?: string) => id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : false;
+        const effectivePartnerId = itemToEdit?.partnerId && isValidUUID(itemToEdit.partnerId) 
+            ? itemToEdit.partnerId 
+            : (currentUser?.id && isValidUUID(currentUser.id) ? currentUser.id : DECORATION_MANAGER_ID);
+
         const dataToSave = {
             title: formData.title,
-            partnerId: 'admin-user',
+            partnerId: effectivePartnerId,
             // Store category Name object for compatibility with current schema
             category: selectedCategory.name, 
             imageUrl: imageSrc,

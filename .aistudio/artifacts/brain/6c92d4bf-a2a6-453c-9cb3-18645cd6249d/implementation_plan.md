@@ -1,84 +1,98 @@
-# Implementation Plan — Finishing Domain & Partner Quotes (P0, P1 & P2)
+# خطة العمل وخريطة الطريق التقنية — مزامنة GitHub وتصليد نطاق الديكور والتصميم الداخلي (Decorations Domain)
 
-Transform the Finishing module in ONLY HELIO from a CMS/Lead-form workflow into a unified business domain with multi-quotes tendering, contractor capabilities, dynamic cost estimation, client decision portal, and five-stage project execution milestones.
-
----
-
-## 1. P0 Architecture & Persistence (Completed)
-* **Canonical Schema & Decoupled Pricing**: `finishing_services` with tiers, numeric base pricing, and categories.
-* **Property Linkage**: Guaranteed `propertyId` attachment across public service requests and admin views.
-* **Zero Ghost IDs**: Platform Finishing Manager (`3e554896-eee8-4545-9c7f-0a79a4c1a9f1`) and verified partner matching.
-* **Dead Code Cleanup**: Empty placeholder files removed.
+بناءً على مراجعة ما تم إنجازه بنجاح في نطاقات المنصة (إدارة العقارات، المقاولات والتشطيب، وإدارة الطلبات والعملاء المحتملين وسجل العمليات)، وتوافقاً مع قرارات خريطة الطريق:
+1. **المرحلة التمهيدية**: اعتماد وإتمام حزمة المزامنة مع GitHub للنطاقات المكتملة.
+2. **المرحلة التالية**: الانتقال المباشر لتصليد نطاق **الديكور والتصميم الداخلي والأثاث (Decorations & Interior Design Domain)** إلى المستوى الإنتاجي (Production Hardening) دون المرور بمسارات تجريبية.
 
 ---
 
-## 2. P1: Partner Dashboard & Multi-Quotes Workflow (Completed)
+## 1. ملخص الموقف الحالي للنطاقات (Current Platform State)
 
-### A. Contractor Multi-Quotes & Bidding Workflow
-* **Quote Comparison (`components/finishing/FinishingQuoteComparison.tsx`)**:
-  - Side-by-side comparative grid showing contractor bids, pricing (total & per m²), execution timeline, engineering warranty, and scope item breakdowns.
-  - Highlights lowest bid and fastest execution timeline.
-  - One-click **"Award Project"** with modal confirmation, updating the winning quote to `accepted` and competing quotes to `rejected`.
-* **Quote Submission Modal (`components/finishing/SubmitFinishingQuoteModal.tsx`)**:
-  - Detailed breakdown of scope items (MEP, paint, flooring, supervision, custom items).
-  - Validation of pricing, delivery days, warranty period, terms and conditions.
-* **Audit & Activity Timeline (`components/finishing/FinishingRequestTimeline.tsx`)**:
-  - Chronological audit milestones (creation, partner assignments, quote submissions, status transitions, awarding decisions).
-
-### B. Admin & Platform Finishing Management
-* **Admin Finishing Request Details (`components/admin/AdminFinishingRequestDetailsPage.tsx`)**:
-  - Integrated `FinishingQuoteComparison` with direct quote awarding.
-  - Integrated `FinishingRequestTimeline` for auditing.
-  - Added "Add Contractor Bid" button to record offline/partner quotes.
-  - History logging for status transitions and partner assignments.
-
-### C. Partner Dashboard Integration
-* **Partner Lead Details (`components/partner-dashboard/PartnerLeadDetailsPage.tsx`)**:
-  - Detection of finishing requests / RFQs.
-  - Dedicated Contractor Bid Card displaying the firm's submitted quote or Call-to-Action to submit a new proposal.
-  - Award status display: celebratory banner upon contract award with instructions for client contact.
-  - Quick action to submit or edit quotes via `SubmitFinishingQuoteModal`.
-* **Partner Leads & RFQ Filtering (`components/partner-dashboard/DashboardLeadsPage.tsx`)**:
-  - Finishing partners can view assigned leads as well as relevant finishing RFQs.
-  - Added visual badge `[مناقصة تشطيب / Finishing RFQ]` in both card and table views.
-  - Added quick filter dropdown: "All Inquiries & RFQs", "Finishing RFQs Only", and "Standard Inquiries".
-* **Partner Capabilities & Coverage Management (`components/partner-dashboard/PartnerCapabilitiesPage.tsx`)**:
-  - Dedicated page for contractors at `/dashboard/capabilities`.
-  - Configures disciplines (Turnkey, 3D Architectural, Commercial, Renovation, Smart Home, MEP).
-  - Configures coverage areas (New Heliopolis, El Shorouk, New Cairo, Madinaty, Mostakbal City, Badr City, New Administrative Capital).
-  - Configures project budget minimums/maximums, simultaneous turnkey capacity, warranty periods, and in-house engineering credentials.
-  - Linked directly in partner navigation and profile settings.
+| النطاق (Domain) | حالة التصليد السحابي | حالة قاعدة البيانات وRLS | الجاهزية للإنتاج |
+| :--- | :---: | :---: | :---: |
+| **إدارة العقارات (Property Management)** | مكتمل | مدعوم بقاعدة البيانات وRLS صارم | **جاهز للإنتاج** |
+| **المقاولات والتشطيب (Finishing Domain)** | مكتمل (P0/P1) | جدول مقايسات، مراحل تنفيذ، وترسية ذرية | **جاهز للإنتاج** |
+| **الطلبات والرسائل (Leads & Requests)** | مكتمل (P0/P1) | حماية RLS للمحادثات، سجل عمليات محمي، حجب PII | **جاهز للمزامنة** |
+| **الديكور والتصميم الداخلي (Decorations)** | **قيد التصليد** | **يحتاج جداول رسمية، RLS، وإزالة البيانات الوهمية** | **الهدف الحالي** |
 
 ---
 
-## 3. P2: Client Portal, Cost Estimator & Execution Milestones (Completed)
+## 2. المرحلة الأولى: إتمام مزامنة GitHub للنطاقات المكتملة
 
-### A. Interactive Finishing Cost Estimator (`components/finishing/FinishingCostEstimator.tsx`)
-* Real-time calculation engine with area slider (50–500 m²), unit configuration (bedrooms, bathrooms).
-* Tier selection (Economy / Standard / Luxury Turnkey / Ultra-Luxury Hotel-grade).
-* Design styles (Modern, Neo-Classic, Minimalist, Industrial) and luxury add-ons (Smart Automation, Soundproofing, Master Dressing, Concealed HVAC).
-* Stage-by-stage engineering breakdown (Design/Permits 10%, MEP 30%, Plaster/Flooring 25%, Paint/Fixtures 25%, Handover/Audit 10%).
-* Direct RFQ submission bridging calculated specs into immediate contractor tenders.
+حزمة التصدير جاهزة بالكامل في ملف الأرشيف المجمع:
+`/leads_requests_hardening_export.tar.gz`
 
-### B. Client Request Hub & Awarding Portal (`components/user-dashboard/ClientFinishingDetailsModal.tsx`)
-* Tabbed modal integrated directly in `UserRequestsPage.tsx`:
-  - **Contractor Bids Tab**: Compares bids received from verified contractors (m² rates, timelines, warranties, scope breakdowns).
-  - **Awarding Action**: Clients can directly approve and award their preferred contractor with instant celebratory confirmation and direct contractor contacts.
-  - **Milestones Tab**: Interactive project tracking showing real-time stage completion and payment schedules.
-  - **Specifications Tab**: Detailed room counts, add-ons, and linked property information.
-
-### C. 5-Stage Project Execution Milestones (`components/finishing/FinishingMilestonesTracker.tsx`)
-* Standardized 5-phase engineering execution:
-  1. Architectural & Executive MEP Blueprints (10% payment)
-  2. MEP Rough-ins, Electrical & Plumbing Lines (30% payment)
-  3. Plastering, Thermal/Waterproofing & Screed (20% payment)
-  4. Flooring, Paint, Ceiling & Fixtures (30% payment)
-  5. Final Audit, Snagging List & Key Handover (10% payment)
-* Role-aware editing for Super Admins, Platform Finishing Managers, and Awarded Contractors.
-* Integrated across Admin Request Details, Partner Lead Details, and Client Request Hub.
+### الملفات الجاهزة للرفع والتحديث:
+1. `supabase/migrations/20260930_leads_requests_hardening.sql`: حماية رسائل الطلبات وربط قواعد التوجيه وإخفاء بيانات العملاء عبر `partner_leads_view`.
+2. `supabase/migrations/20260930_request_history_audit_security.sql`: سد ثغرة الإدراج المباشر في سجل العمليات وتقييده بمشغل قاعدة البيانات الآمن `trg_log_request_mutation()`.
+3. `supabase/schema.sql`: المخطط الكنسي الموحد والمحدث.
+4. `services/requests.ts` و `services/leads.ts`: إزالة التخزين المحلي تماماً وربط محرك التوجيه الذكي وقراءة الرسائل وسجل العمليات.
+5. `services/routingRules.ts`: محرك التقييم التلقائي لقواعد التوجيه.
+6. `components/user-dashboard/ClientGeneralRequestDetailsModal.tsx` و `UserRequestsPage.tsx`: نافذة وتفاصيل متابعة الطلبات العامة والمحادثة المباشرة للعميل.
+7. `components/partner-dashboard/DashboardLeadsPage.tsx` و `PartnerLeadDetailsPage.tsx`: عزل بيانات التواصل وتنبيهات الأخطاء للشركاء.
+8. `components/ui/Icons.tsx` و `tsconfig.json`: حل تعارضات البناء والأيقونات.
 
 ---
 
-## 4. Verification & Build Quality
-* `compile_applet`: Build succeeded with 0 errors.
-* `lint_applet`: ESLint validation completed with 0 errors.
+## 3. المرحلة الثانية: تصليد نطاق الديكور والتصميم الداخلي (Decorations Domain P0/P1 Hardening)
+
+كشف الفحص الفعلي لنطاق الديكور الحالي عن النواقص التالية التي تتطلب معالجة إنتاجية فورية:
+- **نقص الجداول في المخطط**: جدول `decoration_categories` يتم الاستعلام عنه في `services/decorations.ts` دون وجود تعريف له في `supabase/schema.sql`.
+- **غياب سياسات الأمان RLS**: جدول `portfolio_items` يفتقر لسياسات الأمان على مستوى الصفوف (Row Level Security).
+- **الاعتماد على Mock Data**: دالة `getAllPortfolioItems` و `getPortfolioByPartnerId` في `services/portfolio.ts` ترتد صامتاً إلى بيانات ملفات ثابتة `fallbackPortfolio`.
+- **معرفات وهمية (Ghost IDs)**: صفحة `DecorationsPage.tsx` ترسل طلبات الشراء والتفصيل المخصص مع معرّف وهمي `'admin-user'` بدلاً من المعرف الرسمي لمدير الديكور بالمنصة (`f476c295-e80a-41ca-a63b-61ff2f579f71`).
+- **ملفات وهمية فارغة**: وجود ملفين فارغين بحجم 0 بايت (`DecorationRequestModal.tsx` و `CustomDecorationRequestModal.tsx`).
+
+### أهداف التصليد الإنتاجي (P0 / P1 Scope):
+
+### P0 — الأمان وقاعدة البيانات ومصدر الحقيقة
+1. **إنشاء وتوثيق جدول تصنيفات الديكور (`public.decoration_categories`)**:
+   - المعرف الأساسي، الأسماء باللغتين (`name_ar`, `name_en`)، الوصف، والأيقونة/الترتيب.
+   - تفعيل RLS: قراءة عامة للجميع، مع تقييد الإضافة والتعديل والحذف لمشرف المنصة العام ومدير الديكور فقط.
+2. **تأمين وتطوير جدول معرض الأعمال والمنتجات (`public.portfolio_items`)**:
+   - إضافة قيود التحقق (Foreign Keys) مع جدول الشركاء `partners(id)`.
+   - تفعيل RLS:
+     * قراءة عامة لجميع الزوار (Public SELECT).
+     * إضافة وتعديل لشركاء الديكور المسجلين لأعمالهم الخاصة فقط (`partner_id = auth.uid()`).
+     * إدارة شاملة لمدير الديكور (`decoration_manager`) والمشرف العام.
+3. **تطهير التراجعات الوهمية في طبقة الخدمات**:
+   - إزالة أي ارتداد صامت للبيانات الوهمية (`data/portfolio.ts`) في `services/portfolio.ts`.
+   - جعل Supabase هو المصدر الوحيد والنهائي للبيانات مع تصعيد أخطاء الاتصال إلى الواجهة.
+
+### P1 — تدفق الأعمال والربط مع مديري المنصة وتجربة العميل
+1. **القضاء على المعرفات الوهمية (Zero Ghost IDs)**:
+   - ربط طلبات الشراء والاستشارات والتفصيل المخصص بالمعرف المعتمد لمدير الديكور:
+     `DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71'`
+   - إتاحة توجيه الطلب لشريك الديكور المخصص في حال كان العمل معروضاً من قبل شريك محدد.
+2. **تنظيف الملفات الملغاة**:
+   - حذف الملفات الفارغة (0 بايت) `DecorationRequestModal.tsx` و `CustomDecorationRequestModal.tsx` لضمان نظافة المستودع.
+3. **التكامل مع مركز الطلبات والمحادثات الموحد**:
+   - ضمان أن طلبات الديكور (سواء كانت شراء منتج محدد أو طلب تصميم داخلي مخصص) تُدرج كطلبات حقيقية في `requests` بنوع `LEAD` وتصنيف `decorations`.
+   - تمكين العميل من متابعة استفسارات الديكور عبر نافذة `ClientGeneralRequestDetailsModal` مع المحادثة المباشرة وسجل العمليات.
+4. **لوحة تحكم مدير الديكور (`DecorationsManagerHomePage.tsx`)**:
+   - تمكين مدير الديكور من فرز ومتابعة وتوزيع طلبات الديكور والتصميم الداخلي، واعتماد المنتجات الجديدة المرفوعة من الشركاء.
+
+---
+
+## 4. خطة التحقق والاختبار (Verification Matrix)
+
+1. **التحقق من البناء والتجميع**:
+   - اجتياز `tsc -b && vite build` بدون أي أخطاء.
+   - اجتياز `eslint .` بدون تحذيرات أو أخطاء.
+2. **التحقق من عدم حدوث تراجعات (Regression Safety)**:
+   - عدم المساس بنطاق إدارة العقارات المغلق مسبقاً.
+   - عدم المساس بنطاق المقاولات والتشطيب المغلق مسبقاً.
+   - الحفاظ على سلامة حزمة تصدير الطلبات والرسائل السابقة.
+3. **التحقق من خادم التطوير**:
+   - استمرار استجابة الخادم على المنفذ 3000 بـ `HTTP 200 OK`.
+
+---
+
+## 5. مخرجات التسليم القادمة
+
+عند تنفيذ الخطة:
+* ملف هجرة جديد: `supabase/migrations/20261001_decorations_domain_hardening.sql`.
+* تحديث `supabase/schema.sql` بالجداول والسياسات الجديدة.
+* تحديث `services/decorations.ts` و `services/portfolio.ts`.
+* تحديث `DecorationsPage.tsx` وإزالة الملفات الفارغة.
+* إعداد حزمة التصدير النهائية لـ GitHub.

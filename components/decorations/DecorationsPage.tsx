@@ -70,16 +70,21 @@ const DecorationsPage: React.FC = () => {
         });
     }, [allWorks, activeTabId, decorationCategories]);
 
+    const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
+    const isValidUUID = (id?: string) => id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : false;
+
     const openRequestPage = (work: PortfolioItem) => {
         const isBuyNow = work.availability === 'In Stock' && work.price;
         const serviceTitle = isBuyNow 
             ? `${language === 'ar' ? 'شراء:' : 'Purchase:'} ${work.title[language]}`
             : `${t_decor_modal.reference} ${work.title[language]}`;
             
+        const resolvedPartnerId = isValidUUID(work.partnerId) ? work.partnerId : DECORATION_MANAGER_ID;
+
         navigate('/request-service', {
             state: {
                 serviceTitle,
-                partnerId: 'admin-user',
+                partnerId: resolvedPartnerId,
                 workItem: work,
                 serviceType: 'decorations',
                 isPurchase: isBuyNow
@@ -92,7 +97,7 @@ const DecorationsPage: React.FC = () => {
         navigate('/request-service', {
             state: {
                 serviceTitle,
-                partnerId: 'admin-user',
+                partnerId: DECORATION_MANAGER_ID,
                 categoryName: activeTabInfo?.name,
                 isCustom: true,
                 serviceType: 'decorations'
