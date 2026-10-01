@@ -33,6 +33,18 @@ export const markNotificationsAsRead = async (userId: string, notificationIds: s
 };
 
 export const addNotification = async (notificationData: Omit<Notification, 'id' | 'isRead' | 'createdAt'>): Promise<Notification> => {
+    // P1.2: Use trusted send_system_notification RPC to enforce strict authorization boundary
+    const { data: rpcData, error: rpcError } = await supabase.rpc('send_system_notification', {
+        p_user_id: notificationData.userId,
+        p_message: notificationData.message,
+        p_link: notificationData.link || null
+    });
+
+    if (!rpcError && rpcData) {
+        return mapNotificationFromDb(rpcData);
+    }
+
+    // Direct table insert fallback for authorized users/admins if RPC is unavailable
     const dbPayload = {
         id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         user_id: notificationData.userId,
@@ -49,7 +61,7 @@ export const addNotification = async (notificationData: Omit<Notification, 'id' 
         .single();
 
     if (error) {
-        console.error("Failed to add notification", error);
+        console.error("Failed to add notification via RPC and direct insert:", { rpcError, error });
         throw error;
     }
     return mapNotificationFromDb(data);

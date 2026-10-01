@@ -354,72 +354,102 @@ CREATE INDEX IF NOT EXISTS idx_request_history_created ON public.request_history
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON public.notifications(user_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_transactions_user ON public.transactions(user_id);
 
--- P0.4: Database View for Masked Partner Leads (PII Protection)
+-- P0.4 & P1.1: Database View for Masked Partner Leads (PII & Payload Protection)
 CREATE OR REPLACE VIEW public.partner_leads_view AS
 SELECT 
     r.id,
     r.type,
     r.status,
+    -- Requester Name Masking
     CASE 
-        WHEN r.assigned_to = auth.uid() 
-             OR (r.payload->>'partnerId')::uuid = auth.uid() 
-             OR EXISTS (
-                 SELECT 1 FROM public.finishing_quotes fq 
-                 WHERE fq.request_id = r.id AND fq.partner_id = auth.uid() AND fq.status = 'accepted'
-             ) 
-             OR EXISTS (
-                 SELECT 1 FROM public.partners p 
-                 WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
-             )
+        WHEN auth.role() = 'authenticated' AND (
+            r.assigned_to = auth.uid() 
+            OR (r.payload->>'partnerId')::uuid = auth.uid() 
+            OR EXISTS (
+                SELECT 1 FROM public.finishing_quotes fq 
+                WHERE fq.request_id = r.id AND fq.partner_id = auth.uid() AND fq.status = 'accepted'
+            ) 
+            OR EXISTS (
+                SELECT 1 FROM public.partners p 
+                WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
+            )
+        )
         THEN r.requester_name
         ELSE 'عميل المنصة (مناقصة)'
     END AS requester_name,
+    -- Requester Phone Masking
     CASE 
-        WHEN r.assigned_to = auth.uid() 
-             OR (r.payload->>'partnerId')::uuid = auth.uid() 
-             OR EXISTS (
-                 SELECT 1 FROM public.finishing_quotes fq 
-                 WHERE fq.request_id = r.id AND fq.partner_id = auth.uid() AND fq.status = 'accepted'
-             ) 
-             OR EXISTS (
-                 SELECT 1 FROM public.partners p 
-                 WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
-             )
+        WHEN auth.role() = 'authenticated' AND (
+            r.assigned_to = auth.uid() 
+            OR (r.payload->>'partnerId')::uuid = auth.uid() 
+            OR EXISTS (
+                SELECT 1 FROM public.finishing_quotes fq 
+                WHERE fq.request_id = r.id AND fq.partner_id = auth.uid() AND fq.status = 'accepted'
+            ) 
+            OR EXISTS (
+                SELECT 1 FROM public.partners p 
+                WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
+            )
+        )
         THEN r.requester_phone
         ELSE NULL
     END AS requester_phone,
+    -- Requester Email Masking
     CASE 
-        WHEN r.assigned_to = auth.uid() 
-             OR (r.payload->>'partnerId')::uuid = auth.uid() 
-             OR EXISTS (
-                 SELECT 1 FROM public.finishing_quotes fq 
-                 WHERE fq.request_id = r.id AND fq.partner_id = auth.uid() AND fq.status = 'accepted'
-             ) 
-             OR EXISTS (
-                 SELECT 1 FROM public.partners p 
-                 WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
-             )
+        WHEN auth.role() = 'authenticated' AND (
+            r.assigned_to = auth.uid() 
+            OR (r.payload->>'partnerId')::uuid = auth.uid() 
+            OR EXISTS (
+                SELECT 1 FROM public.finishing_quotes fq 
+                WHERE fq.request_id = r.id AND fq.partner_id = auth.uid() AND fq.status = 'accepted'
+            ) 
+            OR EXISTS (
+                SELECT 1 FROM public.partners p 
+                WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
+            )
+        )
         THEN r.requester_email
         ELSE NULL
     END AS requester_email,
     r.assigned_to,
+    -- Safe explicit payload projection
     CASE 
-        WHEN r.assigned_to = auth.uid() 
-             OR (r.payload->>'partnerId')::uuid = auth.uid() 
-             OR EXISTS (
-                 SELECT 1 FROM public.finishing_quotes fq 
-                 WHERE fq.request_id = r.id AND fq.partner_id = auth.uid() AND fq.status = 'accepted'
-             ) 
-             OR EXISTS (
-                 SELECT 1 FROM public.partners p 
-                 WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
-             )
+        WHEN auth.role() = 'authenticated' AND (
+            r.assigned_to = auth.uid() 
+            OR (r.payload->>'partnerId')::uuid = auth.uid() 
+            OR EXISTS (
+                SELECT 1 FROM public.finishing_quotes fq 
+                WHERE fq.request_id = r.id AND fq.partner_id = auth.uid() AND fq.status = 'accepted'
+            ) 
+            OR EXISTS (
+                SELECT 1 FROM public.partners p 
+                WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
+            )
+        )
         THEN r.payload
-        ELSE (r.payload - 'customerPhone' - 'customerName')
+        ELSE jsonb_build_object(
+            'serviceType', r.payload->>'serviceType',
+            'serviceTitle', r.payload->>'serviceTitle',
+            'category', r.payload->>'category',
+            'tierDetails', r.payload->'tierDetails',
+            'pricingModel', r.payload->>'pricingModel',
+            'estimatedCost', r.payload->'estimatedCost',
+            'dimensions', r.payload->>'dimensions',
+            'itemCategory', r.payload->>'itemCategory',
+            'propertyArea', COALESCE(r.payload->'propertyArea', r.payload->'area', (r.payload->'tierDetails'->>'area')::jsonb),
+            'propertyId', r.payload->>'propertyId',
+            'propertyTitle', r.payload->>'propertyTitle',
+            'designStage', r.payload->>'designStage',
+            'status', COALESCE(r.payload->>'status', r.status),
+            'contactTime', r.payload->>'contactTime'
+        )
     END AS payload,
     r.created_at,
     r.updated_at
 FROM public.requests r;
+
+REVOKE ALL ON public.partner_leads_view FROM anon, public;
+GRANT SELECT ON public.partner_leads_view TO authenticated;
 
 
 -- P1.1: Single accepted quote constraint per finishing request
@@ -708,11 +738,18 @@ CREATE POLICY "Admins and managers view and insert all request messages" ON publ
     )
 );
 
--- Notifications (RLS Hardened)
+-- Notifications (RLS Hardened - P1.2)
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users view own notifications" ON public.notifications FOR SELECT USING (user_id = auth.uid());
 CREATE POLICY "Users update own notifications" ON public.notifications FOR UPDATE USING (user_id = auth.uid());
-CREATE POLICY "Authenticated users create notifications" ON public.notifications FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users insert self notifications or managers insert any" ON public.notifications FOR INSERT TO authenticated WITH CHECK (
+    user_id = auth.uid()
+    OR EXISTS (
+        SELECT 1 FROM public.partners p 
+        WHERE p.id = auth.uid() 
+        AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
+    )
+);
 
 -- General Request History (P1.1 Audit Trail)
 CREATE TABLE IF NOT EXISTS public.request_history (
@@ -926,6 +963,87 @@ BEGIN
     );
 END;
 $$;
+
+-- P1.2: Trusted SECURITY DEFINER RPC function for controlled, system-generated notification delivery
+CREATE OR REPLACE FUNCTION public.send_system_notification(
+    p_user_id UUID,
+    p_message JSONB,
+    p_link TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_caller_id UUID := auth.uid();
+    v_is_super_admin BOOLEAN := FALSE;
+    v_is_manager BOOLEAN := FALSE;
+    v_target_exists BOOLEAN := FALSE;
+    v_new_id UUID := uuid_generate_v4();
+    v_now TIMESTAMPTZ := NOW();
+    v_notification RECORD;
+BEGIN
+    -- 1. Ensure target user exists
+    SELECT EXISTS (SELECT 1 FROM public.partners WHERE id = p_user_id) INTO v_target_exists;
+    IF NOT v_target_exists THEN
+        RAISE EXCEPTION 'Target recipient partner does not exist: %', p_user_id;
+    END IF;
+
+    -- 2. Ensure message is a valid JSON object with language keys
+    IF p_message IS NULL OR jsonb_typeof(p_message) <> 'object' THEN
+        RAISE EXCEPTION 'Invalid notification message format. Expected JSON object with {ar, en}.';
+    END IF;
+
+    -- 3. Validate caller authorization
+    IF v_caller_id IS NOT NULL THEN
+        SELECT (role = 'super_admin'), (role LIKE '%_manager')
+        INTO v_is_super_admin, v_is_manager
+        FROM public.partners 
+        WHERE id = v_caller_id;
+
+        IF NOT (
+            v_caller_id = p_user_id 
+            OR COALESCE(v_is_super_admin, FALSE) 
+            OR COALESCE(v_is_manager, FALSE)
+            OR EXISTS (SELECT 1 FROM public.partners WHERE id = p_user_id AND role = 'super_admin')
+            OR EXISTS (
+                SELECT 1 FROM public.requests r 
+                WHERE (r.assigned_to = v_caller_id OR (r.payload->>'partnerId')::uuid = v_caller_id)
+                AND (r.assigned_to = p_user_id OR (r.payload->>'managerId')::uuid = p_user_id)
+            )
+        ) THEN
+            RAISE EXCEPTION 'Not authorized to send notification to user %', p_user_id;
+        END IF;
+    ELSE
+        -- Anonymous caller
+        IF NOT EXISTS (
+            SELECT 1 FROM public.partners 
+            WHERE id = p_user_id AND (role = 'super_admin' OR role LIKE '%_manager')
+        ) THEN
+            RAISE EXCEPTION 'Anonymous callers may only notify platform managers or administrators.';
+        END IF;
+    END IF;
+
+    -- 4. Insert notification into table
+    INSERT INTO public.notifications (
+        id, user_id, message, link, is_read, created_at
+    ) VALUES (
+        v_new_id, p_user_id, p_message, p_link, FALSE, v_now
+    ) RETURNING * INTO v_notification;
+
+    RETURN jsonb_build_object(
+        'id', v_notification.id,
+        'userId', v_notification.user_id,
+        'message', v_notification.message,
+        'link', v_notification.link,
+        'isRead', v_notification.is_read,
+        'createdAt', v_notification.created_at
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.send_system_notification(UUID, JSONB, TEXT) TO anon, authenticated;
 
 -- 7. TRIGGERS FOR TIMESTAMPS
 CREATE OR REPLACE FUNCTION update_updated_at_column()
