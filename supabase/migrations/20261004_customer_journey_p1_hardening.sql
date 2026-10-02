@@ -1,49 +1,115 @@
 -- Migration: 20261004_customer_journey_p1_hardening.sql
--- Description: Customer Journey P1 Hardening: Notifications & Transactions FK generalization to auth.users, Customer Favorites table with RLS, and Quote Award In-App Notifications
+-- Description: Customer Journey P1 Hardening: Deterministic notifications & transactions FK to auth.users, customer_favorites table with RLS, and quote award in-app notifications
 
 -- 1. Generalize notifications foreign key constraint to link directly to auth.users(id)
 DO $$
+DECLARE
+    r RECORD;
+    v_has_correct_fk BOOLEAN := FALSE;
 BEGIN
-    -- Drop old foreign key constraint pointing to partners if it exists
-    IF EXISTS (
-        SELECT 1 FROM information_schema.table_constraints 
-        WHERE constraint_name = 'notifications_user_id_fkey' 
-        AND table_name = 'notifications'
-    ) THEN
-        ALTER TABLE public.notifications DROP CONSTRAINT notifications_user_id_fkey;
-    END IF;
+    -- Check if notifications(user_id) already references auth.users(id) with ON DELETE CASCADE
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu 
+          ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu 
+          ON tc.constraint_name = ccu.constraint_name
+        JOIN information_schema.referential_constraints rc
+          ON tc.constraint_name = rc.constraint_name AND tc.table_schema = rc.constraint_schema
+        WHERE tc.table_schema = 'public'
+          AND tc.table_name = 'notifications'
+          AND tc.constraint_type = 'FOREIGN KEY'
+          AND kcu.column_name = 'user_id'
+          AND ccu.table_schema = 'auth' 
+          AND ccu.table_name = 'users'
+          AND rc.delete_rule = 'CASCADE'
+    ) INTO v_has_correct_fk;
 
-    -- Add updated foreign key pointing to auth.users
-    ALTER TABLE public.notifications 
-    ADD CONSTRAINT notifications_user_id_fkey 
-    FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
-EXCEPTION
-    WHEN OTHERS THEN
-        -- If any orphan user_id exists in test data, handle gracefully
-        RAISE NOTICE 'Notifications FK constraint update note: %', SQLERRM;
+    IF NOT v_has_correct_fk THEN
+        -- Drop any existing FK constraints on public.notifications(user_id)
+        FOR r IN (
+            SELECT tc.constraint_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu 
+              ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = 'public'
+              AND tc.table_name = 'notifications'
+              AND tc.constraint_type = 'FOREIGN KEY'
+              AND kcu.column_name = 'user_id'
+        ) LOOP
+            EXECUTE 'ALTER TABLE public.notifications DROP CONSTRAINT ' || quote_ident(r.constraint_name);
+        END LOOP;
+
+        -- Explicitly delete legacy orphaned notifications referencing non-existent users
+        DELETE FROM public.notifications 
+        WHERE user_id IS NOT NULL 
+          AND user_id NOT IN (SELECT id FROM auth.users);
+
+        -- Add the canonical foreign key to auth.users(id) ON DELETE CASCADE
+        -- Explicit: no silent error swallowing
+        ALTER TABLE public.notifications 
+        ADD CONSTRAINT notifications_user_id_fkey 
+        FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+    END IF;
 END $$;
 
--- Ensure indexes on notifications
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications(created_at DESC);
 
 -- 2. Generalize transactions foreign key constraint to link directly to auth.users(id)
 DO $$
+DECLARE
+    r RECORD;
+    v_has_correct_fk BOOLEAN := FALSE;
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.table_constraints 
-        WHERE constraint_name = 'transactions_user_id_fkey' 
-        AND table_name = 'transactions'
-    ) THEN
-        ALTER TABLE public.transactions DROP CONSTRAINT transactions_user_id_fkey;
-    END IF;
+    -- Check if transactions(user_id) already references auth.users(id) with ON DELETE SET NULL
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu 
+          ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu 
+          ON tc.constraint_name = ccu.constraint_name
+        JOIN information_schema.referential_constraints rc
+          ON tc.constraint_name = rc.constraint_name AND tc.table_schema = rc.constraint_schema
+        WHERE tc.table_schema = 'public'
+          AND tc.table_name = 'transactions'
+          AND tc.constraint_type = 'FOREIGN KEY'
+          AND kcu.column_name = 'user_id'
+          AND ccu.table_schema = 'auth' 
+          AND ccu.table_name = 'users'
+          AND rc.delete_rule = 'SET NULL'
+    ) INTO v_has_correct_fk;
 
-    ALTER TABLE public.transactions 
-    ADD CONSTRAINT transactions_user_id_fkey 
-    FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
-EXCEPTION
-    WHEN OTHERS THEN
-        RAISE NOTICE 'Transactions FK constraint update note: %', SQLERRM;
+    IF NOT v_has_correct_fk THEN
+        -- Drop any existing FK constraints on public.transactions(user_id)
+        FOR r IN (
+            SELECT tc.constraint_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu 
+              ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = 'public'
+              AND tc.table_name = 'transactions'
+              AND tc.constraint_type = 'FOREIGN KEY'
+              AND kcu.column_name = 'user_id'
+        ) LOOP
+            EXECUTE 'ALTER TABLE public.transactions DROP CONSTRAINT ' || quote_ident(r.constraint_name);
+        END LOOP;
+
+        -- Explicitly disassociate orphaned legacy records by setting user_id = NULL
+        -- (Preserving historical financial ledger data while decoupling missing user accounts)
+        UPDATE public.transactions 
+        SET user_id = NULL 
+        WHERE user_id IS NOT NULL 
+          AND user_id NOT IN (SELECT id FROM auth.users);
+
+        -- Add the canonical foreign key to auth.users(id) ON DELETE SET NULL
+        -- Explicit: no silent error swallowing
+        ALTER TABLE public.transactions 
+        ADD CONSTRAINT transactions_user_id_fkey 
+        FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+    END IF;
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON public.transactions(user_id);
@@ -208,7 +274,25 @@ BEGIN
 
     -- 9. P1: Emit in-app notifications to contractor partner and customer
     -- Contractor notification
-    BEGIN
+    INSERT INTO public.notifications (
+        user_id, 
+        message, 
+        link, 
+        is_read, 
+        created_at
+    ) VALUES (
+        v_quote.partner_id,
+        jsonb_build_object(
+            'ar', 'تهانينا! تم اعتماد عرضك لمشروع التشطيب وتعيينك مقاولاً للمشروع بقيمة ' || v_quote.total_price || ' ج.م.',
+            'en', 'Congratulations! Your quote for the finishing project was awarded for ' || v_quote.total_price || ' EGP.'
+        ),
+        '/dashboard/leads',
+        false,
+        v_now
+    );
+
+    -- Customer notification
+    IF v_request.customer_id IS NOT NULL THEN
         INSERT INTO public.notifications (
             user_id, 
             message, 
@@ -216,43 +300,15 @@ BEGIN
             is_read, 
             created_at
         ) VALUES (
-            v_quote.partner_id,
+            v_request.customer_id,
             jsonb_build_object(
-                'ar', 'تهانينا! تم اعتماد عرضك لمشروع التشطيب وتعيينك مقاولاً للمشروع بقيمة ' || v_quote.total_price || ' ج.م.',
-                'en', 'Congratulations! Your quote for the finishing project was awarded for ' || v_quote.total_price || ' EGP.'
+                'ar', 'تم اعتماد عرض شركة ' || COALESCE(v_partner.name_ar, 'المقاول') || ' بنجاح وبدء مراحل تنفيذ المشروع.',
+                'en', 'Contractor quote by ' || COALESCE(v_partner.name_en, 'Contractor') || ' was successfully awarded and milestones are active.'
             ),
-            '/dashboard/leads',
+            '/my-dashboard/requests',
             false,
             v_now
         );
-    EXCEPTION
-        WHEN OTHERS THEN
-            RAISE NOTICE 'Notification to contractor skipped: %', SQLERRM;
-    END;
-
-    -- Customer notification
-    IF v_request.customer_id IS NOT NULL THEN
-        BEGIN
-            INSERT INTO public.notifications (
-                user_id, 
-                message, 
-                link, 
-                is_read, 
-                created_at
-            ) VALUES (
-                v_request.customer_id,
-                jsonb_build_object(
-                    'ar', 'تم اعتماد عرض شركة ' || COALESCE(v_partner.name_ar, 'المقاول') || ' بنجاح وبدء مراحل تنفيذ المشروع.',
-                    'en', 'Contractor quote by ' || COALESCE(v_partner.name_en, 'Contractor') || ' was successfully awarded and milestones are active.'
-                ),
-                '/my-dashboard/requests',
-                false,
-                v_now
-            );
-        EXCEPTION
-            WHEN OTHERS THEN
-                RAISE NOTICE 'Notification to customer skipped: %', SQLERRM;
-        END;
     END IF;
 
     RETURN jsonb_build_object(

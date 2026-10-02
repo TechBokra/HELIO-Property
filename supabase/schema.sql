@@ -1167,6 +1167,45 @@ BEGIN
         v_now
     );
 
+    -- 9. P1: Emit in-app notifications to contractor partner and customer
+    -- Contractor notification
+    INSERT INTO public.notifications (
+        user_id, 
+        message, 
+        link, 
+        is_read, 
+        created_at
+    ) VALUES (
+        v_quote.partner_id,
+        jsonb_build_object(
+            'ar', 'تهانينا! تم اعتماد عرضك لمشروع التشطيب وتعيينك مقاولاً للمشروع بقيمة ' || v_quote.total_price || ' ج.م.',
+            'en', 'Congratulations! Your quote for the finishing project was awarded for ' || v_quote.total_price || ' EGP.'
+        ),
+        '/dashboard/leads',
+        false,
+        v_now
+    );
+
+    -- Customer notification
+    IF v_request.customer_id IS NOT NULL THEN
+        INSERT INTO public.notifications (
+            user_id, 
+            message, 
+            link, 
+            is_read, 
+            created_at
+        ) VALUES (
+            v_request.customer_id,
+            jsonb_build_object(
+                'ar', 'تم اعتماد عرض شركة ' || COALESCE(v_partner.name_ar, 'المقاول') || ' بنجاح وبدء مراحل تنفيذ المشروع.',
+                'en', 'Contractor quote by ' || COALESCE(v_partner.name_en, 'Contractor') || ' was successfully awarded and milestones are active.'
+            ),
+            '/my-dashboard/requests',
+            false,
+            v_now
+        );
+    END IF;
+
     RETURN jsonb_build_object(
         'success', true,
         'requestId', p_request_id,

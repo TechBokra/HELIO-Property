@@ -12,7 +12,7 @@ export const fetchFavoritesFromDb = async (userId: string): Promise<FavoriteItem
             .order('created_at', { ascending: false });
 
         if (error) {
-            console.warn('Failed to fetch favorites from cloud, falling back to local:', error.message);
+            console.error('Failed to fetch favorites from Supabase:', error.message);
             return [];
         }
 
@@ -21,7 +21,7 @@ export const fetchFavoritesFromDb = async (userId: string): Promise<FavoriteItem
             type: row.item_type as 'property' | 'service' | 'portfolio'
         }));
     } catch (err) {
-        console.warn('Network error fetching customer favorites:', err);
+        console.error('Network error fetching customer favorites:', err);
         return [];
     }
 };
@@ -43,12 +43,12 @@ export const addFavoriteToDb = async (userId: string, itemId: string, itemType: 
             );
 
         if (error) {
-            console.warn('Failed to persist favorite to cloud:', error.message);
+            console.error('Failed to persist favorite to Supabase:', error.message);
             return false;
         }
         return true;
     } catch (err) {
-        console.warn('Network error adding favorite to cloud:', err);
+        console.error('Network error adding favorite to Supabase:', err);
         return false;
     }
 };
@@ -65,12 +65,12 @@ export const removeFavoriteFromDb = async (userId: string, itemId: string, itemT
             .eq('item_type', itemType);
 
         if (error) {
-            console.warn('Failed to delete favorite from cloud:', error.message);
+            console.error('Failed to delete favorite from Supabase:', error.message);
             return false;
         }
         return true;
     } catch (err) {
-        console.warn('Network error removing favorite from cloud:', err);
+        console.error('Network error removing favorite from Supabase:', err);
         return false;
     }
 };

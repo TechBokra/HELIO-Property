@@ -77,6 +77,7 @@ export const useAuthStore = create<AuthState>()(
                             }
                         } else if (event === 'SIGNED_OUT') {
                             set({ currentUser: null, permissions: [] });
+                            useFavoritesStore.getState().clearAuthenticatedFavorites();
                             // Clear local storage explicitly to be safe
                             localStorage.removeItem('onlyhelio-auth-storage');
                         }
@@ -183,6 +184,7 @@ export const useAuthStore = create<AuthState>()(
             logout: async () => {
                 set({ isLoading: true });
                 await supabase.auth.signOut();
+                useFavoritesStore.getState().clearAuthenticatedFavorites();
                 set({ currentUser: null, permissions: [], isLoading: false });
             },
 
