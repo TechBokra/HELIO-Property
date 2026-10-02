@@ -5,6 +5,7 @@ import { Partner, Role, Permission } from '../types';
 import { getPartnerById, createProfileForExistingUser } from '../services/partners';
 import { rolePermissions, mapPartnerTypeToRole } from '../data/permissions';
 import { supabase } from '../lib/supabase';
+import { useFavoritesStore } from './useFavoritesStore';
 
 interface AuthState {
     currentUser: Partner | null;
@@ -13,6 +14,7 @@ interface AuthState {
     
     // Actions
     login: (email: string, pass: string) => Promise<Partner | null>;
+    registerCustomer: (email: string, pass: string, name: string, phone?: string) => Promise<Partner | null>;
     logout: () => void;
     hasPermission: (permission: Permission) => boolean;
     initialize: () => Promise<void>;
@@ -57,6 +59,7 @@ export const useAuthStore = create<AuthState>()(
                             const permissions = rolePermissions.get(userRole) || [];
                             const updatedProfile = { ...userProfile, role: userRole };
                             set({ currentUser: updatedProfile, permissions });
+                            useFavoritesStore.getState().syncWithCloud(session.user.id);
                         }
                     }
 
@@ -70,6 +73,7 @@ export const useAuthStore = create<AuthState>()(
                                 const permissions = rolePermissions.get(userRole) || [];
                                 const updatedProfile = { ...userProfile, role: userRole };
                                 set({ currentUser: updatedProfile, permissions });
+                                useFavoritesStore.getState().syncWithCloud(session.user.id);
                             }
                         } else if (event === 'SIGNED_OUT') {
                             set({ currentUser: null, permissions: [] });
@@ -97,14 +101,13 @@ export const useAuthStore = create<AuthState>()(
                     // Fetch the full profile from the 'partners' table
                     let userProfile = await getPartnerById(data.user.id);
                     
-                    // Self-healing: If auth exists but profile doesn't, create it.
+                    // Self-healing: If auth exists but profile doesn't, create it as customer.
                     if (!userProfile) {
                         try {
                             console.warn("Profile missing for existing auth user. Attempting to create default profile...");
                             userProfile = await createProfileForExistingUser(data.user);
                         } catch (createError) {
                             console.error("Failed to create default profile:", createError);
-                             // Let it fall through to throw error below if still null
                         }
                     }
 
@@ -125,6 +128,53 @@ export const useAuthStore = create<AuthState>()(
                     }
                 } catch (error: any) {
                     console.error("Login failed", error);
+                    set({ currentUser: null, permissions: [], isLoading: false });
+                    throw error;
+                }
+            },
+
+            registerCustomer: async (email: string, pass: string, name: string, phone?: string) => {
+                set({ isLoading: true });
+                try {
+                    const { data, error } = await supabase.auth.signUp({
+                        email,
+                        password: pass,
+                        options: {
+                            data: {
+                                name,
+                                phone: phone || '',
+                                role: 'customer'
+                            }
+                        }
+                    });
+
+                    if (error) throw error;
+                    if (!data.user) throw new Error("No user returned");
+
+                    let userProfile = await getPartnerById(data.user.id);
+                    if (!userProfile) {
+                        userProfile = await createProfileForExistingUser({
+                            ...data.user,
+                            user_metadata: {
+                                ...data.user.user_metadata,
+                                name,
+                                phone: phone || ''
+                            }
+                        });
+                    }
+
+                    const userRole = userProfile?.role || Role.CUSTOMER;
+                    const permissions = rolePermissions.get(userRole) || [];
+                    const updatedProfile = { ...userProfile, role: userRole };
+
+                    set({
+                        currentUser: updatedProfile,
+                        permissions,
+                        isLoading: false
+                    });
+                    return updatedProfile;
+                } catch (error: any) {
+                    console.error("Customer registration failed:", error);
                     set({ currentUser: null, permissions: [], isLoading: false });
                     throw error;
                 }

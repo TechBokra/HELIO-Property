@@ -148,7 +148,7 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
         pageOrigin: leadData.pageOrigin,
     });
 
-    const payloadObj = {
+    const payloadObj: any = {
         serviceType: leadData.serviceType || 'property',
         serviceTitle: leadData.serviceTitle,
         contactTime: leadData.contactTime,
@@ -201,11 +201,26 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
     const dbAssignedTo = isValidUUID(routedPartner) ? routedPartner : null;
     payloadObj.partnerId = routedPartner;
 
-    const dbPayload = {
+    // P0.3: Derive authoritative authenticated customer identity
+    const { data: { session } } = await supabase.auth.getSession();
+    const authUser = session?.user;
+    const customerId = authUser?.id || (leadData.customerId && isValidUUID(leadData.customerId) ? leadData.customerId : null);
+    const authoritativeEmail = authUser?.email || leadData.customerEmail || null;
+
+    payloadObj.requesterInfo = {
+        name: leadData.customerName,
+        phone: leadData.customerPhone,
+        email: authoritativeEmail || undefined,
+        customerId: customerId || undefined
+    };
+
+    const dbPayload: any = {
         type: 'LEAD',
         status: 'new',
+        customer_id: customerId,
         requester_name: leadData.customerName,
         requester_phone: leadData.customerPhone,
+        requester_email: authoritativeEmail,
         assigned_to: dbAssignedTo,
         payload: payloadObj,
         created_at: new Date().toISOString(),

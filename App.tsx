@@ -1,6 +1,6 @@
 
 import { Suspense, lazy, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 
 import ScrollToTop from './components/shared/ScrollToTop';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -16,10 +16,17 @@ import { initAttribution } from './utils/attribution';
 // --- Layouts (Static Imports to fix #525) ---
 import DashboardLayout from './components/shared/DashboardLayout';
 import PublicLayout from './components/shared/PublicLayout';
+import UserDashboardLayout from './components/user-dashboard/UserDashboardLayout';
 
 // --- Route Groups (Static Imports to fix #525) ---
 import PartnerRoutes from './components/partner-dashboard/PartnerRoutes';
 import AdminRoutes from './components/admin/AdminRoutes';
+
+// --- Customer Dashboard Pages (Lazy Loaded) ---
+const UserDashboardHomePage = lazy(() => import('./components/user-dashboard/UserDashboardHomePage'));
+const UserRequestsPage = lazy(() => import('./components/user-dashboard/UserRequestsPage'));
+const UserProfilePage = lazy(() => import('./components/user-dashboard/UserProfilePage'));
+const UserFavoritesPage = lazy(() => import('./components/user-dashboard/UserFavoritesPage'));
 
 // --- Public Pages (Lazy Loaded) ---
 const HomePage = lazy(() => import('./components/home/HomePage'));
@@ -56,6 +63,24 @@ const App = () => {
             <ScrollToTop />
             <Suspense fallback={<LoadingFallback />}>
                 <Routes>
+                    {/* ================================================================== */}
+                    {/*                     Protected Customer Dashboard                   */}
+                    {/* ================================================================== */}
+                    <Route
+                        path="/my-dashboard/*"
+                        element={
+                            <ProtectedRoute permission={Permission.VIEW_CUSTOMER_DASHBOARD}>
+                                <UserDashboardLayout />
+                            </ProtectedRoute>
+                        }
+                    >
+                        <Route index element={<UserDashboardHomePage />} />
+                        <Route path="requests" element={<UserRequestsPage />} />
+                        <Route path="profile" element={<UserProfilePage />} />
+                        <Route path="favorites" element={<UserFavoritesPage />} />
+                        <Route path="*" element={<Navigate to="/my-dashboard" replace />} />
+                    </Route>
+
                     {/* ================================================================== */}
                     {/*                        Protected Partner Dashboard                   */}
                     {/* ================================================================== */}

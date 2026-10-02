@@ -17,12 +17,14 @@ export enum Role {
     CONTENT_MANAGER = 'content_manager',
     SERVICE_MANAGER = 'service_manager',
     CUSTOMER_RELATIONS_MANAGER = 'customer_relations_manager',
-    LISTINGS_MANAGER = 'listings_manager'
+    LISTINGS_MANAGER = 'listings_manager',
+    CUSTOMER = 'customer'
 }
 
 export enum Permission {
     VIEW_ADMIN_DASHBOARD = 'view_admin_dashboard',
     VIEW_PARTNER_DASHBOARD = 'view_partner_dashboard',
+    VIEW_CUSTOMER_DASHBOARD = 'view_customer_dashboard',
     MANAGE_USERS = 'manage_users',
     MANAGE_ROLES_PERMISSIONS = 'manage_roles_permissions',
     MANAGE_SETTINGS = 'manage_settings',
@@ -57,7 +59,7 @@ export enum Permission {
     MANAGE_TEAM = 'manage_team'
 }
 
-export type PartnerType = 'developer' | 'finishing' | 'agency' | 'admin' | 'decoration_manager' | 'platform_finishing_manager' | 'finishing_market_manager' | 'platform_real_estate_manager' | 'real_estate_market_manager' | 'partner_relations_manager' | 'content_manager' | 'service_manager' | 'customer_relations_manager' | 'listings_manager';
+export type PartnerType = 'developer' | 'finishing' | 'agency' | 'admin' | 'customer' | 'decoration_manager' | 'platform_finishing_manager' | 'finishing_market_manager' | 'platform_real_estate_manager' | 'real_estate_market_manager' | 'partner_relations_manager' | 'content_manager' | 'service_manager' | 'customer_relations_manager' | 'listings_manager';
 
 export type SubscriptionPlan = 'basic' | 'professional' | 'elite' | 'commission' | 'paid_listing';
 export type PlanCategory = 'developer' | 'agency' | 'finishing' | 'individual';
@@ -241,8 +243,9 @@ export enum RequestType {
 
 export interface Request {
     id: string;
+    customerId?: string;
     type: RequestType;
-    requesterInfo: { name: string; phone: string; email?: string };
+    requesterInfo: { name: string; phone: string; email?: string; customerId?: string };
     payload: any;
     status: RequestStatus;
     assignedTo?: string;
@@ -279,6 +282,9 @@ export interface Lead {
     serviceType: 'finishing' | 'decorations' | 'property' | 'general' | 'property_search' | string;
     customerName: string;
     customerPhone: string;
+    customerEmail?: string;
+    customerId?: string;
+    requesterEmail?: string;
     contactTime?: string;
     serviceTitle: string;
     customerNotes?: string;

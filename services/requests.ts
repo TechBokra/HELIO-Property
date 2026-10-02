@@ -12,6 +12,7 @@ const mapRequestFromDb = (row: any): Request => ({
     id: row.id,
     type: row.type as RequestType,
     status: row.status,
+    customerId: row.customer_id,
     assignedTo: row.assigned_to,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -19,6 +20,7 @@ const mapRequestFromDb = (row: any): Request => ({
         name: row.requester_name,
         phone: row.requester_phone,
         email: row.requester_email,
+        customerId: row.customer_id,
     },
     payload: row.payload || {},
     assignedToName: row.assigned_to // Will need hydration if name is needed
@@ -35,12 +37,23 @@ export const getAllRequests = async (): Promise<Request[]> => {
 };
 
 export const getMyCustomerRequests = async (customerEmail: string): Promise<Request[]> => {
-    if (!customerEmail) return [];
-    const { data, error } = await supabase
-        .from('requests')
-        .select('*')
-        .or(`requester_email.eq.${customerEmail},payload->requesterInfo->>email.eq.${customerEmail}`)
-        .order('created_at', { ascending: false });
+    const { data: { session } } = await supabase.auth.getSession();
+    const currentUserId = session?.user?.id;
+    const userEmail = session?.user?.email || customerEmail;
+
+    if (!currentUserId && !userEmail) return [];
+
+    let query = supabase.from('requests').select('*');
+
+    if (currentUserId && userEmail) {
+        query = query.or(`customer_id.eq.${currentUserId},requester_email.eq.${userEmail},payload->requesterInfo->>email.eq.${userEmail}`);
+    } else if (currentUserId) {
+        query = query.eq('customer_id', currentUserId);
+    } else {
+        query = query.or(`requester_email.eq.${userEmail},payload->requesterInfo->>email.eq.${userEmail}`);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
         console.error('Error querying customer requests:', error);
@@ -180,15 +193,33 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
         }
     }
 
+    // P0.3: Derive authoritative authenticated customer identity
+    const { data: { session } } = await supabase.auth.getSession();
+    const authUser = session?.user;
+    const customerId = authUser?.id || data.customerId || undefined;
+    const authoritativeEmail = authUser?.email || data.requesterInfo.email || undefined;
+
+    const enrichedRequesterInfo = {
+        ...data.requesterInfo,
+        email: authoritativeEmail,
+        customerId: customerId
+    };
+
+    const enrichedPayload = {
+        ...(finalPayload || {}),
+        requesterInfo: enrichedRequesterInfo
+    };
+
     // Prepare payload for DB
-    const dbPayload = {
+    const dbPayload: any = {
         type,
         status: 'new',
+        customer_id: customerId || null,
         requester_name: data.requesterInfo.name,
         requester_phone: data.requesterInfo.phone,
-        requester_email: data.requesterInfo.email,
+        requester_email: authoritativeEmail || null,
         assigned_to: data.assignedTo,
-        payload: finalPayload,
+        payload: enrichedPayload,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     };

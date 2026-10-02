@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { Role } from '../../types';
 import { Input } from '../ui/Input';
@@ -12,12 +11,17 @@ import { LockClosedIcon, EnvelopeIcon, ExclamationCircleIcon } from '../ui/Icons
 const LoginPage: React.FC = () => {
     const { t, language } = useLanguage();
     const t_auth = t.auth;
+    const isAr = language === 'ar';
+
+    const [isSignUp, setIsSignUp] = useState(false);
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const { login } = useAuth();
+    const { login, registerCustomer } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -34,34 +38,47 @@ const LoginPage: React.FC = () => {
         setLoading(true);
         
         try {
-            const user = await login(email, password);
-
-            if (user) {
-                if (rememberMe) {
-                    localStorage.setItem('onlyhelio-remember-email', email);
-                } else {
-                    localStorage.removeItem('onlyhelio-remember-email');
+            if (isSignUp) {
+                if (!name.trim()) {
+                    throw new Error(isAr ? 'يرجى إدخال الاسم بالكامل' : 'Please enter your full name');
                 }
+                const user = await registerCustomer(email, password, name, phone);
+                if (user) {
+                    navigate('/my-dashboard', { replace: true });
+                }
+            } else {
+                const user = await login(email, password);
 
-                if (user.role === Role.SUPER_ADMIN || 
-                    user.role.includes('manager')) {
-                    navigate('/admin', { replace: true });
-                } else {
-                    navigate('/dashboard', { replace: true });
+                if (user) {
+                    if (rememberMe) {
+                        localStorage.setItem('onlyhelio-remember-email', email);
+                    } else {
+                        localStorage.removeItem('onlyhelio-remember-email');
+                    }
+
+                    if (user.role === Role.SUPER_ADMIN || user.role.includes('manager')) {
+                        navigate('/admin', { replace: true });
+                    } else if (user.role === Role.CUSTOMER) {
+                        navigate('/my-dashboard', { replace: true });
+                    } else {
+                        navigate('/dashboard', { replace: true });
+                    }
                 }
             }
         } catch (err: any) {
-             console.error("Login error:", err);
+             console.error("Auth error:", err);
              const msg = err.message || '';
              
              if (msg.includes('Invalid login credentials') || msg.includes('invalid_grant')) {
-                 setError(language === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password');
+                 setError(isAr ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password');
              } else if (msg.includes('Email not confirmed')) {
-                 setError(language === 'ar' 
+                 setError(isAr 
                     ? 'البريد الإلكتروني غير مفعل. يرجى مراجعة بريدك أو التواصل مع الإدارة.' 
                     : 'Email not confirmed. Please check your inbox or contact support.');
+             } else if (msg.includes('already registered')) {
+                 setError(isAr ? 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.' : 'Email is already registered. Please sign in.');
              } else {
-                 setError(language === 'ar' ? 'حدث خطأ أثناء تسجيل الدخول' : (msg || t_auth.loginError));
+                 setError(isAr ? (msg || 'حدث خطأ أثناء المصادقة') : (msg || t_auth.loginError));
              }
         } finally {
             setLoading(false);
@@ -75,16 +92,83 @@ const LoginPage: React.FC = () => {
                     <SiteIdentity className="text-amber-500" textClassName="text-3xl font-bold" hideTextOnMobile={false} />
                 </div>
                 <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                    {t_auth.loginTitle}
+                    {isSignUp ? (isAr ? 'إنشاء حساب عميل جديد' : 'Create Customer Account') : t_auth.loginTitle}
                 </h2>
                 <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-                    {t_auth.loginSubtitle}
+                    {isSignUp 
+                        ? (isAr ? 'سجل لمتابعة طلباتك، عروض المقاولين، ومراحل التشطيب' : 'Sign up to track your inquiries, bids, and milestones')
+                        : t_auth.loginSubtitle}
                 </p>
+
+                {/* Mode Selector Tabs */}
+                <div className="mt-6 flex justify-center bg-gray-200 dark:bg-gray-700/60 p-1 rounded-xl">
+                    <button
+                        type="button"
+                        onClick={() => { setIsSignUp(false); setError(''); }}
+                        className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+                            !isSignUp 
+                                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' 
+                                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                    >
+                        {isAr ? 'تسجيل الدخول' : 'Sign In'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setIsSignUp(true); setError(''); }}
+                        className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+                            isSignUp 
+                                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' 
+                                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                    >
+                        {isAr ? 'حساب عميل جديد' : 'New Customer'}
+                    </button>
+                </div>
             </div>
 
-            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+            <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
                 <div className="bg-white dark:bg-gray-800 py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-200 dark:border-gray-700">
-                    <form className="space-y-6" onSubmit={handleSubmit}>
+                    <form className="space-y-5" onSubmit={handleSubmit}>
+                        {isSignUp && (
+                            <>
+                                <div>
+                                    <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                        {isAr ? 'الاسم بالكامل' : 'Full Name'}
+                                    </label>
+                                    <div className="mt-1">
+                                        <Input
+                                            id="name"
+                                            name="name"
+                                            type="text"
+                                            required={isSignUp}
+                                            placeholder={isAr ? 'أحمد محمد' : 'Ahmed Mohamed'}
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            disabled={loading}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                        {isAr ? 'رقم الهاتف' : 'Phone Number'}
+                                    </label>
+                                    <div className="mt-1">
+                                        <Input
+                                            id="phone"
+                                            name="phone"
+                                            type="tel"
+                                            placeholder="010XXXXXXXX"
+                                            value={phone}
+                                            onChange={(e) => setPhone(e.target.value)}
+                                            disabled={loading}
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
                         <div>
                             <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                 {t_auth.email}
@@ -100,7 +184,7 @@ const LoginPage: React.FC = () => {
                                     autoComplete="email"
                                     required
                                     className="pl-10"
-                                    placeholder="name@company.com"
+                                    placeholder="name@example.com"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     disabled={loading}
@@ -120,7 +204,7 @@ const LoginPage: React.FC = () => {
                                     id="password"
                                     name="password"
                                     type="password"
-                                    autoComplete="current-password"
+                                    autoComplete={isSignUp ? "new-password" : "current-password"}
                                     required
                                     className="pl-10"
                                     placeholder="••••••••"
@@ -131,21 +215,23 @@ const LoginPage: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center">
-                                <input
-                                    id="remember-me"
-                                    name="remember-me"
-                                    type="checkbox"
-                                    checked={rememberMe}
-                                    onChange={(e) => setRememberMe(e.target.checked)}
-                                    className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 dark:border-gray-600 dark:bg-gray-700 cursor-pointer"
-                                />
-                                <label htmlFor="remember-me" className={`ml-2 block text-sm text-gray-900 dark:text-gray-300 cursor-pointer ${language === 'ar' ? 'mr-2 ml-0' : 'ml-2'}`}>
-                                    {language === 'ar' ? 'تذكرني' : 'Remember me'}
-                                </label>
+                        {!isSignUp && (
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <input
+                                        id="remember-me"
+                                        name="remember-me"
+                                        type="checkbox"
+                                        checked={rememberMe}
+                                        onChange={(e) => setRememberMe(e.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 dark:border-gray-600 dark:bg-gray-700 cursor-pointer"
+                                    />
+                                    <label htmlFor="remember-me" className={`ml-2 block text-sm text-gray-900 dark:text-gray-300 cursor-pointer ${isAr ? 'mr-2 ml-0' : 'ml-2'}`}>
+                                        {isAr ? 'تذكرني' : 'Remember me'}
+                                    </label>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {error && (
                             <div className="rounded-md bg-red-50 dark:bg-red-900/20 p-4 border border-red-200 dark:border-red-800 animate-fadeIn">
@@ -153,7 +239,7 @@ const LoginPage: React.FC = () => {
                                     <div className="flex-shrink-0">
                                         <ExclamationCircleIcon className="h-5 w-5 text-red-400" aria-hidden="true" />
                                     </div>
-                                    <div className={`ml-3 ${language === 'ar' ? 'mr-3 ml-0' : 'ml-3'}`}>
+                                    <div className={`ml-3 ${isAr ? 'mr-3 ml-0' : 'ml-3'}`}>
                                         <h3 className="text-sm font-medium text-red-800 dark:text-red-300">{error}</h3>
                                     </div>
                                 </div>
@@ -161,11 +247,24 @@ const LoginPage: React.FC = () => {
                         )}
 
                         <div>
-                            <Button type="submit" isLoading={loading} className="w-full flex justify-center" size="lg">
-                               {t_auth.loginButton}
+                            <Button type="submit" isLoading={loading} className="w-full flex justify-center bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold" size="lg">
+                                {isSignUp ? (isAr ? 'إنشاء الحساب' : 'Create Account') : t_auth.loginButton}
                             </Button>
                         </div>
                     </form>
+
+                    {/* Partner Registration Link */}
+                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 text-center">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {isAr ? 'هل أنت مقاول تشطيبات أو شركة تطوير عقاري؟' : 'Are you a contractor or real estate developer?'}
+                        </p>
+                        <Link 
+                            to="/register" 
+                            className="inline-block mt-1 text-sm font-bold text-amber-600 dark:text-amber-400 hover:underline"
+                        >
+                            {isAr ? 'انضم كشريك في المنصة ←' : 'Join as a Partner ←'}
+                        </Link>
+                    </div>
                 </div>
             </div>
         </div>

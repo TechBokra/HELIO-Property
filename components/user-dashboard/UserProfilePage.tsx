@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
+import { useAuthStore } from '../../store/useAuthStore';
 import { updateUser } from '../../services/partners';
 import { useToast } from '../shared/ToastContext';
 import { useLanguage } from '../shared/LanguageContext';
@@ -46,11 +47,18 @@ const UserProfilePage = () => {
 
     const mutation = useMutation({
         mutationFn: (data: { id: string, updates: any }) => updateUser(data.id, data.updates),
-        onSuccess: () => {
+        onSuccess: (_res, variables) => {
             showToast(t_dash.profileUpdateSuccess, 'success');
             queryClient.invalidateQueries({ queryKey: [`partner-${currentUser?.id}`] });
-            // Reload to update header
-            setTimeout(() => window.location.reload(), 500);
+            if (currentUser) {
+                const updated = {
+                    ...currentUser,
+                    name: variables.updates.name || currentUser.name,
+                    imageUrl: variables.updates.imageUrl || currentUser.imageUrl,
+                    contactMethods: variables.updates.contactMethods || currentUser.contactMethods
+                };
+                useAuthStore.getState().setCurrentUser(updated);
+            }
         },
         onError: () => {
             showToast('Failed to update profile.', 'error');

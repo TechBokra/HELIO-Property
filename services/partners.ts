@@ -1,7 +1,7 @@
 
 import { supabase } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
-import type { Partner, PartnerStatus, PartnerRequest, AdminPartner, SubscriptionPlan } from '../types';
+import { Role, type Partner, type PartnerStatus, type PartnerRequest, type AdminPartner, type SubscriptionPlan, type PartnerType } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
 
 // --- HELPER: Isolated Client ---
@@ -111,27 +111,27 @@ export const getPartnerByEmail = async (email: string): Promise<Partner | undefi
     return data ? mapPartnerFromDb(data) : undefined;
 };
 
-// Self-healing function for missing profiles
+// Self-healing function for missing profiles (P0.1 Customer Hardening)
 export const createProfileForExistingUser = async (user: any): Promise<Partner> => {
-    const isAdminEmail = user.email?.toLowerCase().includes('admin');
-    // Default to agency if not explicitly an admin email, allowing basic access
-    const type = isAdminEmail ? 'admin' : 'agency';
+    // Standard users without an existing partner/admin record default to CUSTOMER
+    const type: PartnerType = 'customer';
 
     const dbPayload = {
         id: user.id,
         email: user.email,
         type: type,
+        role: Role.CUSTOMER,
         status: 'active',
         subscription_plan: 'basic',
         display_type: 'standard',
-        image_url: 'https://via.placeholder.com/150',
-        name_ar: user.user_metadata?.name || user.email?.split('@')[0] || 'مستخدم',
-        name_en: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
-        description_ar: 'تم استعادة الحساب تلقائياً',
-        description_en: 'Account recovered automatically',
+        image_url: user.user_metadata?.avatar_url || 'https://via.placeholder.com/150',
+        name_ar: user.user_metadata?.name || user.email?.split('@')[0] || 'عميل',
+        name_en: user.user_metadata?.name || user.email?.split('@')[0] || 'Customer',
+        description_ar: 'حساب عميل في منصة أونلي هيليو',
+        description_en: 'Customer account on ONLY HELIO platform',
         contact_methods: { 
             whatsapp: { enabled: false, number: '' },
-            phone: { enabled: false, number: '' },
+            phone: { enabled: false, number: user.user_metadata?.phone || '' },
             form: { enabled: true }
         }
     };
@@ -139,7 +139,7 @@ export const createProfileForExistingUser = async (user: any): Promise<Partner> 
     const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
     
     if (error) {
-        console.error("Failed to create profile for existing user:", error);
+        console.error("Failed to create customer profile for existing user:", error);
         throw error;
     }
     return mapPartnerFromDb(data) as Partner;

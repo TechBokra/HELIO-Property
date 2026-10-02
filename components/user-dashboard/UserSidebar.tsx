@@ -18,10 +18,10 @@ const UserSidebar = ({ user, onLogout, isOpen, setIsOpen }: UserSidebarProps) =>
     const isRTL = language === 'ar';
     
     const navLinks = [
-        { name: t.nav.home, href: '/dashboard', icon: HomeIcon, exact: true },
-        { name: t.nav.profile, href: '/dashboard/profile', icon: UserPlusIcon },
-        { name: t.adminDashboard.nav.myRequests, href: '/dashboard/requests', icon: InboxIcon },
-        { name: t.nav.favorites, href: '/dashboard/favorites', icon: HeartIcon },
+        { name: t.nav.home, href: '/my-dashboard', icon: HomeIcon, exact: true },
+        { name: t.nav.profile, href: '/my-dashboard/profile', icon: UserPlusIcon },
+        { name: t.adminDashboard.nav.myRequests, href: '/my-dashboard/requests', icon: InboxIcon },
+        { name: t.nav.favorites, href: '/my-dashboard/favorites', icon: HeartIcon },
     ];
 
     return (

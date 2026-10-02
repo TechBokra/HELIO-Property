@@ -1,8 +1,7 @@
-
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
-import { Permission } from '../../types';
+import { Permission, Role } from '../../types';
 
 interface ProtectedRouteProps {
     children: React.ReactElement;
@@ -22,7 +21,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission })
     }
     
     if (!hasPermission(permission)) {
-        // Redirect if user doesn't have the required permission
+        if (currentUser.role === Role.CUSTOMER) {
+            return <Navigate to="/my-dashboard" replace />;
+        }
         return <Navigate to="/" replace />;
     }
 

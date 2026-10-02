@@ -66,7 +66,11 @@ const NotificationBell: React.FC = () => {
         navigate(notification.link);
     };
 
-    const notificationsLink = hasPermission(Permission.VIEW_ADMIN_DASHBOARD) ? '/admin/notifications' : '/dashboard/notifications';
+    const notificationsLink = hasPermission(Permission.VIEW_ADMIN_DASHBOARD) 
+        ? '/admin/notifications' 
+        : hasPermission(Permission.VIEW_PARTNER_DASHBOARD)
+            ? '/dashboard/notifications'
+            : '/my-dashboard/requests';
 
     return (
         <div className="relative notification-bell-wrapper">

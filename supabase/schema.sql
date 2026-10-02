@@ -17,6 +17,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 2. ENUMS
 CREATE TYPE public.partner_role AS ENUM (
     'super_admin', 'developer_partner', 'finishing_partner', 'agency_partner',
+    'customer',
     'decoration_manager', 'platform_finishing_manager', 'finishing_market_manager',
     'platform_real_estate_manager', 'real_estate_market_manager', 'partner_relations_manager',
     'content_manager', 'service_manager', 'customer_relations_manager', 'listings_manager'
@@ -203,6 +204,7 @@ CREATE TABLE IF NOT EXISTS public.finishing_services (
 -- Main: Requests (CRM)
 CREATE TABLE IF NOT EXISTS public.requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     type request_type NOT NULL,
     status TEXT DEFAULT 'new',
     requester_name TEXT NOT NULL,
@@ -228,7 +230,7 @@ CREATE TABLE IF NOT EXISTS public.request_messages (
 -- Notifications
 CREATE TABLE IF NOT EXISTS public.notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES public.partners(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
     message JSONB NOT NULL, -- {ar, en}
     link TEXT,
     is_read BOOLEAN DEFAULT FALSE,
@@ -238,7 +240,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 -- Finance: Transactions
 CREATE TABLE IF NOT EXISTS public.transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES public.partners(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     user_name TEXT,
     amount NUMERIC NOT NULL,
     currency TEXT DEFAULT 'EGP',
@@ -258,6 +260,25 @@ CREATE TABLE IF NOT EXISTS public.site_content (
     content JSONB NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Customer: Favorites (P1)
+CREATE TABLE IF NOT EXISTS public.customer_favorites (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    item_id TEXT NOT NULL,
+    item_type TEXT NOT NULL DEFAULT 'property', -- 'property', 'service', 'portfolio'
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_user_favorite_item UNIQUE(user_id, item_id, item_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_favorites_user_id ON public.customer_favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_customer_favorites_item ON public.customer_favorites(item_id, item_type);
+
+ALTER TABLE public.customer_favorites ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users view own favorites" ON public.customer_favorites FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Users insert own favorites" ON public.customer_favorites FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Users delete own favorites" ON public.customer_favorites FOR DELETE USING (user_id = auth.uid());
+
 
 -- Finishing: Execution Milestones (P0.1)
 CREATE TABLE IF NOT EXISTS public.finishing_milestones (
@@ -342,6 +363,7 @@ CREATE INDEX IF NOT EXISTS idx_finishing_quotes_req ON public.finishing_quotes(r
 CREATE INDEX IF NOT EXISTS idx_finishing_quotes_partner ON public.finishing_quotes(partner_id);
 CREATE INDEX IF NOT EXISTS idx_finishing_req_hist_req ON public.finishing_request_history(request_id);
 CREATE INDEX IF NOT EXISTS idx_finishing_milestones_req ON public.finishing_milestones(request_id);
+CREATE INDEX IF NOT EXISTS idx_requests_customer_id ON public.requests(customer_id);
 CREATE INDEX IF NOT EXISTS idx_requests_assigned ON public.requests(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_requests_type ON public.requests(type);
 CREATE INDEX IF NOT EXISTS idx_requests_status ON public.requests(status);
@@ -446,7 +468,100 @@ SELECT
     END AS payload,
     r.created_at,
     r.updated_at
-FROM public.requests r;
+FROM public.requests r
+WHERE auth.role() = 'authenticated'
+AND (
+    -- 1. Platform administrators / managers have full operational oversight
+    EXISTS (
+        SELECT 1 FROM public.partners p 
+        WHERE p.id = auth.uid() 
+        AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
+    )
+    -- 2. Assigned partner (to access ongoing assigned requests)
+    OR (
+        r.assigned_to = auth.uid() 
+        OR (r.payload->>'partnerId')::uuid = auth.uid()
+    )
+    -- 3. Awarded contractor on accepted quote
+    OR EXISTS (
+        SELECT 1 FROM public.finishing_quotes fq 
+        WHERE fq.request_id = r.id 
+        AND fq.partner_id = auth.uid() 
+        AND fq.status = 'accepted'
+    )
+    -- 4. Open / Unassigned RFQ: Must be an ACTIVE partner AND satisfy CAPABILITY MATCHING
+    OR (
+        EXISTS (
+            SELECT 1 FROM public.partners p 
+            WHERE p.id = auth.uid() 
+            AND p.status = 'active'
+        )
+        -- BUS-01 Deterministic Capability Matching:
+        -- Hide RFQ if partner has capability configuration that strictly conflicts with the request criteria
+        AND NOT EXISTS (
+            SELECT 1 FROM public.partner_capabilities pc
+            WHERE pc.partner_id = auth.uid()
+            AND (
+                -- 4A. Specialty/Category Mismatch:
+                -- If partner configured categories AND request specifies a category/serviceType
+                (
+                    pc.categories IS NOT NULL 
+                    AND cardinality(pc.categories) > 0
+                    AND COALESCE(r.payload->>'category', '') <> ''
+                    AND NOT (
+                        (r.payload->>'category') = ANY(pc.categories)
+                        OR ((r.payload->>'category') = 'finishing' AND ('turnkey' = ANY(pc.categories) OR 'renovation' = ANY(pc.categories)))
+                    )
+                )
+                -- 4B. Geographic Coverage Mismatch:
+                -- If partner configured service_areas AND request specifies a serviceArea/location
+                OR (
+                    pc.service_areas IS NOT NULL 
+                    AND cardinality(pc.service_areas) > 0
+                    AND COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') <> ''
+                    AND NOT (
+                        COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') = ANY(pc.service_areas)
+                        OR EXISTS (
+                            SELECT 1 FROM unnest(pc.service_areas) sa 
+                            WHERE COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%' || sa || '%'
+                            OR (sa = 'new_heliopolis' AND COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%هليوبوليس%')
+                            OR (sa = 'el_shorouk' AND COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%شروق%')
+                            OR (sa = 'new_cairo' AND (COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%تجمع%' OR COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%القاهرة الجديدة%'))
+                            OR (sa = 'madinaty' AND COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%مدينتي%')
+                            OR (sa = 'mostakbal_city' AND COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%مستقبل%')
+                            OR (sa = 'badr_city' AND COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%بدر%')
+                            OR (sa = 'new_capital' AND COALESCE(r.payload->>'serviceArea', r.payload->>'areaId', r.payload->>'location', '') ILIKE '%العاصمة%')
+                        )
+                    )
+                )
+                -- 4C. Budget Mismatch:
+                -- If request has valid numeric cost AND partner has budget bounds
+                OR (
+                    CASE 
+                        WHEN r.payload->>'estimatedCost' ~ '^[0-9]+(\.[0-9]+)?$' THEN (r.payload->>'estimatedCost')::numeric
+                        WHEN r.payload->'tierDetails'->>'estimatedPrice' ~ '^[0-9]+(\.[0-9]+)?$' THEN (r.payload->'tierDetails'->>'estimatedPrice')::numeric
+                        ELSE NULL 
+                    END IS NOT NULL
+                    AND (
+                        (pc.min_budget IS NOT NULL AND pc.min_budget > 0 AND (
+                            CASE 
+                                WHEN r.payload->>'estimatedCost' ~ '^[0-9]+(\.[0-9]+)?$' THEN (r.payload->>'estimatedCost')::numeric
+                                WHEN r.payload->'tierDetails'->>'estimatedPrice' ~ '^[0-9]+(\.[0-9]+)?$' THEN (r.payload->'tierDetails'->>'estimatedPrice')::numeric
+                            END < pc.min_budget
+                        ))
+                        OR
+                        (pc.max_budget IS NOT NULL AND pc.max_budget > 0 AND (
+                            CASE 
+                                WHEN r.payload->>'estimatedCost' ~ '^[0-9]+(\.[0-9]+)?$' THEN (r.payload->>'estimatedCost')::numeric
+                                WHEN r.payload->'tierDetails'->>'estimatedPrice' ~ '^[0-9]+(\.[0-9]+)?$' THEN (r.payload->'tierDetails'->>'estimatedPrice')::numeric
+                            END > pc.max_budget
+                        ))
+                    )
+                )
+            )
+        )
+    )
+);
 
 REVOKE ALL ON public.partner_leads_view FROM anon, public;
 GRANT SELECT ON public.partner_leads_view TO authenticated;
@@ -480,15 +595,22 @@ FOR EACH ROW EXECUTE PROCEDURE trg_prevent_accepted_quote_modification();
 
 -- 5. RLS POLICIES
 
--- Partners
+-- Partners (P0.1 Hardened)
 ALTER TABLE public.partners ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.partners FOR SELECT USING (status = 'active');
-CREATE POLICY "Users can update their own profile" ON public.partners FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Admins view all partners" ON public.partners FOR SELECT USING (
-    auth.uid() = id OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'partner_relations_manager' OR p.role = 'service_manager'))
+CREATE POLICY "Admins view all partners" ON public.partners FOR SELECT TO authenticated USING (
+    auth.uid() = id 
+    OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'partner_relations_manager' OR p.role = 'service_manager'))
 );
-CREATE POLICY "Admins update partners" ON public.partners FOR UPDATE USING (
-    auth.uid() = id OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'partner_relations_manager'))
+CREATE POLICY "Users insert own profile or admins insert any" ON public.partners FOR INSERT TO authenticated WITH CHECK (
+    auth.uid() = id
+    OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'partner_relations_manager'))
+);
+CREATE POLICY "Partners update own profile" ON public.partners FOR UPDATE TO authenticated USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+CREATE POLICY "Admins update partners" ON public.partners FOR UPDATE TO authenticated USING (
+    EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'partner_relations_manager'))
+) WITH CHECK (
+    EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND (p.role = 'super_admin' OR p.role = 'partner_relations_manager'))
 );
 
 -- Partner Capabilities
@@ -497,6 +619,41 @@ CREATE POLICY "Public can view partner capabilities" ON public.partner_capabilit
 CREATE POLICY "Partners update own capabilities" ON public.partner_capabilities FOR ALL USING (auth.uid() = partner_id);
 CREATE POLICY "Admins manage all partner capabilities" ON public.partner_capabilities FOR ALL USING (
     EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'platform_finishing_manager' OR role = 'finishing_market_manager'))
+);
+
+-- Projects (SEC-03 Hardened)
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Projects select policy" ON public.projects FOR SELECT USING (
+    auth.uid() = partner_id
+    OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = projects.partner_id AND p.status = 'active')
+    OR EXISTS (
+        SELECT 1 FROM public.partners p WHERE p.id = auth.uid() 
+        AND (p.role = 'super_admin' OR p.role = 'real_estate_market_manager' OR p.role = 'platform_real_estate_manager' OR p.role = 'listings_manager')
+    )
+);
+CREATE POLICY "Projects insert policy" ON public.projects FOR INSERT TO authenticated WITH CHECK (
+    (auth.uid() = partner_id AND EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND p.status = 'active'))
+    OR EXISTS (
+        SELECT 1 FROM public.partners p WHERE p.id = auth.uid() 
+        AND (p.role = 'super_admin' OR p.role = 'real_estate_market_manager' OR p.role = 'platform_real_estate_manager')
+    )
+);
+CREATE POLICY "Projects update policy" ON public.projects FOR UPDATE TO authenticated USING (
+    (auth.uid() = partner_id AND EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND p.status = 'active'))
+    OR EXISTS (
+        SELECT 1 FROM public.partners p WHERE p.id = auth.uid() 
+        AND (p.role = 'super_admin' OR p.role = 'real_estate_market_manager' OR p.role = 'platform_real_estate_manager')
+    )
+) WITH CHECK (
+    (auth.uid() = partner_id AND EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND p.status = 'active'))
+    OR EXISTS (
+        SELECT 1 FROM public.partners p WHERE p.id = auth.uid() 
+        AND (p.role = 'super_admin' OR p.role = 'real_estate_market_manager' OR p.role = 'platform_real_estate_manager')
+    )
+);
+CREATE POLICY "Projects delete policy" ON public.projects FOR DELETE TO authenticated USING (
+    (auth.uid() = partner_id AND EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND p.status = 'active'))
+    OR EXISTS (SELECT 1 FROM public.partners p WHERE p.id = auth.uid() AND p.role = 'super_admin')
 );
 
 -- Properties
@@ -524,21 +681,45 @@ CREATE POLICY "Admins and managers manage finishing services" ON public.finishin
     EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'platform_finishing_manager' OR role = 'finishing_market_manager'))
 );
 
--- Finishing Quotes (P0.2 & P1.2 Hardening)
+-- Finishing Quotes (SEC-04 Hardened)
 ALTER TABLE public.finishing_quotes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Customers view quotes for own requests" ON public.finishing_quotes FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM public.requests 
         WHERE requests.id = finishing_quotes.request_id 
         AND (
-            requests.requester_email = auth.jwt()->>'email'
+            (requests.customer_id IS NOT NULL AND requests.customer_id = auth.uid())
+            OR requests.requester_email = auth.jwt()->>'email'
             OR (requests.payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
         )
     )
 );
 CREATE POLICY "Partners view own quotes" ON public.finishing_quotes FOR SELECT USING (auth.uid() = partner_id);
-CREATE POLICY "Partners insert own quotes" ON public.finishing_quotes FOR INSERT WITH CHECK (auth.uid() = partner_id);
-CREATE POLICY "Partners update own non_accepted quotes" ON public.finishing_quotes FOR UPDATE USING (auth.uid() = partner_id AND status != 'accepted');
+CREATE POLICY "Partners insert own quotes" ON public.finishing_quotes FOR INSERT WITH CHECK (
+    auth.uid() = partner_id
+    AND EXISTS (
+        SELECT 1 FROM public.partners p 
+        WHERE p.id = auth.uid() 
+        AND p.status = 'active'
+    )
+);
+CREATE POLICY "Partners update own non_accepted quotes" ON public.finishing_quotes FOR UPDATE USING (
+    auth.uid() = partner_id 
+    AND status != 'accepted'
+    AND EXISTS (
+        SELECT 1 FROM public.partners p 
+        WHERE p.id = auth.uid() 
+        AND p.status = 'active'
+    )
+) WITH CHECK (
+    auth.uid() = partner_id 
+    AND status != 'accepted'
+    AND EXISTS (
+        SELECT 1 FROM public.partners p 
+        WHERE p.id = auth.uid() 
+        AND p.status = 'active'
+    )
+);
 CREATE POLICY "Partners delete own non_accepted quotes" ON public.finishing_quotes FOR DELETE USING (auth.uid() = partner_id AND status != 'accepted');
 CREATE POLICY "Admins view and manage all finishing quotes" ON public.finishing_quotes FOR ALL USING (
     EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'platform_finishing_manager' OR role = 'finishing_market_manager'))
@@ -571,7 +752,8 @@ CREATE POLICY "Customers view milestones for own requests" ON public.finishing_m
         SELECT 1 FROM public.requests 
         WHERE requests.id = finishing_milestones.request_id 
         AND (
-            requests.requester_email = auth.jwt()->>'email'
+            (requests.customer_id IS NOT NULL AND requests.customer_id = auth.uid())
+            OR requests.requester_email = auth.jwt()->>'email'
             OR (requests.payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
         )
     )
@@ -633,7 +815,18 @@ CREATE POLICY "Super admins delete transactions" ON public.transactions FOR DELE
 ALTER TABLE public.requests ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can create a request or inquiry" ON public.requests FOR INSERT WITH CHECK (true);
 CREATE POLICY "Customers view their own requests" ON public.requests FOR SELECT USING (
-    requester_email = auth.jwt()->>'email' OR (payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
+    (customer_id IS NOT NULL AND customer_id = auth.uid())
+    OR requester_email = auth.jwt()->>'email'
+    OR (payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
+);
+CREATE POLICY "Customers update their own requests" ON public.requests FOR UPDATE USING (
+    (customer_id IS NOT NULL AND customer_id = auth.uid())
+    OR requester_email = auth.jwt()->>'email'
+    OR (payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
+) WITH CHECK (
+    (customer_id IS NOT NULL AND customer_id = auth.uid())
+    OR requester_email = auth.jwt()->>'email'
+    OR (payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
 );
 CREATE POLICY "Assigned partners can view their requests" ON public.requests FOR SELECT USING (
     auth.uid() = assigned_to OR (payload->>'partnerId')::uuid = auth.uid()
@@ -690,7 +883,8 @@ CREATE POLICY "Customers view messages for own requests" ON public.request_messa
         SELECT 1 FROM public.requests r 
         WHERE r.id = request_messages.request_id 
         AND (
-            r.requester_email = auth.jwt()->>'email'
+            (r.customer_id IS NOT NULL AND r.customer_id = auth.uid())
+            OR r.requester_email = auth.jwt()->>'email'
             OR (r.payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
         )
     )
@@ -701,7 +895,8 @@ CREATE POLICY "Customers insert messages for own requests" ON public.request_mes
         SELECT 1 FROM public.requests r 
         WHERE r.id = request_messages.request_id 
         AND (
-            r.requester_email = auth.jwt()->>'email'
+            (r.customer_id IS NOT NULL AND r.customer_id = auth.uid())
+            OR r.requester_email = auth.jwt()->>'email'
             OR (r.payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
         )
     )
@@ -858,10 +1053,12 @@ CREATE OR REPLACE FUNCTION public.accept_finishing_quote(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_quote RECORD;
     v_request RECORD;
+    v_partner RECORD;
     v_now TIMESTAMPTZ := NOW();
 BEGIN
     -- 1. Lock and fetch the request
@@ -875,9 +1072,13 @@ BEGIN
     END IF;
 
     -- 2. Authorization check
+    -- Customer owner (by customer_id or email) OR Super Admin OR Platform Finishing Manager
     IF NOT (
-        v_request.requester_email = auth.jwt()->>'email' OR 
-        (v_request.payload->'requesterInfo'->>'email') = auth.jwt()->>'email' OR
+        (v_request.customer_id IS NOT NULL AND v_request.customer_id = auth.uid()) OR
+        (auth.jwt()->>'email' IS NOT NULL AND (
+            v_request.requester_email = auth.jwt()->>'email' OR 
+            (v_request.payload->'requesterInfo'->>'email') = auth.jwt()->>'email'
+        )) OR
         EXISTS (
             SELECT 1 FROM public.partners 
             WHERE id = auth.uid() 
@@ -899,6 +1100,19 @@ BEGIN
 
     IF v_quote.status = 'rejected' THEN
         RAISE EXCEPTION 'Cannot accept a previously rejected quote.';
+    END IF;
+
+    -- 3.1 SEC-04: Verify winning partner exists and is currently active
+    SELECT * INTO v_partner
+    FROM public.partners
+    WHERE id = v_quote.partner_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Contractor partner % does not exist.', v_quote.partner_id;
+    END IF;
+
+    IF v_partner.status <> 'active' THEN
+        RAISE EXCEPTION 'Contractor partner % is not active (current status: %). Cannot award quote to an inactive partner.', v_quote.partner_id, v_partner.status;
     END IF;
 
     -- 4. Mark winning quote as accepted
@@ -1063,6 +1277,116 @@ CREATE TRIGGER update_partner_capabilities_updated_at BEFORE UPDATE ON public.pa
 CREATE TRIGGER update_finishing_quotes_updated_at BEFORE UPDATE ON public.finishing_quotes FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 CREATE TRIGGER update_finishing_milestones_updated_at BEFORE UPDATE ON public.finishing_milestones FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 
+-- P0.1 (SEC-01): Guard Privileged Fields on public.partners
+CREATE OR REPLACE FUNCTION public.protect_partner_privileged_fields()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_caller_id UUID := auth.uid();
+    v_caller_role TEXT;
+    v_is_super_admin BOOLEAN := FALSE;
+    v_is_relations_manager BOOLEAN := FALSE;
+BEGIN
+    IF v_caller_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT role::text INTO v_caller_role
+    FROM public.partners
+    WHERE id = v_caller_id;
+
+    v_is_super_admin := (v_caller_role = 'super_admin');
+    v_is_relations_manager := (v_caller_role = 'partner_relations_manager');
+
+    IF v_is_super_admin THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.role IS NOT NULL AND NEW.role::text NOT IN ('agency_partner', 'finishing_partner', 'developer_partner', 'customer') THEN
+            RAISE EXCEPTION 'Unauthorized: only platform super_admin can assign administrative partner roles (attempted %).', NEW.role;
+        END IF;
+
+        IF NEW.type IS NOT NULL AND NEW.type IN (
+            'admin', 'decoration_manager', 'platform_finishing_manager', 'finishing_market_manager',
+            'platform_real_estate_manager', 'real_estate_market_manager', 'partner_relations_manager',
+            'content_manager', 'service_manager', 'customer_relations_manager', 'listings_manager'
+        ) THEN
+            RAISE EXCEPTION 'Unauthorized: only platform super_admin can create administrative account types.';
+        END IF;
+
+        IF NEW.custom_permissions IS NOT NULL AND array_length(NEW.custom_permissions, 1) > 0 THEN
+            RAISE EXCEPTION 'Unauthorized: custom permissions can only be granted by a super admin.';
+        END IF;
+
+        IF NOT v_is_relations_manager THEN
+            IF NEW.role::text = 'customer' THEN
+                NEW.status := 'active'::partner_status;
+            ELSIF NEW.status IS NOT NULL AND NEW.status::text IN ('active', 'approved') AND v_caller_id = NEW.id THEN
+                NEW.status := 'pending'::partner_status;
+            END IF;
+            IF NEW.subscription_plan IS NOT NULL AND NEW.subscription_plan NOT IN ('basic', 'commission') THEN
+                NEW.subscription_plan := 'basic';
+            END IF;
+        END IF;
+
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'UPDATE' THEN
+        IF NEW.role IS DISTINCT FROM OLD.role THEN
+            RAISE EXCEPTION 'Unauthorized: only platform super_admin can modify partner role (attempted % -> %).', OLD.role, NEW.role;
+        END IF;
+
+        IF NEW.custom_permissions IS DISTINCT FROM OLD.custom_permissions THEN
+            RAISE EXCEPTION 'Unauthorized: only platform super_admin can modify custom permissions.';
+        END IF;
+
+        IF NEW.type IS DISTINCT FROM OLD.type THEN
+            IF NEW.type IN (
+                'admin', 'decoration_manager', 'platform_finishing_manager', 'finishing_market_manager',
+                'platform_real_estate_manager', 'real_estate_market_manager', 'partner_relations_manager',
+                'content_manager', 'service_manager', 'customer_relations_manager', 'listings_manager'
+            ) OR NOT v_is_relations_manager THEN
+                RAISE EXCEPTION 'Unauthorized: only platform super_admin can modify partner account type.';
+            END IF;
+        END IF;
+
+        IF NEW.status IS DISTINCT FROM OLD.status THEN
+            IF NOT (v_is_super_admin OR v_is_relations_manager) THEN
+                RAISE EXCEPTION 'Unauthorized: only platform administrators can modify partner status (attempted % -> %).', OLD.status, NEW.status;
+            END IF;
+        END IF;
+
+        IF (NEW.subscription_plan IS DISTINCT FROM OLD.subscription_plan) OR (NEW.subscription_end_date IS DISTINCT FROM OLD.subscription_end_date) THEN
+            IF NOT (v_is_super_admin OR v_is_relations_manager) THEN
+                RAISE EXCEPTION 'Unauthorized: only platform administrators can modify subscription plan or expiration date.';
+            END IF;
+        END IF;
+
+        IF NEW.parent_id IS DISTINCT FROM OLD.parent_id THEN
+            IF NOT (v_is_super_admin OR v_is_relations_manager) THEN
+                RAISE EXCEPTION 'Unauthorized: only platform administrators can modify organization hierarchy.';
+            END IF;
+        END IF;
+
+        RETURN NEW;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trigger_protect_partner_privileged_fields ON public.partners;
+CREATE TRIGGER trigger_protect_partner_privileged_fields
+BEFORE INSERT OR UPDATE ON public.partners
+FOR EACH ROW
+EXECUTE FUNCTION public.protect_partner_privileged_fields();
+
+
 -- P1.1: Automatic Request Mutation Audit Logging Trigger
 CREATE OR REPLACE FUNCTION trg_log_request_mutation()
 RETURNS TRIGGER AS $$
@@ -1117,5 +1441,89 @@ DROP TRIGGER IF EXISTS log_request_mutation_trigger ON public.requests;
 CREATE TRIGGER log_request_mutation_trigger
 AFTER INSERT OR UPDATE ON public.requests
 FOR EACH ROW EXECUTE PROCEDURE trg_log_request_mutation();
+
+-- P0: Automatic Customer Identity Binding Trigger
+CREATE OR REPLACE FUNCTION public.set_request_customer_identity()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF auth.uid() IS NOT NULL THEN
+        IF NEW.customer_id IS NULL THEN
+            NEW.customer_id := auth.uid();
+        END IF;
+
+        IF NEW.requester_email IS NULL OR NEW.requester_email = '' THEN
+            NEW.requester_email := auth.jwt()->>'email';
+        END IF;
+
+        IF NEW.payload IS NOT NULL THEN
+            IF NEW.payload ? 'requesterInfo' THEN
+                NEW.payload := jsonb_set(
+                    NEW.payload,
+                    '{requesterInfo,email}',
+                    to_jsonb(COALESCE(NEW.requester_email, auth.jwt()->>'email', ''))
+                );
+                NEW.payload := jsonb_set(
+                    NEW.payload,
+                    '{requesterInfo,customerId}',
+                    to_jsonb(COALESCE(NEW.customer_id::text, auth.uid()::text, ''))
+                );
+            END IF;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trigger_set_request_customer_identity ON public.requests;
+CREATE TRIGGER trigger_set_request_customer_identity
+BEFORE INSERT ON public.requests
+FOR EACH ROW EXECUTE FUNCTION public.set_request_customer_identity();
+
+-- P0: Protect Request Privileged Fields Trigger
+CREATE OR REPLACE FUNCTION public.protect_request_privileged_fields()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_caller_id UUID := auth.uid();
+    v_is_staff BOOLEAN := FALSE;
+BEGIN
+    IF v_caller_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1 FROM public.partners p 
+        WHERE p.id = v_caller_id 
+        AND (p.role = 'super_admin' OR p.role LIKE '%_manager')
+    ) INTO v_is_staff;
+
+    IF v_is_staff THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.customer_id IS DISTINCT FROM OLD.customer_id AND OLD.customer_id IS NOT NULL THEN
+        NEW.customer_id := OLD.customer_id;
+    END IF;
+
+    IF NEW.assigned_to IS DISTINCT FROM OLD.assigned_to THEN
+        NEW.assigned_to := OLD.assigned_to;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trigger_protect_request_privileged_fields ON public.requests;
+CREATE TRIGGER trigger_protect_request_privileged_fields
+BEFORE UPDATE ON public.requests
+FOR EACH ROW EXECUTE FUNCTION public.protect_request_privileged_fields();
+
 
 

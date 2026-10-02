@@ -25,12 +25,17 @@ const PublicLayout: React.FC = () => {
         if (hasPermission(Permission.VIEW_PARTNER_DASHBOARD)) {
             return '/dashboard';
         }
+        if (hasPermission(Permission.VIEW_CUSTOMER_DASHBOARD) || (currentUser as any).role === 'customer') {
+            return '/my-dashboard';
+        }
         return '/';
     }, [currentUser, hasPermission]);
 
     const dashboardText = hasPermission(Permission.VIEW_ADMIN_DASHBOARD)
         ? t.adminDashboard.title
-        : t.dashboard.title;
+        : hasPermission(Permission.VIEW_PARTNER_DASHBOARD)
+            ? t.dashboard.title
+            : (language === 'ar' ? 'لوحة التحكم' : 'Dashboard');
 
     const handleToggleQuietZone = useCallback(() => {
         setIsQuietZoneActive(true);

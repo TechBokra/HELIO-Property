@@ -14,6 +14,7 @@ interface AuthContextType {
     permissions: Permission[];
     hasPermission: (permission: Permission) => boolean;
     login: (email: string, pass: string) => Promise<Partner | null>;
+    registerCustomer: (email: string, pass: string, name: string, phone?: string) => Promise<Partner | null>;
     logout: () => void;
     loading: boolean;
 }
@@ -27,6 +28,7 @@ export const useAuth = (): AuthContextType => {
         permissions: store.permissions,
         hasPermission: store.hasPermission,
         login: store.login,
+        registerCustomer: store.registerCustomer,
         logout: store.logout,
         loading: store.isLoading
     };

@@ -22,9 +22,9 @@ const UserRequestsPage = () => {
 
     // P0.5: Query only customer's own requests via database-scoped query
     const { data: userRequests, isLoading } = useQuery({ 
-        queryKey: ['myCustomerRequests', currentUser?.email], 
+        queryKey: ['myCustomerRequests', currentUser?.id, currentUser?.email], 
         queryFn: () => getMyCustomerRequests(currentUser?.email || ''),
-        enabled: !!currentUser?.email
+        enabled: !!currentUser
     });
 
     const myRequests = useMemo(() => {

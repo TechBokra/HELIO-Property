@@ -15,9 +15,9 @@ const UserDashboardHomePage = () => {
     const t_home = t.dashboardHome;
 
     const { data: myCustomerRequests, isLoading } = useQuery({ 
-        queryKey: ['myCustomerRequests', currentUser?.email], 
+        queryKey: ['myCustomerRequests', currentUser?.id, currentUser?.email], 
         queryFn: () => getMyCustomerRequests(currentUser?.email || ''),
-        enabled: !!currentUser?.email
+        enabled: !!currentUser
     });
 
     const userStats = useMemo(() => {
@@ -64,26 +64,26 @@ const UserDashboardHomePage = () => {
                     title={t_home.totalLeads} // Reusing label for "Total Requests"
                     value={userStats.totalRequests}
                     icon={InboxIcon}
-                    linkTo="/dashboard/requests"
+                    linkTo="/my-dashboard/requests"
                 />
                  <StatCard 
                     title={t.adminDashboard.adminRequests.requestStatus.pending}
                     value={userStats.pendingRequests}
                     icon={ClockIcon}
-                    linkTo="/dashboard/requests"
+                    linkTo="/my-dashboard/requests"
                 />
                  <StatCard 
                     title={t.nav.favorites}
                     value={userStats.favoritesCount}
                     icon={HeartIcon}
-                    linkTo="/dashboard/favorites"
+                    linkTo="/my-dashboard/favorites"
                 />
             </div>
 
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t_home.recentLeads}</h2>
-                    <Link to="/dashboard/requests" className="text-sm font-semibold text-amber-600 hover:underline">{t_home.viewAllLeads}</Link>
+                    <Link to="/my-dashboard/requests" className="text-sm font-semibold text-amber-600 hover:underline">{t_home.viewAllLeads}</Link>
                 </div>
                 
                 {userStats.recentRequests.length > 0 ? (

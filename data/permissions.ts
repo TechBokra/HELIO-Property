@@ -42,6 +42,15 @@ export const rolePermissions: Map<Role, Permission[]> = new Map([
     ],
   ],
 
+  // --- Customer / Client ---
+  [
+    Role.CUSTOMER,
+    [
+      Permission.VIEW_CUSTOMER_DASHBOARD,
+      Permission.MANAGE_OWN_PROFILE,
+    ],
+  ],
+
   // --- Internal Managers ---
   
   // 1. Decoration Manager (Platform)
@@ -170,6 +179,8 @@ export const mapPartnerTypeToRole = (type: PartnerType): Role => {
         case 'customer_relations_manager': return Role.CUSTOMER_RELATIONS_MANAGER;
         case 'listings_manager': return Role.LISTINGS_MANAGER;
         
-        default: return Role.AGENCY_PARTNER; 
+        case 'customer': return Role.CUSTOMER;
+        
+        default: return Role.CUSTOMER; 
     }
 }

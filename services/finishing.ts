@@ -452,67 +452,38 @@ export const savePartnerCapabilities = async (cap: PartnerFinishingCapability): 
    P1: FINISHING QUOTES & BIDS
    ========================================================================= */
 
-const LOCAL_STORAGE_QUOTES_KEY = 'onlyhelio_finishing_quotes';
-
-const getLocalQuotes = (): FinishingQuote[] => {
-    if (typeof window === 'undefined') return [];
-    try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_QUOTES_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
-};
-
-const saveLocalQuotes = (quotes: FinishingQuote[]) => {
-    if (typeof window === 'undefined') return;
-    try {
-        localStorage.setItem(LOCAL_STORAGE_QUOTES_KEY, JSON.stringify(quotes));
-    } catch (e) {
-        console.error('Error saving local quotes:', e);
-    }
-};
-
 export const getQuotesByRequestId = async (requestId: string): Promise<FinishingQuote[]> => {
-    let cloudQuotes: FinishingQuote[] = [];
-    try {
-        const { data, error } = await supabase
-            .from('finishing_quotes')
-            .select('*')
-            .eq('request_id', requestId)
-            .order('created_at', { ascending: false });
+    // DAT-01: Supabase is the sole authoritative store; no localStorage quote merging or synthetic fallbacks
+    const { data, error } = await supabase
+        .from('finishing_quotes')
+        .select('*')
+        .eq('request_id', requestId)
+        .order('created_at', { ascending: false });
 
-        if (!error && data) {
-            cloudQuotes = data.map((q: any) => ({
-                id: q.id,
-                requestId: q.request_id,
-                partnerId: q.partner_id,
-                partnerName: q.partner_name,
-                totalPrice: Number(q.total_price),
-                pricePerSqm: q.price_per_sqm ? Number(q.price_per_sqm) : undefined,
-                currency: q.currency || 'EGP',
-                executionTimelineDays: q.execution_timeline_days,
-                warrantyMonths: q.warranty_months,
-                scopeItems: Array.isArray(q.scope_items) ? q.scope_items : [],
-                termsAndConditions: q.terms_and_conditions,
-                status: q.status as FinishingQuoteStatus,
-                notes: q.notes,
-                createdAt: q.created_at,
-                updatedAt: q.updated_at
-            }));
-        }
-    } catch {
-        // Fall through
+    if (error) {
+        console.error('Error fetching quotes from Supabase:', error);
+        throw new Error(`Failed to load quotes: ${error.message}`);
     }
 
-    const localQuotes = getLocalQuotes().filter(q => q.requestId === requestId);
-    const quoteMap = new Map<string, FinishingQuote>();
-    localQuotes.forEach(q => quoteMap.set(q.id, q));
-    cloudQuotes.forEach(q => quoteMap.set(q.id, q));
+    if (!data) return [];
 
-    return Array.from(quoteMap.values()).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    return data.map((q: any) => ({
+        id: q.id,
+        requestId: q.request_id,
+        partnerId: q.partner_id,
+        partnerName: q.partner_name,
+        totalPrice: Number(q.total_price),
+        pricePerSqm: q.price_per_sqm ? Number(q.price_per_sqm) : undefined,
+        currency: q.currency || 'EGP',
+        executionTimelineDays: q.execution_timeline_days,
+        warrantyMonths: q.warranty_months,
+        scopeItems: Array.isArray(q.scope_items) ? q.scope_items : [],
+        termsAndConditions: q.terms_and_conditions,
+        status: q.status as FinishingQuoteStatus,
+        notes: q.notes,
+        createdAt: q.created_at,
+        updatedAt: q.updated_at
+    }));
 };
 
 export const submitFinishingQuote = async (
@@ -535,16 +506,6 @@ export const submitFinishingQuote = async (
         }
     }
 
-    const id = `quote-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const now = new Date().toISOString();
-
-    const newQuote: FinishingQuote = {
-        ...quoteData,
-        id,
-        createdAt: now,
-        updatedAt: now
-    };
-
     const row = {
         request_id: quoteData.requestId,
         partner_id: quoteData.partnerId,
@@ -557,11 +518,10 @@ export const submitFinishingQuote = async (
         scope_items: quoteData.scopeItems,
         terms_and_conditions: quoteData.termsAndConditions,
         status: quoteData.status || 'submitted',
-        notes: quoteData.notes,
-        created_at: now,
-        updated_at: now
+        notes: quoteData.notes
     };
 
+    // DAT-01: Insert directly to Supabase as authoritative source
     const { data, error } = await supabase
         .from('finishing_quotes')
         .insert(row)
@@ -573,14 +533,23 @@ export const submitFinishingQuote = async (
         throw new Error(`Failed to submit quote: ${error.message}`);
     }
 
-    if (data) {
-        newQuote.id = data.id;
-    }
-
-    // Mirror to local cache for fast UI indexing
-    const existing = getLocalQuotes();
-    existing.unshift(newQuote);
-    saveLocalQuotes(existing);
+    const newQuote: FinishingQuote = {
+        id: data.id,
+        requestId: data.request_id,
+        partnerId: data.partner_id,
+        partnerName: data.partner_name,
+        totalPrice: Number(data.total_price),
+        pricePerSqm: data.price_per_sqm ? Number(data.price_per_sqm) : undefined,
+        currency: data.currency || 'EGP',
+        executionTimelineDays: data.execution_timeline_days,
+        warrantyMonths: data.warranty_months,
+        scopeItems: Array.isArray(data.scope_items) ? data.scope_items : [],
+        termsAndConditions: data.terms_and_conditions,
+        status: data.status as FinishingQuoteStatus,
+        notes: data.notes,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+    };
 
     // Record in Finishing Request History
     await recordFinishingRequestHistory({
@@ -606,58 +575,16 @@ export const acceptQuoteAndAward = async (
     contractorName: string
 ): Promise<void> => {
     // 1. P0.3: Call Atomic Database RPC Transaction
-    const { data: rpcData, error: rpcError } = await supabase.rpc('accept_finishing_quote', {
+    const { error: rpcError } = await supabase.rpc('accept_finishing_quote', {
         p_quote_id: quoteId,
         p_request_id: requestId,
         p_client_name: adminUserId || 'العميل'
     });
 
     if (rpcError) {
-        console.warn('RPC accept_finishing_quote returned error, attempting fallback update:', rpcError);
-
-        // Fallback update with strict error checking
-        const { error: acceptErr } = await supabase
-            .from('finishing_quotes')
-            .update({ status: 'accepted', updated_at: new Date().toISOString() })
-            .eq('id', quoteId);
-
-        if (acceptErr) {
-            throw new Error(`Failed to accept quote in database: ${acceptErr.message}`);
-        }
-
-        // Reject other quotes for this request
-        await supabase
-            .from('finishing_quotes')
-            .update({ status: 'rejected', updated_at: new Date().toISOString() })
-            .eq('request_id', requestId)
-            .neq('id', quoteId);
-
-        // Update Request status to in-progress
-        await updateLead(requestId, { status: 'in-progress' });
-
-        // Record history
-        await recordFinishingRequestHistory({
-            requestId,
-            actionType: 'quote_accepted',
-            changedBy: adminUserId,
-            newValue: { quoteId, awardedTo: contractorName },
-            note: `تم اعتماد عرض المقاولة المقدم من ${contractorName} وترسية المشروع وبدء التنفيذ.`
-        });
+        console.error('RPC accept_finishing_quote returned error:', rpcError);
+        throw new Error(`Failed to award finishing quote: ${rpcError.message}`);
     }
-
-    // Mirror to local cache
-    const local = getLocalQuotes();
-    const updatedLocal = local.map(q => {
-        if (q.requestId === requestId) {
-            return {
-                ...q,
-                status: (q.id === quoteId ? 'accepted' : 'rejected') as FinishingQuoteStatus,
-                updatedAt: new Date().toISOString()
-            };
-        }
-        return q;
-    });
-    saveLocalQuotes(updatedLocal);
 };
 
 /* =========================================================================
@@ -1043,14 +970,7 @@ export const clientAcceptQuote = async (
         // P0.3: Call atomic acceptQuoteAndAward
         await acceptQuoteAndAward(quoteId, requestId, clientName, targetQuote.partnerName);
 
-        // Ensure partner assignment is saved on the lead
-        await updateLead(requestId, {
-            status: 'in-progress',
-            assignedTo: targetQuote.partnerId,
-            partnerId: targetQuote.partnerId
-        });
-
-        // Ensure milestones are initialized in database
+        // Fetch refreshed milestones from database
         await getProjectMilestones(requestId);
 
         return { success: true, winningQuote: targetQuote };
