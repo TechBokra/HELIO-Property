@@ -13,6 +13,8 @@ import {
     ExclamationTriangleIcon
 } from '../ui/Icons';
 import type { FinishingProjectMilestone, FinishingMilestoneStatus, MilestonePaymentStatus } from '../../types';
+import { Role } from '../../types';
+import { useAuth } from '../auth/AuthContext';
 import { updateProjectMilestone } from '../../services/finishing';
 import { useToast } from '../shared/ToastContext';
 
@@ -32,8 +34,13 @@ export const FinishingMilestonesTracker: React.FC<FinishingMilestonesTrackerProp
     userLabel = 'Platform Finishing Engineer'
 }) => {
     const { language } = useLanguage();
+    const { currentUser } = useAuth();
     const { showToast } = useToast();
     const isAr = language === 'ar';
+
+    const isPlatformStaff = currentUser?.role === Role.SUPER_ADMIN || 
+                            currentUser?.role === Role.PLATFORM_FINISHING_MANAGER || 
+                            currentUser?.role === Role.FINISHING_MARKET_MANAGER;
 
     const [expandedMilestoneId, setExpandedMilestoneId] = useState<string | null>(
         milestones.find(m => m.status === 'in_progress')?.id || milestones[0]?.id || null
@@ -65,18 +72,24 @@ export const FinishingMilestonesTracker: React.FC<FinishingMilestonesTrackerProp
     const handleSaveMilestone = async (m: FinishingProjectMilestone) => {
         setIsSaving(true);
         try {
-            await updateProjectMilestone(requestId, m.id, {
+            const updatePayload: Partial<FinishingProjectMilestone> = {
                 status: editStatus,
                 progressPercentage: editProgress,
-                paymentStatus: editPaymentStatus,
                 inspectorNotes: editNotes
-            }, userLabel);
+            };
+
+            // P0.1 & P0.3: Only platform managers and super admins can submit payment status changes
+            if (isPlatformStaff) {
+                updatePayload.paymentStatus = editPaymentStatus;
+            }
+
+            await updateProjectMilestone(requestId, m.id, updatePayload, userLabel);
 
             showToast(isAr ? 'تم تحديث بيانات المرحلة بنجاح' : 'Milestone updated successfully', 'success');
             setEditingMilestoneId(null);
             onMilestoneUpdated?.();
-        } catch {
-            showToast(isAr ? 'حدث خطأ أثناء التحديث' : 'Failed to update milestone', 'error');
+        } catch (err: any) {
+            showToast(err?.message || (isAr ? 'حدث خطأ أثناء التحديث' : 'Failed to update milestone'), 'error');
         } finally {
             setIsSaving(false);
         }
@@ -335,17 +348,24 @@ export const FinishingMilestonesTracker: React.FC<FinishingMilestonesTrackerProp
 
                                                         <div>
                                                             <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                                                                {isAr ? 'حالة الدفعة:' : 'Payment Status:'}
+                                                                {isAr ? 'حالة الدفعة المالية:' : 'Payment Status:'}
                                                             </label>
-                                                            <select
-                                                                value={editPaymentStatus}
-                                                                onChange={(e) => setEditPaymentStatus(e.target.value as any)}
-                                                                className="w-full text-xs p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
-                                                            >
-                                                                <option value="pending">{isAr ? 'مؤجلة' : 'Pending'}</option>
-                                                                <option value="due">{isAr ? 'مستحقة للصرف' : 'Due'}</option>
-                                                                <option value="paid">{isAr ? 'مدفوعة' : 'Paid'}</option>
-                                                            </select>
+                                                            {isPlatformStaff ? (
+                                                                <select
+                                                                    value={editPaymentStatus}
+                                                                    onChange={(e) => setEditPaymentStatus(e.target.value as any)}
+                                                                    className="w-full text-xs p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                                                                >
+                                                                    <option value="pending">{isAr ? 'مؤجلة' : 'Pending'}</option>
+                                                                    <option value="due">{isAr ? 'مستحقة للصرف' : 'Due'}</option>
+                                                                    <option value="paid">{isAr ? 'مدفوعة' : 'Paid'}</option>
+                                                                </select>
+                                                            ) : (
+                                                                <div className="py-2 px-3 bg-gray-100 dark:bg-gray-700/60 rounded border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-600 dark:text-gray-300 flex items-center justify-between cursor-not-allowed select-none">
+                                                                    <span>{getPaymentBadge(m.paymentStatus).label}</span>
+                                                                    <span className="text-[10px] text-gray-400 font-mono">({m.paymentPercentage}%)</span>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
 

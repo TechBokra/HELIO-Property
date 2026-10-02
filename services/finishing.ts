@@ -903,6 +903,7 @@ export const updateProjectMilestone = async (
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (progress !== undefined) dbUpdates.progress_percentage = progress;
     if (updates.paymentStatus !== undefined) dbUpdates.payment_status = updates.paymentStatus;
+    if (updates.paymentPercentage !== undefined) dbUpdates.payment_percentage = updates.paymentPercentage;
     if (updates.inspectorNotes !== undefined) dbUpdates.inspector_notes = updates.inspectorNotes;
     if (updates.status === 'completed') {
         dbUpdates.completed_at = now;
