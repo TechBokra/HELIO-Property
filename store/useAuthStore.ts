@@ -122,6 +122,7 @@ export const useAuthStore = create<AuthState>()(
                             permissions, 
                             isLoading: false 
                         });
+                        useFavoritesStore.getState().syncWithCloud(data.user.id);
                         return updatedProfile;
                     } else {
                         console.error("Profile not found for user:", data.user.id);
