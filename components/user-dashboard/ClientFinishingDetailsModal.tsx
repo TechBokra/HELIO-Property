@@ -67,7 +67,7 @@ export const ClientFinishingDetailsModal: React.FC<ClientFinishingDetailsModalPr
         refetch: refetchMilestones 
     } = useQuery({
         queryKey: ['finishingMilestones', request.id],
-        queryFn: () => getProjectMilestones(request.id),
+        queryFn: () => getProjectMilestones(request.id, true),
         enabled: isOpen && !!request.id
     });
 

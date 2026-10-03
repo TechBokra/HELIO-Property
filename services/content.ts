@@ -29,7 +29,7 @@ export const getContent = async (): Promise<SiteContent> => {
             hero: { ...fallbackData.hero, ...(dbContent.hero || {}) },
             footer: { ...fallbackData.footer, ...(dbContent.footer || {}) },
             contactConfiguration: { ...fallbackData.contactConfiguration, ...(dbContent.contactConfiguration || {}) },
-            finishingServices: dbContent.finishingServices?.length > 0 
+            finishingServices: dbContent.finishingServices !== undefined 
                 ? dbContent.finishingServices 
                 : fallbackData.finishingServices,
         };

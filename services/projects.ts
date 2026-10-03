@@ -1,7 +1,6 @@
 
 import { supabase } from '../lib/supabase';
 import type { Project } from '../types';
-import { projectsData as fallbackProjects } from '../data/projects';
 
 const mapProjectFromDb = (row: any): Project => {
     const features = typeof row.features === 'string' ? JSON.parse(row.features) : row.features || [];
@@ -23,11 +22,11 @@ export const getAllProjects = async (): Promise<Project[]> => {
     try {
         const { data, error } = await supabase.from('projects').select('*');
         if (error || !data || data.length === 0) {
-            return fallbackProjects;
+            return [];
         }
         return data.map(mapProjectFromDb);
     } catch (e) {
-        return fallbackProjects;
+        return [];
     }
 };
 
@@ -35,11 +34,11 @@ export const getProjectById = async (id: string): Promise<Project | undefined> =
     try {
         const { data, error } = await supabase.from('projects').select('*').eq('id', id).single();
         if (error || !data) {
-             return fallbackProjects.find(p => p.id === id);
+             return undefined;
         }
         return mapProjectFromDb(data);
     } catch (e) {
-        return fallbackProjects.find(p => p.id === id);
+        return undefined;
     }
 };
 
@@ -47,11 +46,11 @@ export const getProjectsByPartnerId = async (partnerId: string): Promise<Project
     try {
         const { data, error } = await supabase.from('projects').select('*').eq('partner_id', partnerId);
         if (error || !data || data.length === 0) {
-            return fallbackProjects.filter(p => p.partnerId === partnerId);
+            return [];
         }
         return data.map(mapProjectFromDb);
     } catch (e) {
-        return fallbackProjects.filter(p => p.partnerId === partnerId);
+        return [];
     }
 };
 

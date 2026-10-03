@@ -649,8 +649,25 @@ export interface FinishingProjectMilestone {
     progressPercentage: number;
     paymentPercentage: number;
     paymentStatus: MilestonePaymentStatus;
+    customerNotes?: string;
+    internalNotes?: string;
     inspectorNotes?: string;
     completedAt?: string;
+    updatedAt: string;
+}
+
+export interface ExecutionAttachment {
+    id: string;
+    requestId: string;
+    milestoneId?: string;
+    uploaderId: string;
+    fileUrl: string;
+    fileName: string;
+    fileSize?: number;
+    fileType: 'photo' | 'document' | 'inspection_evidence' | 'handover_evidence';
+    category: 'milestone_evidence' | 'inspection_evidence' | 'handover_evidence' | 'blueprint';
+    isInternal: boolean;
+    createdAt: string;
     updatedAt: string;
 }
 

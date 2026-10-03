@@ -14,7 +14,8 @@ import {
     FinishingProjectMilestone,
     FinishingMilestoneStatus,
     MilestonePaymentStatus,
-    FinishingEstimateBreakdown
+    FinishingEstimateBreakdown,
+    ExecutionAttachment
 } from '../types';
 import { getContent, updateContent } from './content';
 import { updateLead } from './leads';
@@ -591,299 +592,135 @@ export const acceptQuoteAndAward = async (
    P1: FINISHING REQUEST AUDIT TRAIL & HISTORY
    ========================================================================= */
 
-const LOCAL_STORAGE_HISTORY_KEY = 'onlyhelio_finishing_history';
-
-const getLocalHistory = (): FinishingRequestHistoryEntry[] => {
-    if (typeof window === 'undefined') return [];
-    try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_HISTORY_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
-};
-
 export const getFinishingRequestHistory = async (requestId: string): Promise<FinishingRequestHistoryEntry[]> => {
-    let cloudHistory: FinishingRequestHistoryEntry[] = [];
-    try {
-        const { data, error } = await supabase
-            .from('finishing_request_history')
-            .select('*')
-            .eq('request_id', requestId)
-            .order('created_at', { ascending: true });
+    const { data, error } = await supabase
+        .from('finishing_request_history')
+        .select('*')
+        .eq('request_id', requestId)
+        .order('created_at', { ascending: true });
 
-        if (!error && data) {
-            cloudHistory = data.map((h: any) => ({
-                id: h.id,
-                requestId: h.request_id,
-                actionType: h.action_type,
-                changedBy: h.changed_by,
-                oldValue: h.old_value,
-                newValue: h.new_value,
-                note: h.note,
-                createdAt: h.created_at
-            }));
-        }
-    } catch {
-        // Fall through
+    if (error) {
+        console.error('Failed to fetch finishing request history from Supabase:', error);
+        throw new Error(`Failed to fetch request history from database: ${error.message}`);
     }
 
-    const local = getLocalHistory().filter(h => h.requestId === requestId);
-    const histMap = new Map<string, FinishingRequestHistoryEntry>();
-    local.forEach(h => histMap.set(h.id, h));
-    cloudHistory.forEach(h => histMap.set(h.id, h));
-
-    return Array.from(histMap.values()).sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
+    return (data || []).map((h: any) => ({
+        id: h.id,
+        requestId: h.request_id,
+        actionType: h.action_type,
+        changedBy: h.changed_by,
+        oldValue: h.old_value,
+        newValue: h.new_value,
+        note: h.note,
+        createdAt: h.created_at
+    }));
 };
 
 export const recordFinishingRequestHistory = async (
     entry: Omit<FinishingRequestHistoryEntry, 'id' | 'createdAt'>
 ): Promise<FinishingRequestHistoryEntry> => {
-    const id = `hist-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const now = new Date().toISOString();
-
-    const newEntry: FinishingRequestHistoryEntry = {
-        ...entry,
-        id,
-        createdAt: now
+    const row = {
+        request_id: entry.requestId,
+        action_type: entry.actionType,
+        changed_by: entry.changedBy,
+        old_value: entry.oldValue || null,
+        new_value: entry.newValue || null,
+        note: entry.note || null,
+        created_at: now
     };
 
-    try {
-        const row = {
-            request_id: entry.requestId,
-            action_type: entry.actionType,
-            changed_by: entry.changedBy,
-            old_value: entry.oldValue || null,
-            new_value: entry.newValue || null,
-            note: entry.note || null,
-            created_at: now
-        };
+    const { data, error } = await supabase
+        .from('finishing_request_history')
+        .insert(row)
+        .select()
+        .single();
 
-        const { data, error } = await supabase
-            .from('finishing_request_history')
-            .insert(row)
-            .select()
-            .single();
-
-        if (!error && data) {
-            newEntry.id = data.id;
-        }
-    } catch {
-        // Fallback local
+    if (error || !data) {
+        console.error('Error inserting finishing history to Supabase:', error);
+        throw new Error(`Failed to record history entry: ${error?.message || 'Unknown database error'}`);
     }
 
-    if (typeof window !== 'undefined') {
-        try {
-            const existing = getLocalHistory();
-            existing.push(newEntry);
-            localStorage.setItem(LOCAL_STORAGE_HISTORY_KEY, JSON.stringify(existing.slice(-300)));
-        } catch (e) {
-            console.error('Error saving local history entry:', e);
-        }
-    }
-
-    return newEntry;
+    return {
+        id: data.id,
+        requestId: data.request_id,
+        actionType: data.action_type,
+        changedBy: data.changed_by,
+        oldValue: data.old_value,
+        newValue: data.new_value,
+        note: data.note,
+        createdAt: data.created_at
+    };
 };
 
 // ==========================================
 // Project Execution Milestones (P2)
 // ==========================================
 
-export const LOCAL_STORAGE_MILESTONES_KEY = 'onlyhelio_finishing_milestones';
-
-export const DEFAULT_PROJECT_MILESTONES_TEMPLATE: Omit<FinishingProjectMilestone, 'id' | 'requestId' | 'updatedAt'>[] = [
-    {
-        stageNumber: 1,
-        title: {
-            ar: 'المخططات المعمارية والتصميم ثلاثي الأبعاد والرسومات التنفيذية',
-            en: '3D Design & Executive MEP Blueprints'
-        },
-        description: {
-            ar: 'معاينة الموقع ورفع المقاسات الدقيقة، إعداد التصميمات المعمارية 3D واعتماد توزيع الفرش والإنارة وشبكات السباكة والتكييف.',
-            en: 'Site survey, 3D visualization, approval of space layout, lighting fixtures, and plumbing/HVAC rough-in schematics.'
-        },
-        targetDays: 14,
-        status: 'in_progress',
-        progressPercentage: 60,
-        paymentPercentage: 15,
-        paymentStatus: 'paid',
-        inspectorNotes: 'تم اعتماد المخطط المعماري وتوزيع الكهرباء من قبل المهندس المشرف والعميل.'
-    },
-    {
-        stageNumber: 2,
-        title: {
-            ar: 'أعمال التأسيس الكهروميكانيكية والعزل المائي والحراري',
-            en: 'MEP Rough-ins, Plumbing & Waterproofing'
-        },
-        description: {
-            ar: 'تكسير وتمديد مواسير السباكة (بي بي آر معتمد)، شبكة الكهرباء وخراطيم التيار الخفيف، وعزل أرضيات الحمامات والمطابخ واختبار الضغط.',
-            en: 'Plumbing rough-ins with certified pipes, electrical conduits, wet-area waterproofing, and pressure testing.'
-        },
-        targetDays: 25,
-        status: 'pending',
-        progressPercentage: 0,
-        paymentPercentage: 25,
-        paymentStatus: 'due',
-        inspectorNotes: 'بانتظار توريد مواسير الصرف والتغذية واختبار شركة التأمين والضمان.'
-    },
-    {
-        stageNumber: 3,
-        title: {
-            ar: 'أعمال المحارة، الجبس بورد وتوريد وتركيب البورسلين/السيراميك',
-            en: 'Plastering, Drywall & Porcelain Installation'
-        },
-        description: {
-            ar: 'استرباع الزوايا والبؤج والأوتار، محارة الجدران، تركيب أسقف الجبس بورد المقاوم للرطوبة، وتبليط الأرضيات والحوائط بالليزر.',
-            en: 'Wall plastering with precision guides, moisture-resistant drywall ceilings, and laser-aligned porcelain tile installation.'
-        },
-        targetDays: 25,
-        status: 'pending',
-        progressPercentage: 0,
-        paymentPercentage: 25,
-        paymentStatus: 'pending'
-    },
-    {
-        stageNumber: 4,
-        title: {
-            ar: 'التشطيبات النهائية، النجارة، الألوميتال، الدهانات والإضاءة',
-            en: 'Finishes, Carpentry, Aluminum & Final Paints'
-        },
-        description: {
-            ar: 'سحب المعجون وتطبيق دهانات جوتن الفاخرة، تركيب الأبواب الداخلية وشبابيك الألوميتال الجامبو، وتركيب مفاتيح الكهرباء ووحدات الإضاءة.',
-            en: 'Premium wall putty & paint coats, luxury internal doors, double-glazed aluminum windows, and final fixtures.'
-        },
-        targetDays: 20,
-        status: 'pending',
-        progressPercentage: 0,
-        paymentPercentage: 25,
-        paymentStatus: 'pending'
-    },
-    {
-        stageNumber: 5,
-        title: {
-            ar: 'الفحص الهندسي النهائي، مراجعة الملاحظات وتسليم شهادة الضمان',
-            en: 'Snag List Audit, Final Handover & Warranty Certificate'
-        },
-        description: {
-            ar: 'فحص شامل لكافة بنود المشروع وقائمة الملاحظات (Snag List)، نظافة عميقة للموقع، وتسليم المفتاح وشهادة الضمان المعتمدة.',
-            en: 'Comprehensive engineering quality inspection, snag-list clearance, deep post-construction cleaning, and warranty handover.'
-        },
-        targetDays: 7,
-        status: 'pending',
-        progressPercentage: 0,
-        paymentPercentage: 10,
-        paymentStatus: 'pending'
-    }
-];
-
-const getLocalMilestones = (): FinishingProjectMilestone[] => {
-    if (typeof window === 'undefined') return [];
-    try {
-        const stored = localStorage.getItem(LOCAL_STORAGE_MILESTONES_KEY);
-        return stored ? JSON.parse(stored) : [];
-    } catch {
-        return [];
-    }
-};
-
-const saveLocalMilestones = (milestones: FinishingProjectMilestone[]) => {
-    if (typeof window === 'undefined') return;
-    try {
-        localStorage.setItem(LOCAL_STORAGE_MILESTONES_KEY, JSON.stringify(milestones));
-    } catch (e) {
-        console.error('Error saving local milestones:', e);
-    }
-};
-
-export const getProjectMilestones = async (requestId: string): Promise<FinishingProjectMilestone[]> => {
-    // 1. P0.1: Query database-backed finishing_milestones table in Supabase
-    try {
+export const getProjectMilestones = async (
+    requestId: string,
+    isCustomerView: boolean = false
+): Promise<FinishingProjectMilestone[]> => {
+    if (isCustomerView) {
+        // P1.4: Query customer-facing view which strictly excludes internal_notes
         const { data, error } = await supabase
-            .from('finishing_milestones')
+            .from('customer_milestones_view')
             .select('*')
             .eq('request_id', requestId)
             .order('stage_number', { ascending: true });
 
-        if (!error && data && data.length > 0) {
-            return data.map((row: any) => ({
-                id: row.id,
-                requestId: row.request_id,
-                stageNumber: row.stage_number,
-                title: { ar: row.title_ar, en: row.title_en },
-                description: { ar: row.description_ar || '', en: row.description_en || '' },
-                targetDays: row.target_days || 15,
-                status: row.status as FinishingMilestoneStatus,
-                progressPercentage: Number(row.progress_percentage) || 0,
-                paymentPercentage: Number(row.payment_percentage) || 0,
-                paymentStatus: row.payment_status as MilestonePaymentStatus,
-                inspectorNotes: row.inspector_notes || undefined,
-                completedAt: row.completed_at || undefined,
-                updatedAt: row.updated_at
-            }));
+        if (error) {
+            console.error('Failed to fetch customer milestones from Supabase:', error);
+            throw new Error(`Failed to fetch milestones from database: ${error.message}`);
         }
 
-        // Auto-seed default 5 milestones into Supabase
-        const now = new Date().toISOString();
-        const rowsToInsert = DEFAULT_PROJECT_MILESTONES_TEMPLATE.map(t => ({
-            request_id: requestId,
-            stage_number: t.stageNumber,
-            title_ar: t.title.ar,
-            title_en: t.title.en,
-            description_ar: t.description.ar,
-            description_en: t.description.en,
-            target_days: t.targetDays,
-            status: t.status,
-            progress_percentage: t.progressPercentage,
-            payment_percentage: t.paymentPercentage,
-            payment_status: t.paymentStatus,
-            created_at: now,
-            updated_at: now
+        return (data || []).map((row: any) => ({
+            id: row.id,
+            requestId: row.request_id,
+            stageNumber: row.stage_number,
+            title: { ar: row.title_ar, en: row.title_en },
+            description: { ar: row.description_ar || '', en: row.description_en || '' },
+            targetDays: row.target_days || 15,
+            status: row.status as FinishingMilestoneStatus,
+            progressPercentage: Number(row.progress_percentage) || 0,
+            paymentPercentage: Number(row.payment_percentage) || 0,
+            paymentStatus: row.payment_status as MilestonePaymentStatus,
+            customerNotes: row.customer_notes || undefined,
+            inspectorNotes: row.customer_notes || undefined, // legacy compat
+            completedAt: row.completed_at || undefined,
+            updatedAt: row.updated_at
         }));
-
-        const { data: inserted, error: insertError } = await supabase
-            .from('finishing_milestones')
-            .insert(rowsToInsert)
-            .select()
-            .order('stage_number', { ascending: true });
-
-        if (!insertError && inserted && inserted.length > 0) {
-            return inserted.map((row: any) => ({
-                id: row.id,
-                requestId: row.request_id,
-                stageNumber: row.stage_number,
-                title: { ar: row.title_ar, en: row.title_en },
-                description: { ar: row.description_ar || '', en: row.description_en || '' },
-                targetDays: row.target_days || 15,
-                status: row.status as FinishingMilestoneStatus,
-                progressPercentage: Number(row.progress_percentage) || 0,
-                paymentPercentage: Number(row.payment_percentage) || 0,
-                paymentStatus: row.payment_status as MilestonePaymentStatus,
-                inspectorNotes: row.inspector_notes || undefined,
-                completedAt: row.completed_at || undefined,
-                updatedAt: row.updated_at
-            }));
-        }
-    } catch (e) {
-        console.error('Error fetching Supabase milestones:', e);
     }
 
-    // In-memory fallback if database connection is offline
-    const all = getLocalMilestones();
-    const existing = all.filter(m => m.requestId === requestId);
-    if (existing.length > 0) {
-        return existing.sort((a, b) => a.stageNumber - b.stageNumber);
+    // Platform Staff / Partner view (includes internal_notes)
+    const { data, error } = await supabase
+        .from('finishing_milestones')
+        .select('*')
+        .eq('request_id', requestId)
+        .order('stage_number', { ascending: true });
+
+    if (error) {
+        console.error('Failed to fetch project milestones from Supabase:', error);
+        throw new Error(`Failed to fetch milestones from database: ${error.message}`);
     }
 
-    const now = new Date().toISOString();
-    const generated: FinishingProjectMilestone[] = DEFAULT_PROJECT_MILESTONES_TEMPLATE.map((template, idx) => ({
-        ...template,
-        id: `ms-${requestId}-${idx + 1}`,
-        requestId,
-        updatedAt: now
+    return (data || []).map((row: any) => ({
+        id: row.id,
+        requestId: row.request_id,
+        stageNumber: row.stage_number,
+        title: { ar: row.title_ar, en: row.title_en },
+        description: { ar: row.description_ar || '', en: row.description_en || '' },
+        targetDays: row.target_days || 15,
+        status: row.status as FinishingMilestoneStatus,
+        progressPercentage: Number(row.progress_percentage) || 0,
+        paymentPercentage: Number(row.payment_percentage) || 0,
+        paymentStatus: row.payment_status as MilestonePaymentStatus,
+        customerNotes: row.customer_notes || undefined,
+        internalNotes: row.internal_notes || undefined,
+        inspectorNotes: row.inspector_notes || row.customer_notes || undefined,
+        completedAt: row.completed_at || undefined,
+        updatedAt: row.updated_at
     }));
-    return generated;
 };
 
 export const updateProjectMilestone = async (
@@ -904,6 +741,8 @@ export const updateProjectMilestone = async (
     if (progress !== undefined) dbUpdates.progress_percentage = progress;
     if (updates.paymentStatus !== undefined) dbUpdates.payment_status = updates.paymentStatus;
     if (updates.paymentPercentage !== undefined) dbUpdates.payment_percentage = updates.paymentPercentage;
+    if (updates.customerNotes !== undefined) dbUpdates.customer_notes = updates.customerNotes;
+    if (updates.internalNotes !== undefined) dbUpdates.internal_notes = updates.internalNotes;
     if (updates.inspectorNotes !== undefined) dbUpdates.inspector_notes = updates.inspectorNotes;
     if (updates.status === 'completed') {
         dbUpdates.completed_at = now;
@@ -934,6 +773,8 @@ export const updateProjectMilestone = async (
         progressPercentage: data.progress_percentage,
         paymentPercentage: data.payment_percentage,
         paymentStatus: data.payment_status,
+        customerNotes: data.customer_notes,
+        internalNotes: data.internal_notes,
         inspectorNotes: data.inspector_notes,
         completedAt: data.completed_at,
         updatedAt: data.updated_at
@@ -956,6 +797,95 @@ export const updateProjectMilestone = async (
     });
 
     return updated;
+};
+
+// ==========================================
+// P1.5: Secure Execution Attachments Service
+// ==========================================
+
+export const getExecutionAttachments = async (
+    requestId: string,
+    milestoneId?: string
+): Promise<ExecutionAttachment[]> => {
+    let query = supabase
+        .from('execution_attachments')
+        .select('*')
+        .eq('request_id', requestId)
+        .order('created_at', { ascending: false });
+
+    if (milestoneId) {
+        query = query.eq('milestone_id', milestoneId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error('Failed to fetch execution attachments from Supabase:', error);
+        throw new Error(`Failed to fetch attachments from database: ${error.message}`);
+    }
+
+    return (data || []).map((row: any) => ({
+        id: row.id,
+        requestId: row.request_id,
+        milestoneId: row.milestone_id || undefined,
+        uploaderId: row.uploader_id,
+        fileUrl: row.file_url,
+        fileName: row.file_name,
+        fileSize: row.file_size || undefined,
+        fileType: row.file_type,
+        category: row.category,
+        isInternal: row.is_internal || false,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    }));
+};
+
+export const addExecutionAttachment = async (
+    payload: Omit<ExecutionAttachment, 'id' | 'createdAt' | 'updatedAt' | 'uploaderId'>
+): Promise<ExecutionAttachment> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+        throw new Error('Authentication required to upload execution attachments.');
+    }
+
+    const dbRow = {
+        request_id: payload.requestId,
+        milestone_id: payload.milestoneId || null,
+        uploader_id: session.user.id,
+        file_url: payload.fileUrl,
+        file_name: payload.fileName,
+        file_size: payload.fileSize || null,
+        file_type: payload.fileType || 'photo',
+        category: payload.category || 'milestone_evidence',
+        is_internal: payload.isInternal || false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+        .from('execution_attachments')
+        .insert(dbRow)
+        .select()
+        .single();
+
+    if (error || !data) {
+        console.error('Failed to create execution attachment record in database:', error);
+        throw new Error(`Failed to save attachment metadata: ${error?.message || 'Database error'}`);
+    }
+
+    return {
+        id: data.id,
+        requestId: data.request_id,
+        milestoneId: data.milestone_id || undefined,
+        uploaderId: data.uploader_id,
+        fileUrl: data.file_url,
+        fileName: data.file_name,
+        fileSize: data.file_size || undefined,
+        fileType: data.file_type,
+        category: data.category,
+        isInternal: data.is_internal,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+    };
 };
 
 export const clientAcceptQuote = async (

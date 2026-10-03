@@ -46,7 +46,6 @@ export const addNotification = async (notificationData: Omit<Notification, 'id' 
 
     // Direct table insert fallback for authorized users/admins if RPC is unavailable
     const dbPayload = {
-        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         user_id: notificationData.userId,
         message: notificationData.message,
         link: notificationData.link,

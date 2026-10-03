@@ -1,10 +1,8 @@
-const isDev = Boolean((import.meta as any)?.env?.DEV);
 import { supabase } from '../lib/supabase';
 import { getAllPartners } from './partners'; 
 import { getAllProjects } from './projects';
 import type { Property, PropertyFiltersType, Partner, Project, PropertyHistoryEntry } from '../types';
 import { filterProperties } from '../utils/propertyFilters';
-import { propertiesData as fallbackProperties } from '../data/properties';
 
 export const generatePropertyReference = (id: string): string => {
     if (!id) return 'HEL-0001';
@@ -296,16 +294,10 @@ export const getAllProperties = async (): Promise<Property[]> => {
         
         if (error) {
             console.error("Supabase error in getAllProperties:", error);
-            if (isDev) {
-                return hydratePropertiesBatch(fallbackProperties);
-            }
             return [];
         }
 
         if (!data || data.length === 0) {
-            if (isDev) {
-                return hydratePropertiesBatch(fallbackProperties);
-            }
             return [];
         }
 
@@ -313,9 +305,6 @@ export const getAllProperties = async (): Promise<Property[]> => {
         return hydratePropertiesBatch(rawProperties);
     } catch (e) {
         console.error("Failed to fetch all properties:", e);
-        if (isDev) {
-            return hydratePropertiesBatch(fallbackProperties);
-        }
         return [];
     }
 };
@@ -333,16 +322,10 @@ export const getProperties = async (): Promise<Property[]> => {
 
         if (error) {
             console.error("Supabase error in getProperties:", error);
-            if (isDev) {
-                return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active' || p.listingStatus === 'sold'));
-            }
             return [];
         }
 
         if (!data || data.length === 0) {
-            if (isDev) {
-                return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active' || p.listingStatus === 'sold'));
-            }
             return [];
         }
 
@@ -350,9 +333,6 @@ export const getProperties = async (): Promise<Property[]> => {
         return hydratePropertiesBatch(rawProperties);
     } catch (e) {
         console.error("Failed to get public properties:", e);
-        if (isDev) {
-            return hydratePropertiesBatch(fallbackProperties.filter(p => p.listingStatus === 'active'));
-        }
         return [];
     }
 };
@@ -371,9 +351,6 @@ export const getPropertiesByPartnerId = async (partnerId: string): Promise<Prope
 
         if (error) {
             console.error("Supabase error in getPropertiesByPartnerId:", error);
-            if (isDev) {
-                return hydratePropertiesBatch(fallbackProperties.filter(p => p.partnerId === partnerId));
-            }
             return [];
         }
 
@@ -385,9 +362,6 @@ export const getPropertiesByPartnerId = async (partnerId: string): Promise<Prope
         return hydratePropertiesBatch(rawProperties);
     } catch (e) {
         console.error("Failed to get partner properties:", e);
-        if (isDev) {
-            return hydratePropertiesBatch(fallbackProperties.filter(p => p.partnerId === partnerId));
-        }
         return [];
     }
 };
@@ -405,18 +379,12 @@ export const getPropertiesByProjectId = async (projectId: string): Promise<Prope
             .order('created_at', { ascending: false });
 
         if (error || !data || data.length === 0) {
-            if (isDev) {
-                return hydratePropertiesBatch(fallbackProperties.filter(p => p.projectId === projectId));
-            }
             return [];
         }
 
         const rawProperties = data.map(mapPropertyFromDb);
         return hydratePropertiesBatch(rawProperties);
     } catch (e) {
-        if (isDev) {
-            return hydratePropertiesBatch(fallbackProperties.filter(p => p.projectId === projectId));
-        }
         return [];
     }
 };
@@ -434,10 +402,6 @@ export const getPropertyById = async (id: string): Promise<Property | undefined>
             .maybeSingle();
 
         if (error || !data) {
-            if (isDev) {
-                const fallback = fallbackProperties.find(p => p.id === id);
-                return fallback ? (await hydratePropertiesBatch([fallback]))[0] : undefined;
-            }
             return undefined;
         }
 
@@ -445,10 +409,6 @@ export const getPropertyById = async (id: string): Promise<Property | undefined>
         const hydratedArray = await hydratePropertiesBatch([rawProp]);
         return hydratedArray[0];
     } catch (e) {
-        if (isDev) {
-            const fallback = fallbackProperties.find(p => p.id === id);
-            return fallback ? (await hydratePropertiesBatch([fallback]))[0] : undefined;
-        }
         return undefined;
     }
 };
