@@ -172,7 +172,6 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                              {/* Return to Website */}
                             <Link 
                                 to="/" 
-                                target="_blank"
                                 className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-700 hover:bg-gray-50 hover:text-amber-600 transition-colors ${isCollapsed ? 'justify-center' : ''}`}
                                 title={language === 'ar' ? 'العودة للموقع' : 'Return to Website'}
                             >

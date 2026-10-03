@@ -107,7 +107,7 @@ const AdminContentLayout: React.FC = () => {
                     <p className="text-gray-500 dark:text-gray-400">{t_content.subtitle}</p>
                 </div>
                 <div className="flex items-center gap-4 mt-4 sm:mt-0">
-                     <Link to="/" target="_blank" className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-amber-600 transition-colors">
+                     <Link to="/" className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-amber-600 transition-colors">
                         <GlobeAltIcon className="w-4 h-4" />
                         {language === 'ar' ? 'عرض الموقع' : 'View Live Site'}
                     </Link>

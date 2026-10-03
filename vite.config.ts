@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -59,6 +60,82 @@ function cloudinaryServerProxyPlugin() {
                     });
                     return;
                 }
+                // --- Site Content API ---
+                if (req.url === '/api/site-content') {
+                    const contentDbPath = path.resolve(__dirname, 'data/site_content_db.json');
+                    if (req.method === 'GET') {
+                        try {
+                            if (fs.existsSync(contentDbPath)) {
+                                const content = fs.readFileSync(contentDbPath, 'utf8');
+                                res.statusCode = 200;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(content);
+                                return;
+                            }
+                        } catch(e) {}
+                        res.statusCode = 200;
+                        res.setHeader('Content-Type', 'application/json');
+                        res.end(JSON.stringify({}));
+                        return;
+                    }
+                    if (req.method === 'POST') {
+                        let body = '';
+                        req.on('data', (chunk: any) => { body += chunk; });
+                        req.on('end', () => {
+                            try {
+                                const parsed = JSON.parse(body || '{}');
+                                fs.writeFileSync(contentDbPath, JSON.stringify(parsed, null, 2), 'utf8');
+                                res.statusCode = 200;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ success: true, timestamp: Date.now() }));
+                            } catch (e: any) {
+                                res.statusCode = 500;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ error: e?.message || 'Failed to save site content' }));
+                            }
+                        });
+                        return;
+                    }
+                }
+
+                // --- Role Permissions API ---
+                if (req.url === '/api/role-permissions') {
+                    const rolesDbPath = path.resolve(__dirname, 'data/role_permissions_db.json');
+                    if (req.method === 'GET') {
+                        try {
+                            if (fs.existsSync(rolesDbPath)) {
+                                const content = fs.readFileSync(rolesDbPath, 'utf8');
+                                res.statusCode = 200;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(content);
+                                return;
+                            }
+                        } catch(e) {}
+                        res.statusCode = 200;
+                        res.setHeader('Content-Type', 'application/json');
+                        res.end(JSON.stringify([]));
+                        return;
+                    }
+                    if (req.method === 'POST') {
+                        let body = '';
+                        req.on('data', (chunk: any) => { body += chunk; });
+                        req.on('end', () => {
+                            try {
+                                const parsed = JSON.parse(body || '[]');
+                                fs.writeFileSync(rolesDbPath, JSON.stringify(parsed, null, 2), 'utf8');
+                                res.statusCode = 200;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ success: true, timestamp: Date.now() }));
+                            } catch (e: any) {
+                                res.statusCode = 500;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ error: e?.message || 'Failed to save role permissions' }));
+                            }
+                        });
+                        return;
+                    }
+                }
+
                 next();
             });
         }

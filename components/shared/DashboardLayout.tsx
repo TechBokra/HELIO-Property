@@ -59,7 +59,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ navLinks, pageTitle }
                             {/* Return to Site Button */}
                             <Link 
                                 to="/" 
-                                target="_blank"
                                 className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-amber-600 transition-colors"
                                 title={language === 'ar' ? 'عرض الموقع' : 'View Site'}
                             >
