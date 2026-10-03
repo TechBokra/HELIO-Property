@@ -261,6 +261,8 @@ const FinishingPage: React.FC = () => {
     const linkedPropertyId = location.state?.propertyId || searchParams.get('propertyId');
     const linkedPropertyTitle = location.state?.propertyTitle;
     const linkedPropertyArea = location.state?.propertyArea ? Number(location.state.propertyArea) : undefined;
+    const rawType = (location.state?.propertyType || searchParams.get('propertyType') || '').toLowerCase();
+    const linkedPropertyType = rawType.includes('villa') || rawType.includes('فيلا') || rawType.includes('townhouse') || rawType.includes('twin') ? 'villa' : 'apartment';
 
     // Load canonical services from Supabase
     const { data: services = [], isLoading: isLoadingServices } = useQuery({
@@ -494,7 +496,8 @@ const FinishingPage: React.FC = () => {
             {/* Interactive Finishing Cost Estimator & RFQ Builder (P2) */}
             <div className="container mx-auto px-6">
                 <FinishingCostEstimator
-                    defaultArea={linkedPropertyArea || 140}
+                    defaultArea={linkedPropertyArea}
+                    defaultPropertyType={linkedPropertyType}
                     propertyId={linkedPropertyId || undefined}
                     propertyTitle={linkedPropertyTitle || undefined}
                     onRfqLaunched={() => {

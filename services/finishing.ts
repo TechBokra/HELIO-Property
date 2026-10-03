@@ -15,6 +15,7 @@ import {
     FinishingMilestoneStatus,
     MilestonePaymentStatus,
     FinishingEstimateBreakdown,
+    FinishingPropertyType,
     ExecutionAttachment
 } from '../types';
 import { getContent, updateContent } from './content';
@@ -987,33 +988,53 @@ export const calculateDetailedFinishingEstimate = (params: {
     bedrooms: number;
     bathrooms: number;
     style: string;
+    propertyType?: FinishingPropertyType;
+    villaFloors?: number;
     addons?: {
         smartHome?: boolean;
         acPrep?: boolean;
         soundproofing?: boolean;
         woodPanels?: boolean;
+        facadeRoofPrep?: boolean;
+        staircaseMarble?: boolean;
+        landscapeLighting?: boolean;
+        elevatorPrep?: boolean;
     };
 }): FinishingEstimateBreakdown => {
+    const isVilla = params.propertyType === 'villa';
     const tier = ESTIMATOR_TIERS.find(t => t.id === params.tierId) || ESTIMATOR_TIERS[1];
-    const safeArea = Math.max(50, Math.min(params.area || 120, 1000));
+    
+    // Scale safe area: Villas can reach 2000m²; apartments up to 800m²
+    const minArea = isVilla ? 120 : 50;
+    const maxArea = isVilla ? 2000 : 800;
+    const safeArea = Math.max(minArea, Math.min(params.area || (isVilla ? 450 : 140), maxArea));
+    const floors = isVilla ? Math.max(1, Math.min(5, params.villaFloors || 3)) : 1;
+
+    // Villa structural and engineering baseline factor:
+    // Multi-floor vertical risers, roof weatherproofing, external envelope, scaffolding & logistics
+    const propertyTypeMultiplier = isVilla ? 1.08 : 1.0;
     
     // Base unit multiplier for extra wet areas (bathrooms require heavier plumbing & porcelain)
     const extraBathroomFactor = Math.max(0, (params.bathrooms || 1) - 1) * 18000;
-    const baseCost = (safeArea * tier.pricePerSqm) + extraBathroomFactor;
+    
+    // Multi-story vertical MEP risers and structural floor distribution factor for villas
+    const multiFloorFactor = isVilla && floors > 2 ? (floors - 2) * 28000 : 0;
+    
+    const baseCost = (safeArea * (tier.pricePerSqm * propertyTypeMultiplier)) + extraBathroomFactor + multiFloorFactor;
 
     // Addons cost calculation
     let addonsTotal = 0;
     const appliedAddons: string[] = [];
 
     if (params.addons?.smartHome) {
-        const smartCost = safeArea * 450 + 15000;
+        const smartCost = safeArea * (isVilla ? 520 : 450) + (isVilla ? 30000 : 15000);
         addonsTotal += smartCost;
-        appliedAddons.push('Smart Home Automation');
+        appliedAddons.push(isVilla ? 'Smart Villa KNX / IoT Automation' : 'Smart Home Automation');
     }
     if (params.addons?.acPrep) {
-        const acCost = (params.bedrooms + 1) * 7500;
+        const acCost = (params.bedrooms + (isVilla ? floors * 2 : 1)) * 7500;
         addonsTotal += acCost;
-        appliedAddons.push('Concealed AC Pre-installation');
+        appliedAddons.push(isVilla ? 'Concealed & Multi-VRF AC Pre-installation' : 'Concealed AC Pre-installation');
     }
     if (params.addons?.soundproofing) {
         const soundCost = safeArea * 300;
@@ -1026,17 +1047,61 @@ export const calculateDetailedFinishingEstimate = (params: {
         appliedAddons.push('Decorative Wood & Fluted Wall Cladding');
     }
 
+    // Villa-specific engineering add-ons
+    if (isVilla && params.addons?.facadeRoofPrep) {
+        const facadeRoofCost = Math.round(safeArea * 460);
+        addonsTotal += facadeRoofCost;
+        appliedAddons.push('Exterior Facade Coating & Roof Weatherproofing');
+    }
+    if (isVilla && params.addons?.staircaseMarble) {
+        const stairsCost = floors * 35000;
+        addonsTotal += stairsCost;
+        appliedAddons.push('Internal Marble Staircase & Forged Balustrades');
+    }
+    if (isVilla && params.addons?.landscapeLighting) {
+        const landscapeCost = 45000;
+        addonsTotal += landscapeCost;
+        appliedAddons.push('Garden Landscape Lighting & Boundary Drainage');
+    }
+    if (isVilla && params.addons?.elevatorPrep) {
+        const elevatorCost = 65000;
+        addonsTotal += elevatorCost;
+        appliedAddons.push('Hydraulic Home Elevator Shaft Rough-in');
+    }
+
     const totalEstimatedCost = Math.round(baseCost + addonsTotal);
     const effectivePricePerSqm = Math.round(totalEstimatedCost / safeArea);
 
-    // Standard engineering breakdown percentages
-    const mepCost = Math.round(totalEstimatedCost * 0.25);
-    const flooringMasonryCost = Math.round(totalEstimatedCost * 0.30);
-    const carpentryAluminumCost = Math.round(totalEstimatedCost * 0.20);
-    const paintsDecorCost = Math.round(totalEstimatedCost * 0.15);
-    const supervisionWarrantyCost = Math.round(totalEstimatedCost * 0.10);
+    // Trade breakdown percentages based on property typology:
+    let mepCost: number;
+    let flooringMasonryCost: number;
+    let carpentryAluminumCost: number;
+    let paintsDecorCost: number;
+    let supervisionWarrantyCost: number;
+    let villaStructureCost: number | undefined;
 
-    const estimatedDays = Math.round((safeArea / 100) * tier.avgDaysPer100Sqm);
+    if (isVilla) {
+        // Villa distribution: 22% MEP, 26% Floors & Marble, 18% Doors & Exterior Glazing, 14% Paints, 10% Facade/Roof/Stairs, 10% Engineering Supervision
+        mepCost = Math.round(totalEstimatedCost * 0.22);
+        flooringMasonryCost = Math.round(totalEstimatedCost * 0.26);
+        carpentryAluminumCost = Math.round(totalEstimatedCost * 0.18);
+        paintsDecorCost = Math.round(totalEstimatedCost * 0.14);
+        villaStructureCost = Math.round(totalEstimatedCost * 0.10);
+        supervisionWarrantyCost = Math.round(totalEstimatedCost * 0.10);
+    } else {
+        // Standard apartment distribution: 25% MEP, 30% Floors & Plaster, 20% Carpentry & Aluminum, 15% Paints, 10% Supervision
+        mepCost = Math.round(totalEstimatedCost * 0.25);
+        flooringMasonryCost = Math.round(totalEstimatedCost * 0.30);
+        carpentryAluminumCost = Math.round(totalEstimatedCost * 0.20);
+        paintsDecorCost = Math.round(totalEstimatedCost * 0.15);
+        supervisionWarrantyCost = Math.round(totalEstimatedCost * 0.10);
+    }
+
+    // Realistic delivery time based on volume & floor staging
+    const baseDays = Math.round((safeArea / 100) * tier.avgDaysPer100Sqm);
+    const estimatedDays = isVilla 
+        ? Math.max(75, Math.round(baseDays * 1.15)) 
+        : Math.max(30, baseDays);
 
     return {
         area: safeArea,
@@ -1049,12 +1114,17 @@ export const calculateDetailedFinishingEstimate = (params: {
         carpentryAluminumCost,
         paintsDecorCost,
         supervisionWarrantyCost,
-        estimatedDays: Math.max(30, estimatedDays),
+        villaStructureCost,
+        estimatedDays,
+        propertyType: params.propertyType || 'apartment',
+        villaFloors: isVilla ? floors : undefined,
         specs: {
-            bedrooms: params.bedrooms || 3,
-            bathrooms: params.bathrooms || 2,
+            bedrooms: params.bedrooms || (isVilla ? 5 : 3),
+            bathrooms: params.bathrooms || (isVilla ? 4 : 2),
             style: params.style || 'modern',
-            addons: appliedAddons
+            addons: appliedAddons,
+            propertyType: params.propertyType || 'apartment',
+            villaFloors: isVilla ? floors : undefined
         }
     };
 };

@@ -671,6 +671,8 @@ export interface ExecutionAttachment {
     updatedAt: string;
 }
 
+export type FinishingPropertyType = 'apartment' | 'villa';
+
 export interface FinishingEstimateBreakdown {
     area: number;
     tier: string;
@@ -682,14 +684,20 @@ export interface FinishingEstimateBreakdown {
     carpentryAluminumCost: number;
     paintsDecorCost: number;
     supervisionWarrantyCost: number;
+    villaStructureCost?: number;
     estimatedDays: number;
+    propertyType: FinishingPropertyType;
+    villaFloors?: number;
     specs: {
         bedrooms: number;
         bathrooms: number;
         style: string;
         addons: string[];
+        propertyType?: FinishingPropertyType;
+        villaFloors?: number;
     };
 }
+
 
 export type FormCategory = 'public' | 'lead_gen' | 'partner_app' | 'admin_internal';
 export type FormFieldType = 'text' | 'textarea' | 'number' | 'email' | 'tel' | 'select' | 'checkbox' | 'radio' | 'date' | 'file';
