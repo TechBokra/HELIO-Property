@@ -51,18 +51,47 @@ const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
     };
 };
 
-export const getAllPartners = async (): Promise<Partner[]> => {
-    const { data, error } = await supabase
-        .from('partners')
-        .select('*')
-        .order('created_at', { ascending: false });
+// In-memory cache for partners during navigation
+let cachedPartners: { data: Partner[]; timestamp: number } | null = null;
+let inFlightPartnersPromise: Promise<Partner[]> | null = null;
+const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
-    if (error) {
-        console.error('Error fetching partners from Supabase:', error);
-        throw new Error(`Failed to load partners: ${error.message}`);
+export const invalidatePartnersCache = () => {
+    cachedPartners = null;
+    inFlightPartnersPromise = null;
+};
+
+export const getAllPartners = async (): Promise<Partner[]> => {
+    const now = Date.now();
+    if (cachedPartners && (now - cachedPartners.timestamp) < CACHE_TTL_MS) {
+        return cachedPartners.data;
     }
 
-    return (data || []).map(mapPartnerFromDb);
+    if (inFlightPartnersPromise) {
+        return inFlightPartnersPromise;
+    }
+
+    inFlightPartnersPromise = (async () => {
+        try {
+            const { data, error } = await supabase
+                .from('partners')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching partners from Supabase:', error);
+                throw new Error(`Failed to load partners: ${error.message}`);
+            }
+
+            const mapped = (data || []).map(mapPartnerFromDb);
+            cachedPartners = { data: mapped, timestamp: Date.now() };
+            return mapped;
+        } finally {
+            inFlightPartnersPromise = null;
+        }
+    })();
+
+    return inFlightPartnersPromise;
 };
 
 export const getAllPartnersForAdmin = async (): Promise<AdminPartner[]> => {
@@ -238,11 +267,13 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
     }
 
     const { error } = await supabase.from('partners').update(dbUpdates).eq('id', id);
+    if (!error) invalidatePartnersCache();
     return !error;
 };
 
 export const updatePartnerStatus = async (id: string, status: PartnerStatus): Promise<boolean> => {
     const { error } = await supabase.from('partners').update({ status }).eq('id', id);
+    if (!error) invalidatePartnersCache();
     return !error;
 };
 
@@ -259,11 +290,13 @@ export const upgradePartnerPlan = async (id: string, newPlan: SubscriptionPlan):
         subscription_end_date: nextYear.toISOString()
     }).eq('id', id);
     
+    if (!error) invalidatePartnersCache();
     return !error;
 };
 
 export const deletePartner = async (userId: string): Promise<boolean> => {
     const { error } = await supabase.from('partners').delete().eq('id', userId);
+    if (!error) invalidatePartnersCache();
     return !error;
 };
 

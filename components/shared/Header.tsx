@@ -38,6 +38,26 @@ export const Header = memo<HeaderProps>(({
     const activeLinkClass = 'text-amber-500 font-semibold';
     const inactiveLinkClass = 'text-gray-600 hover:text-amber-500';
 
+    const prefetchRoute = (href: string) => {
+        switch (href) {
+            case '/properties':
+                import('../properties/PropertiesPage');
+                break;
+            case '/projects':
+                import('../projects/ProjectsPage');
+                break;
+            case '/finishing':
+                import('../finishing/FinishingPage');
+                break;
+            case '/decorations':
+                import('../decorations/DecorationsPage');
+                break;
+            case '/contact':
+                import('../contact/ContactPage');
+                break;
+        }
+    };
+
     return (
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm border-b border-gray-200">
             <div className="container mx-auto px-6">
@@ -52,6 +72,8 @@ export const Header = memo<HeaderProps>(({
                                 key={link.name}
                                 to={link.href}
                                 end={link.href === '/'}
+                                onMouseEnter={() => prefetchRoute(link.href)}
+                                onFocus={() => prefetchRoute(link.href)}
                                 className={({ isActive }) =>
                                     `${isActive ? activeLinkClass : inactiveLinkClass} transition-colors duration-200`
                                 }

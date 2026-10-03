@@ -30,10 +30,21 @@ export default defineConfig({
         },
         rollupOptions: {
             output: {
-                manualChunks: {
-                    vendor: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query'],
-                    charts: ['chart.js', 'react-chartjs-2'],
-                    utils: ['zod', 'jspdf', 'jspdf-autotable']
+                manualChunks(id) {
+                    if (id.includes('node_modules')) {
+                        if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg')) {
+                            return 'pdf-export';
+                        }
+                        if (id.includes('chart.js') || id.includes('react-chartjs-2')) {
+                            return 'charts';
+                        }
+                        if (id.includes('@supabase')) {
+                            return 'supabase';
+                        }
+                        if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom') || id.includes('@tanstack/react-query')) {
+                            return 'vendor';
+                        }
+                    }
                 }
             }
         }

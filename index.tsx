@@ -20,7 +20,8 @@ const queryClient = new QueryClient({
         queries: {
             retry: 1,
             refetchOnWindowFocus: false,
-            staleTime: 1000 * 60 * 5,
+            staleTime: 1000 * 60 * 5, // 5 minutes fresh
+            gcTime: 1000 * 60 * 15,    // 15 minutes in memory cache
             throwOnError: false,
         },
         mutations: {
@@ -47,7 +48,7 @@ root.render(
                         </LanguageProvider>
                     </ToastProvider>
                 </ThemeProvider>
-                <ReactQueryDevtools initialIsOpen={false} />
+                {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}
             </QueryClientProvider>
         </Router>
     </ErrorBoundary>

@@ -18,16 +18,43 @@ const mapProjectFromDb = (row: any): Project => {
     };
 };
 
+// In-memory cache for high-frequency navigation
+let cachedProjects: { data: Project[]; timestamp: number } | null = null;
+let inFlightProjectsPromise: Promise<Project[]> | null = null;
+const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+export const invalidateProjectsCache = () => {
+    cachedProjects = null;
+    inFlightProjectsPromise = null;
+};
+
 export const getAllProjects = async (): Promise<Project[]> => {
-    try {
-        const { data, error } = await supabase.from('projects').select('*');
-        if (error || !data || data.length === 0) {
-            return [];
-        }
-        return data.map(mapProjectFromDb);
-    } catch (e) {
-        return [];
+    const now = Date.now();
+    if (cachedProjects && (now - cachedProjects.timestamp) < CACHE_TTL_MS) {
+        return cachedProjects.data;
     }
+
+    if (inFlightProjectsPromise) {
+        return inFlightProjectsPromise;
+    }
+
+    inFlightProjectsPromise = (async () => {
+        try {
+            const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+            if (error || !data || data.length === 0) {
+                return [];
+            }
+            const mapped = data.map(mapProjectFromDb);
+            cachedProjects = { data: mapped, timestamp: Date.now() };
+            return mapped;
+        } catch (e) {
+            return [];
+        } finally {
+            inFlightProjectsPromise = null;
+        }
+    })();
+
+    return inFlightProjectsPromise;
 };
 
 export const getProjectById = async (id: string): Promise<Project | undefined> => {
@@ -67,6 +94,7 @@ export const addProject = async (project: Omit<Project, 'id' | 'createdAt'>): Pr
     
     const { data, error } = await supabase.from('projects').insert(dbPayload).select().single();
     if (error) throw error;
+    invalidateProjectsCache();
     return mapProjectFromDb(data);
 };
 
@@ -85,10 +113,12 @@ export const updateProject = async (projectId: string, updates: Partial<Project>
 
     const { data, error } = await supabase.from('projects').update(dbUpdates).eq('id', projectId).select().single();
     if (error) return undefined;
+    invalidateProjectsCache();
     return mapProjectFromDb(data);
 };
 
 export const deleteProject = async (projectId: string): Promise<boolean> => {
     const { error } = await supabase.from('projects').delete().eq('id', projectId);
+    if (!error) invalidateProjectsCache();
     return !error;
 };

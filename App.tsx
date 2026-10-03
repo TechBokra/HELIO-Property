@@ -13,14 +13,15 @@ import LoadingFallback from './components/shared/LoadingFallback';
 import { useAuthStore } from './store/useAuthStore';
 import { initAttribution } from './utils/attribution';
 
-// --- Layouts (Static Imports to fix #525) ---
-import DashboardLayout from './components/shared/DashboardLayout';
+// --- Layouts ---
 import PublicLayout from './components/shared/PublicLayout';
-import UserDashboardLayout from './components/user-dashboard/UserDashboardLayout';
+const DashboardLayout = lazy(() => import('./components/shared/DashboardLayout'));
+const UserDashboardLayout = lazy(() => import('./components/user-dashboard/UserDashboardLayout'));
 
-// --- Route Groups (Static Imports to fix #525) ---
-import PartnerRoutes from './components/partner-dashboard/PartnerRoutes';
-import AdminRoutes from './components/admin/AdminRoutes';
+// --- Route Groups (Lazy Loaded) ---
+const PartnerRoutes = lazy(() => import('./components/partner-dashboard/PartnerRoutes'));
+const AdminRoutes = lazy(() => import('./components/admin/AdminRoutes'));
+
 
 // --- Customer Dashboard Pages (Lazy Loaded) ---
 const UserDashboardHomePage = lazy(() => import('./components/user-dashboard/UserDashboardHomePage'));

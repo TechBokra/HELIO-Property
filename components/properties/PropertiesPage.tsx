@@ -41,12 +41,10 @@ const PropertiesPage: React.FC = () => {
     
     // Memoize filters to prevent unnecessary query refetches
     const queryFilters = useMemo(() => ({
-        view, // Include view property
         status, type, query, minPrice, maxPrice, project, finishing, 
         installments, realEstateFinance, floor, compound, delivery, 
         amenities: amenitiesFilter, beds, baths
     }), [
-        view,
         status, type, query, minPrice, maxPrice, project, finishing, 
         installments, realEstateFinance, floor, compound, delivery, 
         amenitiesFilter, beds, baths
@@ -58,7 +56,7 @@ const PropertiesPage: React.FC = () => {
         queryFn: () => getPaginatedProperties({ 
             page: page, 
             limit: ITEMS_PER_PAGE, 
-            filters: queryFilters,
+            filters: { ...queryFilters, view: (view as 'grid' | 'list') },
             disablePagination: false,
         }),
         // FIX: Replaced deprecated `keepPreviousData: true` with `placeholderData: keepPreviousData` for TanStack Query v5.
