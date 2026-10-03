@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { useLanguage } from '../shared/LanguageContext';
+import { getOptimizedImageUrl } from '../../utils/imageUtils';
 
 const Hero: React.FC = () => {
     const { language, t } = useLanguage();
@@ -21,24 +22,30 @@ const Hero: React.FC = () => {
 
     return (
         <section className="relative h-[85vh] flex items-center justify-center text-center text-white overflow-hidden">
-            {heroImages.map((image, index) => (
-                 <div key={image.src} className={`slider-image ${index === currentImageIndex ? 'active' : ''}`}>
-                    <div className="watermarked w-full h-full">
-                        <img
-                            src={image.src}
-                            alt={image.alt[language] || ''}
-                            className="w-full h-full object-cover disable-image-interaction"
-                            onContextMenu={(e) => e.preventDefault()}
-                            // Optimization: Priority load the first image, lazy load the rest
-                            loading={index === 0 ? "eager" : "lazy"}
-                            {...(index === 0 ? { fetchpriority: "high" } : {})}
-                            decoding={index === 0 ? "sync" : "async"}
-                            aria-hidden={index !== currentImageIndex}
-                            role="img"
-                        />
+            {heroImages.map((image, index) => {
+                const optimizedSmall = getOptimizedImageUrl(image.src, 768, 70);
+                const optimizedLarge = getOptimizedImageUrl(image.src, 1400, 75);
+
+                return (
+                    <div key={image.src} className={`slider-image ${index === currentImageIndex ? 'active' : ''}`}>
+                        <div className="watermarked w-full h-full">
+                            <img
+                                src={optimizedLarge}
+                                srcSet={`${optimizedSmall} 768w, ${optimizedLarge} 1400w`}
+                                sizes="100vw"
+                                alt={image.alt[language] || ''}
+                                className="w-full h-full object-cover disable-image-interaction"
+                                onContextMenu={(e) => e.preventDefault()}
+                                loading={index === 0 ? "eager" : "lazy"}
+                                {...(index === 0 ? { fetchpriority: "high" } : {})}
+                                decoding={index === 0 ? "sync" : "async"}
+                                aria-hidden={index !== currentImageIndex}
+                                role="img"
+                            />
+                        </div>
                     </div>
-                </div>
-            ))}
+                );
+            })}
             <div className="absolute top-0 left-0 w-full h-full bg-black/60 z-10"></div>
 
             {/* Accessibility enhancement for screen readers */}

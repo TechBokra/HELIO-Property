@@ -5,6 +5,7 @@ import { BedIcon, BathIcon, AreaIcon, LocationMarkerIcon, EyeIcon } from '../ui/
 import type { Property } from '../../types';
 import { isCommercial } from '../../utils/propertyUtils';
 import { useLanguage } from '../shared/LanguageContext';
+import { getResponsiveImageSources } from '../../utils/imageUtils';
 
 const StatItem: React.FC<{ icon: React.ReactNode; value: string | number; label: string }> = ({ icon, value, label }) => (
     <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300" title={`${value} ${label}`}>
@@ -25,6 +26,10 @@ const PropertyListItem: React.FC<Property> = React.memo((props) => {
     const isForSale = status.en === 'For Sale';
     const isCommercialProp = isCommercial(props);
 
+    const responsiveImage = React.useMemo(() => {
+        return getResponsiveImageSources(imageUrl || imageUrl_medium || imageUrl_small);
+    }, [imageUrl, imageUrl_medium, imageUrl_small]);
+
     return (
         <Link to={`/properties/${id}`} className="block group">
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row overflow-hidden h-full">
@@ -32,17 +37,21 @@ const PropertyListItem: React.FC<Property> = React.memo((props) => {
                 {/* Image Section */}
                 <div className="relative w-full sm:w-48 md:w-64 h-48 sm:h-auto flex-shrink-0">
                     <picture>
-                         <source
-                            type="image/webp"
-                            srcSet={`${imageUrl_small}&fm=webp 480w, ${imageUrl_medium || imageUrl}&fm=webp 800w`}
-                            sizes="(max-width: 640px) 100vw, 300px"
-                        />
+                        {responsiveImage.srcSetWebp && (
+                            <source
+                                type="image/webp"
+                                srcSet={responsiveImage.srcSetWebp}
+                                sizes="(max-width: 640px) 100vw, 300px"
+                            />
+                        )}
                         <img 
-                            src={imageUrl_medium || imageUrl}
-                            srcSet={`${imageUrl_small} 480w, ${imageUrl_medium || imageUrl} 800w`}
+                            src={responsiveImage.src}
+                            srcSet={responsiveImage.srcSet}
+                            sizes="(max-width: 640px) 100vw, 300px"
                             alt={title[language]} 
                             className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
                             loading="lazy"
+                            decoding="async"
                         />
                     </picture>
                     <span 

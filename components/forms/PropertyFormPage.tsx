@@ -251,7 +251,7 @@ const PropertyFormPage: React.FC = () => {
 
             // Upload New Gallery Images
             if (galleryImageFiles.length > 0) {
-                 const uploadedGalleryUrls = await Promise.all(galleryImageFiles.map(uploadFile));
+                 const uploadedGalleryUrls = await Promise.all(galleryImageFiles.map(file => uploadFile(file)));
                  // Combine existing (URLs) with newly uploaded (URLs)
                  // Keep existing strings (URLs) and append new ones
                  const existingUrls = galleryImages.filter(img => !img.startsWith('blob:'));

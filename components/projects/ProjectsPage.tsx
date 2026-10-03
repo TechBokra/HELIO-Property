@@ -14,6 +14,7 @@ import { getAllProperties } from '../../services/properties';
 import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardContent } from '../ui/Card';
 import { useSiteContent } from '../../hooks/useSiteContent';
+import { getResponsiveImageSources } from '../../utils/imageUtils';
 
 interface ProjectCardProps {
     project: Project; 
@@ -25,24 +26,31 @@ const ProjectCard: React.FC<ProjectCardProps> = React.memo(({ project, developer
     const { language, t } = useLanguage();
     const unitsText = unitsCount === 1 ? t.projectsPage.unitsAvailable : t.projectsPage.unitsAvailablePlural;
     
+    const responsiveImage = useMemo(() => {
+        return getResponsiveImageSources(project.imageUrl || project.imageUrl_large || project.imageUrl_medium || project.imageUrl_small);
+    }, [project.imageUrl, project.imageUrl_large, project.imageUrl_medium, project.imageUrl_small]);
+
     return (
         <Link to={`/projects/${project.id}`} className="block group h-full">
             <Card className="transform hover:-translate-y-2 transition-transform duration-300 h-full flex flex-col overflow-hidden p-0 card-glow">
                 <div className="relative">
                     <picture>
-                        <source
-                            type="image/webp"
-                            srcSet={`${project.imageUrl_small}&fm=webp 480w, ${project.imageUrl_medium}&fm=webp 800w, ${project.imageUrl_large || project.imageUrl}&fm=webp 1200w`}
-                            sizes="(max-width: 640px) 90vw, 100vw"
-                        />
+                        {responsiveImage.srcSetWebp && (
+                            <source
+                                type="image/webp"
+                                srcSet={responsiveImage.srcSetWebp}
+                                sizes="(max-width: 640px) 90vw, 100vw"
+                            />
+                        )}
                         <img 
-                            src={project.imageUrl}
-                            srcSet={`${project.imageUrl_small} 480w, ${project.imageUrl_medium} 800w, ${project.imageUrl_large || project.imageUrl} 1200w`}
+                            src={responsiveImage.src}
+                            srcSet={responsiveImage.srcSet}
                             sizes="(max-width: 640px) 90vw, 100vw"
                             alt={project.name[language]}
                             className="w-full h-64 object-cover disable-image-interaction"
                             onContextMenu={(e) => e.preventDefault()}
                             loading="lazy"
+                            decoding="async"
                         />
                     </picture>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>

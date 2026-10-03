@@ -31,7 +31,9 @@ export let siteContentData: SiteContent = {
       cloudinary: {
           cloudName: '',
           apiKey: '',
-          apiSecret: ''
+          apiSecret: '',
+          uploadPreset: '',
+          folder: 'onlyhelio'
       }
   },
   paymentConfiguration: {

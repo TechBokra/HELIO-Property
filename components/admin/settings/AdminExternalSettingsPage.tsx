@@ -3,12 +3,13 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getContent, updateContent } from '../../../services/content';
+import { testCloudinaryConnection, saveLocalCloudinaryConfig } from '../../../services/upload';
 import type { SiteContent, IntegrationConfiguration } from '../../../types';
 import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
-import { CloudIcon, DatabaseIcon, ServerIcon, LinkIcon } from '../../ui/Icons';
+import { CloudIcon, DatabaseIcon, ServerIcon, LinkIcon, CheckIcon } from '../../ui/Icons';
 
 const AdminExternalSettingsPage: React.FC = () => {
     const { t, language } = useLanguage();
@@ -18,8 +19,12 @@ const AdminExternalSettingsPage: React.FC = () => {
 
     const { data: siteContent, isLoading } = useQuery({ queryKey: ['siteContent'], queryFn: getContent });
     
-    const { register, handleSubmit, reset, formState: { isSubmitting, isDirty } } = useForm<IntegrationConfiguration>();
+    const { register, handleSubmit, reset, watch, formState: { isSubmitting, isDirty } } = useForm<IntegrationConfiguration>();
     const [activeTab, setActiveTab] = useState<'vercel' | 'supabase' | 'cloudinary'>('vercel');
+    const [isTestingCloudinary, setIsTestingCloudinary] = useState(false);
+    const [cloudinaryTestResult, setCloudinaryTestResult] = useState<{ success: boolean; url?: string; error?: string } | null>(null);
+
+    const watchedCloudinary = watch('cloudinary');
 
     useEffect(() => {
         if (siteContent?.integrationConfiguration) {
@@ -39,7 +44,42 @@ const AdminExternalSettingsPage: React.FC = () => {
     });
 
     const onSubmit = (data: IntegrationConfiguration) => {
+        if (data.cloudinary) {
+            saveLocalCloudinaryConfig(data.cloudinary);
+        }
         mutation.mutate(data);
+    };
+
+    const handleTestCloudinary = async () => {
+        if (!watchedCloudinary?.cloudName || !watchedCloudinary?.uploadPreset) {
+            showToast(language === 'ar' ? 'يرجى إدخال اسم السحابة ومُعرّف الرفع أولاً' : 'Please provide Cloud Name and Upload Preset first', 'error');
+            return;
+        }
+
+        setIsTestingCloudinary(true);
+        setCloudinaryTestResult(null);
+
+        try {
+            const res = await testCloudinaryConnection({
+                cloudName: watchedCloudinary.cloudName,
+                uploadPreset: watchedCloudinary.uploadPreset,
+                folder: watchedCloudinary.folder
+            });
+            setCloudinaryTestResult(res);
+
+            if (res.success) {
+                showToast(t_page.cloudinary.testSuccess || 'Test upload succeeded!', 'success');
+                // Also cache successful working credentials locally
+                saveLocalCloudinaryConfig(watchedCloudinary);
+            } else {
+                showToast(res.error || t_page.cloudinary.testError, 'error');
+            }
+        } catch (e: any) {
+            setCloudinaryTestResult({ success: false, error: e?.message || 'Error occurred' });
+            showToast(e?.message || t_page.cloudinary.testError, 'error');
+        } finally {
+            setIsTestingCloudinary(false);
+        }
     };
     
     if (isLoading) return <div className="p-8 text-center">Loading settings...</div>;
@@ -142,19 +182,87 @@ const AdminExternalSettingsPage: React.FC = () => {
                                     <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">{t_page.cloudinary.desc}</p>
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-6 max-w-2xl">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl">
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">{t_page.cloudinary.cloudName}</label>
-                                        <Input {...register('cloudinary.cloudName')} placeholder="my-cloud-name" className="font-mono" />
+                                        <label className="block text-sm font-medium mb-1">{t_page.cloudinary.cloudName} <span className="text-red-500">*</span></label>
+                                        <Input {...register('cloudinary.cloudName')} placeholder="e.g. my-cloud-name" className="font-mono" dir="ltr" />
                                     </div>
                                     <div>
+                                        <label className="block text-sm font-medium mb-1">{t_page.cloudinary.uploadPreset} <span className="text-red-500">*</span></label>
+                                        <Input {...register('cloudinary.uploadPreset')} placeholder="e.g. onlyhelio_uploads" className="font-mono" dir="ltr" />
+                                        <p className="text-xs text-gray-500 mt-1">{t_page.cloudinary.uploadPresetHelp}</p>
+                                    </div>
+
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium mb-1 text-amber-700 dark:text-amber-400 font-semibold">
+                                            {t_page.cloudinary.folder}
+                                        </label>
+                                        <Input {...register('cloudinary.folder')} placeholder="onlyhelio" className="font-mono text-base" dir="ltr" />
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                            {t_page.cloudinary.folderHelp}
+                                        </p>
+                                    </div>
+
+                                    <div>
                                         <label className="block text-sm font-medium mb-1">{t_page.cloudinary.apiKey}</label>
-                                        <Input {...register('cloudinary.apiKey')} placeholder="123456789" className="font-mono" />
+                                        <Input {...register('cloudinary.apiKey')} placeholder="123456789" className="font-mono" dir="ltr" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium mb-1">{t_page.cloudinary.apiSecret}</label>
-                                        <Input type="password" {...register('cloudinary.apiSecret')} placeholder="****************" className="font-mono" />
+                                        <Input type="password" {...register('cloudinary.apiSecret')} placeholder="****************" className="font-mono" dir="ltr" />
                                     </div>
+                                </div>
+
+                                {/* Interactive Connection & Folder Test */}
+                                <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+                                    <div className="flex flex-wrap items-center justify-between gap-4 bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                                {t_page.cloudinary.testUpload}
+                                            </h4>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                {language === 'ar' 
+                                                    ? 'يقوم هذا الزر برفع صورة اختبار مصغرة للتأكد من وصولها إلى المجلد المحدد داخل حسابك'
+                                                    : 'Uploads a micro test image to confirm it is saved inside your target folder'}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            onClick={handleTestCloudinary}
+                                            isLoading={isTestingCloudinary}
+                                            disabled={!watchedCloudinary?.cloudName || !watchedCloudinary?.uploadPreset}
+                                        >
+                                            {isTestingCloudinary ? t_page.cloudinary.testing : t_page.cloudinary.testUpload}
+                                        </Button>
+                                    </div>
+
+                                    {cloudinaryTestResult && (
+                                        <div className={`mt-3 p-4 rounded-xl border text-sm ${
+                                            cloudinaryTestResult.success 
+                                                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300'
+                                                : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'
+                                        }`}>
+                                            {cloudinaryTestResult.success ? (
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2 font-medium">
+                                                        <CheckIcon className="w-5 h-5 text-green-600" />
+                                                        {t_page.cloudinary.testSuccess}
+                                                    </div>
+                                                    {cloudinaryTestResult.url && (
+                                                        <p className="text-xs font-mono break-all opacity-85 mt-1">
+                                                            CDN URL: {cloudinaryTestResult.url}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <div className="font-semibold">{t_page.cloudinary.testError}</div>
+                                                    <p className="text-xs mt-1 font-mono">{cloudinaryTestResult.error}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}

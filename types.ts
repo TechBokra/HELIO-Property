@@ -470,8 +470,10 @@ export interface IntegrationConfiguration {
     };
     cloudinary: {
         cloudName: string;
-        apiKey: string;
-        apiSecret: string;
+        apiKey?: string;
+        apiSecret?: string;
+        uploadPreset?: string;
+        folder?: string;
     };
 }
 

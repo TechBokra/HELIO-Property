@@ -436,11 +436,19 @@ export const admin = {
                 "serviceRoleKey": "مفتاح الخدمة (Service Role) - سري"
             },
             "cloudinary": {
-                "title": "وسائط Cloudinary",
-                "desc": "إعدادات تخزين ومعالجة الصور والفيديو.",
+                "title": "وسائط Cloudinary السحابية",
+                "desc": "إعدادات تخزين ورفع الصور ومعالجتها سحابياً وربط مجلد المشروع.",
                 "cloudName": "اسم السحابة (Cloud Name)",
-                "apiKey": "مفتاح API",
-                "apiSecret": "سر API"
+                "uploadPreset": "مُعرّف الرفع (Upload Preset)",
+                "uploadPresetHelp": "اسم الـ Upload Preset (Unsigned) المُعد في حسابك للرفع المباشر بدون كشف مفاتيح سرية.",
+                "folder": "اسم مجلد المشروع (Project Folder)",
+                "folderHelp": "اسم المجلد داخل حسابك على Cloudinary لحفظ صور هذا المشروع فيه.",
+                "apiKey": "مفتاح API (اختياري للعميل)",
+                "apiSecret": "سر API (سري)",
+                "testUpload": "اختبار الاتصال ورفع صورة تجريبية للمجلد",
+                "testing": "جاري اختبار الرفع...",
+                "testSuccess": "تم الرفع بنجاح وحفظ الصورة داخل مجلد المشروع!",
+                "testError": "فشل اختبار الرفع. يرجى التأكد من اسم السحابة والـ Upload Preset."
             }
         }
     },

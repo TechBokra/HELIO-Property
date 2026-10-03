@@ -437,10 +437,18 @@ export const admin = {
             },
             "cloudinary": {
                 "title": "Cloudinary Media",
-                "desc": "Settings for image and video storage and optimization.",
+                "desc": "Settings for cloud image storage, CDN transformations, and project folders.",
                 "cloudName": "Cloud Name",
-                "apiKey": "API Key",
-                "apiSecret": "API Secret"
+                "uploadPreset": "Upload Preset",
+                "uploadPresetHelp": "The unsigned upload preset configured in your Cloudinary console for direct client uploads.",
+                "folder": "Project Folder",
+                "folderHelp": "The folder name inside your Cloudinary account to store this project's images.",
+                "apiKey": "API Key (Optional)",
+                "apiSecret": "API Secret (Secret)",
+                "testUpload": "Test Connection & Upload Test Image to Folder",
+                "testing": "Testing upload...",
+                "testSuccess": "Successfully uploaded test image to your Cloudinary project folder!",
+                "testError": "Upload test failed. Please verify your Cloud Name and Upload Preset."
             }
         }
     },

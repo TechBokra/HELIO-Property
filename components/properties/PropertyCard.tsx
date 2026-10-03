@@ -7,6 +7,7 @@ import { isCommercial } from '../../utils/propertyUtils';
 import { useToast } from '../shared/ToastContext';
 import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardContent } from '../ui/Card';
+import { getResponsiveImageSources } from '../../utils/imageUtils';
 
 type PropertyCardProps = Property;
 
@@ -45,6 +46,10 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
   const isForSale = status.en === 'For Sale';
   const isFav = isFavorite(id, 'property');
   const isCommercialProp = isCommercial(props);
+
+  const responsiveImage = useMemo(() => {
+    return getResponsiveImageSources(imageUrl_large || imageUrl || imageUrl_medium || imageUrl_small);
+  }, [imageUrl, imageUrl_large, imageUrl_medium, imageUrl_small]);
 
   const handleFavoriteClick = (e: MouseEvent) => {
     e.preventDefault();
@@ -85,18 +90,22 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
 
         <div className="relative watermarked z-0">
             <picture>
-                <source
-                    type="image/webp"
-                    srcSet={`${imageUrl_small}&fm=webp 480w, ${imageUrl_medium}&fm=webp 800w, ${imageUrl_large || imageUrl}&fm=webp 1200w`}
-                    sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
-                />
+                {responsiveImage.srcSetWebp && (
+                    <source
+                        type="image/webp"
+                        srcSet={responsiveImage.srcSetWebp}
+                        sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
+                    />
+                )}
                 <img 
-                    src={imageUrl_large || imageUrl}
-                    srcSet={`${imageUrl_small} 480w, ${imageUrl_medium} 800w, ${imageUrl_large || imageUrl} 1200w`}
+                    src={responsiveImage.src}
+                    srcSet={responsiveImage.srcSet}
+                    sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
                     alt={title[language]} 
                     className="w-full h-56 object-cover disable-image-interaction"
                     onContextMenu={(e) => e.preventDefault()}
                     loading="lazy"
+                    decoding="async"
                 />
             </picture>
           <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-1.5">
