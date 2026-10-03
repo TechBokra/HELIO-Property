@@ -81,6 +81,8 @@ export const common = {
         "finishing": "التشطيبات",
         "decorations": "الديكورات",
         "favorites": "المفضلة",
+        "profile": "الملف الشخصي",
+        "myRequests": "طلباتي",
         "contact": "تواصل معنا",
         "privacyPolicy": "سياسة الخصوصية",
         "termsOfUse": "شروط الاستخدام",

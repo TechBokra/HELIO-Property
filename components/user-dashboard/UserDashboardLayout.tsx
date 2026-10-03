@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { Role } from '../../types';
 import { useLanguage } from '../shared/LanguageContext';
 import UserSidebar from './UserSidebar';
 import NotificationBell from '../shared/NotificationBell';
@@ -22,6 +23,13 @@ const UserDashboardLayout = () => {
     if (!currentUser) return null;
     
     const isRTL = language === 'ar';
+    const cleanEmail = (currentUser.email || '').trim().toLowerCase();
+    const isAdmin = currentUser.role === Role.SUPER_ADMIN || 
+                    (currentUser.role && currentUser.role.includes('manager')) || 
+                    (currentUser.role && currentUser.role.includes('admin')) ||
+                    cleanEmail === 'admin@onlyhelio.com' ||
+                    cleanEmail === 'tam.elshafey@gmail.com' ||
+                    cleanEmail === 'admin@newheliopolis.com';
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -44,6 +52,16 @@ const UserDashboardLayout = () => {
                     
                     <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6 justify-end">
                         <div className="flex items-center gap-x-4 lg:gap-x-6">
+                            {isAdmin && (
+                                <Link 
+                                    to="/admin" 
+                                    className="flex items-center gap-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-gray-950 px-3 py-1.5 rounded-lg shadow-sm transition-all"
+                                >
+                                    <span>👑</span>
+                                    <span>{language === 'ar' ? 'لوحة تحكم الإدارة' : 'Admin Panel'}</span>
+                                </Link>
+                            )}
+
                             <Link 
                                 to="/" 
                                 target="_blank"
@@ -78,6 +96,27 @@ const UserDashboardLayout = () => {
 
                 <main className="py-10">
                     <div className="px-4 sm:px-6 lg:px-8">
+                        {isAdmin && (
+                            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-300 dark:border-amber-700/60 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-fadeIn">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">👑</span>
+                                    <div>
+                                        <p className="text-sm font-bold text-amber-950 dark:text-amber-200">
+                                            {language === 'ar' ? 'أنت مسجل حالياً بحساب الإدارة' : 'You are logged in with an Admin account'}
+                                        </p>
+                                        <p className="text-xs text-amber-800/90 dark:text-amber-300/90">
+                                            {language === 'ar' ? 'هذه شاشة العميل (الملف الشخصي والطلبات). يمكنك الانتقال إلى لوحة تحكم الإدارة الكاملة في أي وقت.' : 'This is the customer view. You can jump directly to the full Admin control panel.'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <Link
+                                    to="/admin"
+                                    className="whitespace-nowrap px-4 py-2 bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1.5"
+                                >
+                                    <span>{language === 'ar' ? 'الذهاب إلى لوحة الإدارة الكاملة ←' : 'Go to Admin Dashboard →'}</span>
+                                </Link>
+                            </div>
+                        )}
                        <Outlet />
                     </div>
                 </main>

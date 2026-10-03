@@ -4,7 +4,7 @@ import {
     HomeIcon, UserPlusIcon, InboxIcon, HeartIcon, LogoutIcon, CloseIcon, GlobeAltIcon
 } from '../ui/Icons';
 import { SiteIdentity } from '../shared/SiteIdentity';
-import type { Partner } from '../../types';
+import { Role, type Partner } from '../../types';
 
 interface UserSidebarProps {
   user: Partner;
@@ -16,11 +16,18 @@ interface UserSidebarProps {
 const UserSidebar = ({ user, onLogout, isOpen, setIsOpen }: UserSidebarProps) => {
     const { language, t } = useLanguage();
     const isRTL = language === 'ar';
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+    const isAdmin = user.role === Role.SUPER_ADMIN || 
+                    (user.role && user.role.includes('manager')) || 
+                    (user.role && user.role.includes('admin')) ||
+                    cleanEmail === 'admin@onlyhelio.com' ||
+                    cleanEmail === 'tam.elshafey@gmail.com' ||
+                    cleanEmail === 'admin@newheliopolis.com';
     
     const navLinks = [
         { name: t.nav.home, href: '/my-dashboard', icon: HomeIcon, exact: true },
-        { name: t.nav.profile, href: '/my-dashboard/profile', icon: UserPlusIcon },
-        { name: t.adminDashboard.nav.myRequests, href: '/my-dashboard/requests', icon: InboxIcon },
+        { name: t.nav.profile || (isRTL ? 'الملف الشخصي' : 'Profile'), href: '/my-dashboard/profile', icon: UserPlusIcon },
+        { name: t.nav.myRequests || t.adminDashboard?.nav?.myRequests || (isRTL ? 'طلباتي' : 'My Requests'), href: '/my-dashboard/requests', icon: InboxIcon },
         { name: t.nav.favorites, href: '/my-dashboard/favorites', icon: HeartIcon },
     ];
 
@@ -45,10 +52,22 @@ const UserSidebar = ({ user, onLogout, isOpen, setIsOpen }: UserSidebarProps) =>
                             <SiteIdentity className="text-amber-500" logoClassName="h-8 w-auto" />
                         </div>
                         <div className="mt-5 h-0 flex-1 overflow-y-auto">
+                            {isAdmin && (
+                                <div className="px-2 mb-3">
+                                    <Link
+                                        to="/admin"
+                                        onClick={() => setIsOpen(false)}
+                                        className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold text-sm shadow-sm transition-all"
+                                    >
+                                        <span>👑</span>
+                                        <span>{language === 'ar' ? 'لوحة تحكم الإدارة الكاملة' : 'Admin Dashboard'}</span>
+                                    </Link>
+                                </div>
+                            )}
                             <nav className="px-2 space-y-1">
                                 {navLinks.map((link) => (
                                     <NavLink
-                                        key={link.name}
+                                        key={link.href}
                                         to={link.href}
                                         end={link.exact}
                                         onClick={() => setIsOpen(false)}
@@ -82,10 +101,24 @@ const UserSidebar = ({ user, onLogout, isOpen, setIsOpen }: UserSidebarProps) =>
                              <h3 className="text-sm font-bold text-gray-900">{user.name}</h3>
                              <p className="text-xs text-gray-500">{user.email}</p>
                          </div>
+                        {isAdmin && (
+                            <div className="px-3 mb-3">
+                                <Link
+                                    to="/admin"
+                                    className="flex items-center justify-between p-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold text-xs shadow-sm transition-all group"
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <span>👑</span>
+                                        <span>{language === 'ar' ? 'لوحة تحكم الإدارة الكاملة' : 'Admin Dashboard'}</span>
+                                    </span>
+                                    <span className="text-xs group-hover:translate-x-1 transition-transform">←</span>
+                                </Link>
+                            </div>
+                        )}
                         <nav className="mt-2 flex-1 space-y-1 px-3">
                             {navLinks.map((link) => (
                                 <NavLink
-                                    key={link.name}
+                                    key={link.href}
                                     to={link.href}
                                     end={link.exact}
                                     className={({ isActive }) => `group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${isActive ? 'bg-amber-50 text-amber-600' : 'text-gray-700 hover:text-amber-600 hover:bg-gray-50'}`}

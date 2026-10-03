@@ -159,28 +159,80 @@ export const rolePermissions: Map<Role, Permission[]> = new Map([
 ]);
 
 
-export const mapPartnerTypeToRole = (type: PartnerType): Role => {
-    switch (type) {
-        case 'admin': return Role.SUPER_ADMIN;
+export const mapPartnerTypeToRole = (type?: PartnerType | string, role?: string, email?: string): Role => {
+    const cleanRole = (role || '').trim().toLowerCase();
+    const cleanType = (type || '').trim().toLowerCase();
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    // 1. Super Admin email whitelist or admin roles
+    if (
+        cleanEmail === 'admin@onlyhelio.com' ||
+        cleanEmail === 'tam.elshafey@gmail.com' ||
+        cleanEmail === 'admin@newheliopolis.com' ||
+        cleanRole === 'super_admin' ||
+        cleanRole === 'system_admin' ||
+        cleanRole === 'admin' ||
+        cleanRole === 'owner' ||
+        cleanType === 'admin' ||
+        cleanType === 'system'
+    ) {
+        return Role.SUPER_ADMIN;
+    }
+
+    // 2. Direct Role string matching
+    if (cleanRole) {
+        switch (cleanRole) {
+            case 'super_admin':
+            case 'system_admin':
+            case 'admin':
+                return Role.SUPER_ADMIN;
+            case 'developer_partner':
+            case 'developer':
+                return Role.DEVELOPER_PARTNER;
+            case 'finishing_partner':
+            case 'finishing':
+                return Role.FINISHING_PARTNER;
+            case 'agency_partner':
+            case 'agency':
+                return Role.AGENCY_PARTNER;
+            case 'decoration_manager': return Role.DECORATION_MANAGER;
+            case 'platform_finishing_manager': return Role.PLATFORM_FINISHING_MANAGER;
+            case 'finishing_market_manager': return Role.FINISHING_MARKET_MANAGER;
+            case 'platform_real_estate_manager': return Role.PLATFORM_REAL_ESTATE_MANAGER;
+            case 'real_estate_market_manager': return Role.REAL_ESTATE_MARKET_MANAGER;
+            case 'partner_relations_manager': return Role.PARTNER_RELATIONS_MANAGER;
+            case 'content_manager': return Role.CONTENT_MANAGER;
+            case 'service_manager': return Role.SERVICE_MANAGER;
+            case 'customer_relations_manager': return Role.CUSTOMER_RELATIONS_MANAGER;
+            case 'listings_manager': return Role.LISTINGS_MANAGER;
+            case 'customer':
+            case 'user':
+            case 'client':
+                return Role.CUSTOMER;
+        }
+    }
+
+    // 3. Fallback to Type
+    switch (cleanType) {
+        case 'admin':
+        case 'system':
+            return Role.SUPER_ADMIN;
         case 'developer': return Role.DEVELOPER_PARTNER;
         case 'finishing': return Role.FINISHING_PARTNER;
         case 'agency': return Role.AGENCY_PARTNER;
-        
         case 'decoration_manager': return Role.DECORATION_MANAGER;
         case 'platform_finishing_manager': return Role.PLATFORM_FINISHING_MANAGER;
         case 'finishing_market_manager': return Role.FINISHING_MARKET_MANAGER;
         case 'platform_real_estate_manager': return Role.PLATFORM_REAL_ESTATE_MANAGER;
         case 'real_estate_market_manager': return Role.REAL_ESTATE_MARKET_MANAGER;
-        
         case 'partner_relations_manager': return Role.PARTNER_RELATIONS_MANAGER;
         case 'content_manager': return Role.CONTENT_MANAGER;
-
         case 'service_manager': return Role.SERVICE_MANAGER;
         case 'customer_relations_manager': return Role.CUSTOMER_RELATIONS_MANAGER;
         case 'listings_manager': return Role.LISTINGS_MANAGER;
-        
-        case 'customer': return Role.CUSTOMER;
-        
+        case 'customer':
+        case 'individual':
+            return Role.CUSTOMER;
         default: return Role.CUSTOMER; 
     }
-}
+};

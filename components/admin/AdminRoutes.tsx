@@ -60,6 +60,7 @@ const ContentFooterPage = React.lazy(() => import('./content/ContentFooterPage')
 
 const AdminBannersPage = React.lazy(() => import('./banners/AdminBannersPage'));
 const AdminBannerFormPage = React.lazy(() => import('./content/AdminBannerFormPage'));
+const AdminMediaLibraryPage = React.lazy(() => import('./media/AdminMediaLibraryPage'));
 
 const AdminFormsPage = React.lazy(() => import('./forms/AdminFormsPage'));
 const AdminUsersPage = React.lazy(() => import('./users/AdminUsersPage'));
@@ -147,6 +148,8 @@ const AdminRoutes: React.FC = () => {
                 <Route path="banners" element={<AdminBannersPage />} />
                 <Route path="banners/new" element={<AdminBannerFormPage />} />
                 <Route path="banners/edit/:bannerId" element={<AdminBannerFormPage />} />
+                <Route path="media" element={<AdminMediaLibraryPage />} />
+                <Route path="cloudinary" element={<AdminMediaLibraryPage />} />
 
                 {/* System Administration */}
                 <Route path="users" element={<AdminUsersPage />} />

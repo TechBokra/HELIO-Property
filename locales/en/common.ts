@@ -81,6 +81,8 @@ export const common = {
         "finishing": "Finishing",
         "decorations": "Decorations",
         "favorites": "Favorites",
+        "profile": "Profile",
+        "myRequests": "My Requests",
         "contact": "Contact Us",
         "privacyPolicy": "Privacy Policy",
         "termsOfUse": "Terms of Use",

@@ -51,6 +51,7 @@ export const admin = {
             "rolesAndPermissions": "Roles & Permissions",
             "settings": "General Settings",
             "externalSettings": "External Settings",
+            "mediaLibrary": "Media Library & Storage",
             "forms": "Forms"
         },
         "filter": {
@@ -482,5 +483,48 @@ export const admin = {
             "properties": "Properties",
             "partners": "Partners"
         }
+    },
+    "mediaLibrary": {
+        "title": "Cloudinary Media Library & Storage",
+        "subtitle": "Explore project media, reuse images across listings, and scan & purge unused or expired media to optimize storage.",
+        "stats": {
+            "total": "Total Tracked Media",
+            "active": "Active / In Use",
+            "expired": "Listing Expired",
+            "unused": "Unused / Orphaned",
+            "reclaimable": "Reclaimable Storage"
+        },
+        "tabs": {
+            "all": "All Media",
+            "inUse": "In Use",
+            "expired": "Listing Expired",
+            "unused": "Unused",
+            "cloudinary": "Cloudinary Cloud"
+        },
+        "actions": {
+            "cleanUnused": "Clean Unused",
+            "cleanExpired": "Clean Expired Listings",
+            "cleanAll": "Bulk Clean & Reclaim Storage",
+            "copyUrl": "Copy URL",
+            "copied": "Image URL copied to clipboard!",
+            "useImage": "Reuse in Another Place",
+            "preview": "Preview",
+            "delete": "Delete",
+            "refresh": "Refresh & Scan",
+            "openCloudinary": "Open Cloudinary Console"
+        },
+        "dialog": {
+            "cleanTitle": "Confirm Media Cleanup & Storage Optimization",
+            "cleanConfirm": "Are you sure you want to clean up these images? They will be unlinked from records and purged from Cloudinary to free up storage.",
+            "confirmBtn": "Confirm & Clean Now",
+            "cancelBtn": "Cancel",
+            "cleaning": "Cleaning..."
+        },
+        "status": {
+            "inUse": "Active & In Use",
+            "expired": "Listing Expired",
+            "unused": "Unused / Orphaned"
+        },
+        "empty": "No images found matching this filter."
     }
 };

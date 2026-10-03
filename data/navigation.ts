@@ -6,7 +6,7 @@ import {
   InboxIcon, WrenchScrewdriverIcon, UsersIcon, CubeIcon, BuildingIcon, QuoteIcon,
   CogIcon, PhotoIcon, SparklesIcon, ShieldCheckIcon, FileDownloadIcon, PhoneIcon,
   AdjustmentsHorizontalIcon, BellIcon, BanknotesIcon, ListIcon, LinkIcon, CalculatorIcon,
-  TableCellsIcon
+  TableCellsIcon, CloudIcon
 } from '../components/ui/Icons';
 
 export interface NavLinkItem {
@@ -60,6 +60,7 @@ export const adminNavLinks: NavLinkItem[] = [
     { name: t => t.adminDashboard.nav.contactRequests, href: '/admin/contact-requests', icon: InboxIcon, permission: Permission.MANAGE_CONTACT_REQUESTS, group: 'Customer Relations' },
     
     { name: t => t.adminDashboard.nav.banners, href: '/admin/banners', icon: PhotoIcon, permission: Permission.MANAGE_BANNERS, group: 'Content' },
+    { name: t => t.adminDashboard.nav.mediaLibrary, href: '/admin/media', icon: CloudIcon, permission: Permission.MANAGE_SITE_CONTENT, group: 'Content' },
     { name: t => t.adminDashboard.nav.siteContent, href: '/admin/content', icon: ClipboardDocumentListIcon, permission: Permission.MANAGE_SITE_CONTENT, group: 'Content' },
     
     { name: t => t.adminDashboard.nav.forms, href: '/admin/forms', icon: ListIcon, permission: Permission.MANAGE_FORMS, group: 'System' },

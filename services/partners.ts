@@ -26,24 +26,26 @@ const getTemporaryClient = () => {
 };
 
 // Mapper to convert DB row to Partner object
-const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
+export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
     const contactMethods = typeof row.contact_methods === 'string' 
         ? JSON.parse(row.contact_methods) 
         : row.contact_methods || { whatsapp: { enabled: false }, phone: { enabled: false }, form: { enabled: true } };
 
+    const resolvedRole = mapPartnerTypeToRole(row.type, row.role, row.email);
+
     return {
         id: row.id,
         email: row.email,
-        imageUrl: row.image_url,
-        type: row.type,
-        status: row.status,
-        subscriptionPlan: row.subscription_plan,
-        displayType: row.display_type,
-        role: mapPartnerTypeToRole(row.type),
-        name: row.name_en, // English name as default name
-        description: row.description_en, // English desc as default
-        nameAr: row.name_ar,
-        descriptionAr: row.description_ar,
+        imageUrl: row.image_url || (resolvedRole === Role.SUPER_ADMIN ? 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=400&auto=format&fit=crop' : 'https://via.placeholder.com/150'),
+        type: row.type || (resolvedRole === Role.SUPER_ADMIN ? 'admin' : 'customer'),
+        status: row.status || 'active',
+        subscriptionPlan: row.subscription_plan || (resolvedRole === Role.SUPER_ADMIN ? 'enterprise' : 'basic'),
+        displayType: row.display_type || 'standard',
+        role: resolvedRole,
+        name: row.name_en || row.name_ar || (resolvedRole === Role.SUPER_ADMIN ? 'Super Admin' : 'User'),
+        description: row.description_en || '',
+        nameAr: row.name_ar || row.name_en || (resolvedRole === Role.SUPER_ADMIN ? 'المدير العام' : 'مستخدم'),
+        descriptionAr: row.description_ar || '',
         contactMethods,
         subscriptionEndDate: row.subscription_end_date,
         parentId: row.parent_id,
@@ -142,22 +144,24 @@ export const getPartnerByEmail = async (email: string): Promise<Partner | undefi
 
 // Self-healing function for missing profiles (P0.1 Customer Hardening)
 export const createProfileForExistingUser = async (user: any): Promise<Partner> => {
-    // Standard users without an existing partner/admin record default to CUSTOMER
-    const type: PartnerType = 'customer';
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+    const isSuperAdmin = cleanEmail === 'admin@onlyhelio.com' || cleanEmail === 'tam.elshafey@gmail.com' || cleanEmail === 'admin@newheliopolis.com';
+    const type: PartnerType = isSuperAdmin ? 'admin' : (user.user_metadata?.type || 'customer');
+    const role: Role = isSuperAdmin ? Role.SUPER_ADMIN : mapPartnerTypeToRole(type, user.user_metadata?.role, cleanEmail);
 
     const dbPayload = {
         id: user.id,
         email: user.email,
         type: type,
-        role: Role.CUSTOMER,
+        role: role,
         status: 'active',
-        subscription_plan: 'basic',
+        subscription_plan: isSuperAdmin ? 'enterprise' : 'basic',
         display_type: 'standard',
-        image_url: user.user_metadata?.avatar_url || 'https://via.placeholder.com/150',
-        name_ar: user.user_metadata?.name || user.email?.split('@')[0] || 'عميل',
-        name_en: user.user_metadata?.name || user.email?.split('@')[0] || 'Customer',
-        description_ar: 'حساب عميل في منصة أونلي هيليو',
-        description_en: 'Customer account on ONLY HELIO platform',
+        image_url: user.user_metadata?.avatar_url || (isSuperAdmin ? 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=400&auto=format&fit=crop' : 'https://via.placeholder.com/150'),
+        name_ar: user.user_metadata?.name || (isSuperAdmin ? 'المدير العام' : (user.email?.split('@')[0] || 'عميل')),
+        name_en: user.user_metadata?.name || (isSuperAdmin ? 'Super Admin' : (user.email?.split('@')[0] || 'Customer')),
+        description_ar: isSuperAdmin ? 'حساب إدارة النظام الرئيسي' : 'حساب عميل في منصة أونلي هيليو',
+        description_en: isSuperAdmin ? 'System Super Administrator Account' : 'Customer account on ONLY HELIO platform',
         contact_methods: { 
             whatsapp: { enabled: false, number: '' },
             phone: { enabled: false, number: user.user_metadata?.phone || '' },

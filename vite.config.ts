@@ -7,8 +7,66 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function cloudinaryServerProxyPlugin() {
+    return {
+        name: 'cloudinary-proxy',
+        configureServer(server: any) {
+            server.middlewares.use((req: any, res: any, next: any) => {
+                if (req.url === '/api/cloudinary/destroy' && req.method === 'POST') {
+                    let body = '';
+                    req.on('data', (chunk: any) => { body += chunk; });
+                    req.on('end', async () => {
+                        try {
+                            const { public_id, cloud_name, api_key, api_secret } = JSON.parse(body || '{}');
+                            if (!public_id || !cloud_name) {
+                                res.statusCode = 400;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ error: 'Missing public_id or cloud_name' }));
+                                return;
+                            }
+                            if (!api_key || !api_secret) {
+                                res.statusCode = 200;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ result: 'unlinked_without_api_secret' }));
+                                return;
+                            }
+
+                            const crypto = await import('crypto');
+                            const timestamp = Math.round(new Date().getTime() / 1000);
+                            const stringToSign = `public_id=${public_id}&timestamp=${timestamp}${api_secret}`;
+                            const signature = crypto.createHash('sha1').update(stringToSign).digest('hex');
+
+                            const formData = new URLSearchParams();
+                            formData.append('public_id', public_id);
+                            formData.append('timestamp', String(timestamp));
+                            formData.append('api_key', api_key);
+                            formData.append('signature', signature);
+
+                            const response = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/destroy`, {
+                                method: 'POST',
+                                body: formData
+                            });
+
+                            const data = await response.json();
+                            res.statusCode = response.ok ? 200 : response.status;
+                            res.setHeader('Content-Type', 'application/json');
+                            res.end(JSON.stringify(data));
+                        } catch (err: any) {
+                            res.statusCode = 500;
+                            res.setHeader('Content-Type', 'application/json');
+                            res.end(JSON.stringify({ error: err?.message || 'Server error during destroy' }));
+                        }
+                    });
+                    return;
+                }
+                next();
+            });
+        }
+    };
+}
+
 export default defineConfig({
-    plugins: [react()],
+    plugins: [react(), cloudinaryServerProxyPlugin()],
     server: {
         host: '0.0.0.0',
         port: 3000,

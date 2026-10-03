@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getContent, updateContent } from '../../../services/content';
@@ -9,7 +10,7 @@ import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
-import { CloudIcon, DatabaseIcon, ServerIcon, LinkIcon, CheckIcon } from '../../ui/Icons';
+import { CloudIcon, DatabaseIcon, ServerIcon, LinkIcon, CheckIcon, PhotoIcon } from '../../ui/Icons';
 
 const AdminExternalSettingsPage: React.FC = () => {
     const { t, language } = useLanguage();
@@ -175,12 +176,20 @@ const AdminExternalSettingsPage: React.FC = () => {
 
                         {activeTab === 'cloudinary' && (
                              <div className="space-y-6 animate-fadeIn">
-                                 <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-lg border border-blue-200 dark:border-blue-800 mb-6">
-                                    <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-400 flex items-center gap-2">
-                                        <CloudIcon className="w-5 h-5" /> {t_page.cloudinary.title}
-                                    </h3>
-                                    <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">{t_page.cloudinary.desc}</p>
-                                </div>
+                                 <div className="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-2xl border border-blue-200 dark:border-blue-800 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                     <div>
+                                         <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-400 flex items-center gap-2">
+                                             <CloudIcon className="w-5 h-5" /> {t_page.cloudinary.title}
+                                         </h3>
+                                         <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">{t_page.cloudinary.desc}</p>
+                                     </div>
+                                     <Link to="/admin/media">
+                                         <Button type="button" variant="secondary" className="text-xs flex items-center gap-2 whitespace-nowrap bg-white shadow-sm">
+                                             <PhotoIcon className="w-4 h-4 text-amber-500" />
+                                             <span>فتح مكتبة الوسائط وإدارة المساحة</span>
+                                         </Button>
+                                     </Link>
+                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl">
                                     <div>

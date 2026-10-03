@@ -69,7 +69,7 @@ export const Header = memo<HeaderProps>(({
                     <nav className="hidden lg:flex items-center gap-8 text-lg">
                         {navLinks.map((link) => (
                             <NavLink
-                                key={link.name}
+                                key={link.href}
                                 to={link.href}
                                 end={link.href === '/'}
                                 onMouseEnter={() => prefetchRoute(link.href)}
