@@ -146,10 +146,10 @@ const DashboardProjectDetailsPage: React.FC = () => {
             )}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 mb-8">
                 <div className="flex flex-col sm:flex-row gap-6">
-                    <img src={project.imageUrl} alt={project.name[language]} className="w-full sm:w-48 h-48 object-cover rounded-lg flex-shrink-0" />
+                    <img src={project.imageUrl} alt={project.name?.[language] || project.name?.en || project.name?.ar || ''} className="w-full sm:w-48 h-48 object-cover rounded-lg flex-shrink-0" />
                     <div className="flex-grow">
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{project.name[language]}</h1>
-                        <p className="text-gray-600 dark:text-gray-400 mt-2">{project.description[language]}</p>
+                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{project.name?.[language] || project.name?.en || project.name?.ar || ''}</h1>
+                        <p className="text-gray-600 dark:text-gray-400 mt-2">{project.description?.[language] || project.description?.en || project.description?.ar || ''}</p>
                         <div className="mt-4 flex items-center gap-4 text-gray-500 dark:text-gray-400">
                             <span className="flex items-center gap-2"><BuildingIcon className="w-5 h-5" /> {projectProperties.length} {t_proj.units}</span>
                         </div>

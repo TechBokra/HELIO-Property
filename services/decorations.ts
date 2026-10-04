@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabase';
 import type { DecorationCategory } from '../types';
-import { decorationCategoriesData } from '../data/decorationCategories';
 
 // Helper to map DB row to DecorationCategory
 const mapCategoryFromDb = (row: any): DecorationCategory => ({
@@ -17,18 +16,18 @@ export const getDecorationCategories = async (): Promise<DecorationCategory[]> =
             .order('created_at', { ascending: true });
 
         if (error) {
-            console.warn('Error fetching decoration categories from Supabase, falling back to static data:', error.message);
-            return decorationCategoriesData;
+            console.error('Error fetching decoration categories from Supabase:', error.message);
+            return [];
         }
 
         if (!data || data.length === 0) {
-            return decorationCategoriesData;
+            return [];
         }
 
         return data.map(mapCategoryFromDb);
     } catch (err: any) {
-        console.warn('Exception loading decoration categories, using fallback:', err?.message);
-        return decorationCategoriesData;
+        console.error('Exception loading decoration categories from Supabase:', err?.message);
+        return [];
     }
 };
 

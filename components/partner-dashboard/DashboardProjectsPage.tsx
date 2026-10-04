@@ -89,10 +89,10 @@ const DashboardProjectsPage: React.FC = () => {
                             >
                                 <Card className="overflow-hidden p-0 h-full flex flex-col">
                                     <div className="relative">
-                                        <img src={project.imageUrl} alt={project.name[language]} className="w-full h-48 object-cover" />
+                                        <img src={project.imageUrl} alt={project.name?.[language] || project.name?.en || project.name?.ar || ''} className="w-full h-48 object-cover" />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                                         <div className="absolute bottom-0 left-0 p-4">
-                                            <h2 className="text-xl font-bold text-white group-hover:text-amber-300 transition-colors">{project.name[language]}</h2>
+                                            <h2 className="text-xl font-bold text-white group-hover:text-amber-300 transition-colors">{project.name?.[language] || project.name?.en || project.name?.ar || ''}</h2>
                                         </div>
                                     </div>
                                     <CardContent className="p-4 flex justify-between items-center">

@@ -35,7 +35,7 @@ const iconMap: { [key: string]: React.FC<{ className?: string }> } = {
 const ProjectDetailsPage: React.FC = () => {
     const { projectId } = useParams<{ projectId: string }>();
     const { language, t } = useLanguage();
-    const t_page = t.propertyDetailsPage;
+    const t_page = t?.propertyDetailsPage || {};
     const { showToast } = useToast();
 
     const fetchProject = useCallback(() => getProjectById(projectId!), [projectId]);
@@ -60,20 +60,23 @@ const ProjectDetailsPage: React.FC = () => {
 
     const unitTypes: string[] = useMemo(() => {
         if (!projectProperties) return [];
-        const types = new Set(projectProperties.map(p => p.type.en));
+        const types = new Set(projectProperties.map(p => p.type?.en).filter(Boolean));
         return ['all', ...Array.from(types)];
     }, [projectProperties]);
     
     const filteredProperties = useMemo(() => {
         if (!projectProperties) return [];
         if (activeType === 'all') return projectProperties;
-        return projectProperties.filter(p => p.type.en === activeType);
+        return projectProperties.filter(p => p.type?.en === activeType);
     }, [projectProperties, activeType]);
+
+    const projectName = project?.name?.[language] || project?.name?.en || project?.name?.ar || (typeof project?.name === 'string' ? project.name : '');
+    const projectDesc = project?.description?.[language] || project?.description?.en || project?.description?.ar || (typeof project?.description === 'string' ? project.description : '');
 
     const handleWhatsAppShare = () => {
         if (!project) return;
         const urlToShare = window.location.href;
-        const text = encodeURIComponent(`${project.name[language]}\n${urlToShare}`);
+        const text = encodeURIComponent(`${projectName}\n${urlToShare}`);
         window.open(`https://wa.me/?text=${text}`, '_blank');
         setShareModalOpen(false);
     };
@@ -83,13 +86,12 @@ const ProjectDetailsPage: React.FC = () => {
         const urlToShare = window.location.href;
         try {
             await navigator.clipboard.writeText(urlToShare);
-            showToast(t.sharing.linkCopied, 'success');
+            showToast(t?.sharing?.linkCopied || (language === 'ar' ? 'تم نسخ الرابط' : 'Link copied'), 'success');
             setShareModalOpen(false);
         } catch (err) {
-            showToast(t.sharing.shareFailed, 'error');
+            showToast(t?.sharing?.shareFailed || (language === 'ar' ? 'فشل نسخ الرابط' : 'Failed to copy link'), 'error');
         }
     };
-
 
     if (isLoading) {
         return <ProjectDetailsSkeleton />;
@@ -106,8 +108,8 @@ const ProjectDetailsPage: React.FC = () => {
         );
     }
 
-    const pageTitle = `${project.name[language]} | ONLY HELIO`;
-    const pageDescription = project.description[language].substring(0, 160);
+    const pageTitle = `${projectName || 'Project'} | ONLY HELIO`;
+    const pageDescription = (projectDesc || '').substring(0, 160);
     const pageUrl = window.location.href;
     const imageUrl = project.imageUrl_large || project.imageUrl;
     
@@ -118,15 +120,15 @@ const ProjectDetailsPage: React.FC = () => {
             <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 animate-fadeIn" onClick={() => setShareModalOpen(false)}>
                 <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
                     <h3 className="text-lg font-bold text-gray-900 mb-4">
-                        {t.sharing.shareProject}
+                        {t?.sharing?.shareProject || (language === 'ar' ? 'مشاركة المشروع' : 'Share Project')}
                     </h3>
                     <div className="space-y-3">
                          <Button onClick={handleCopyLink} variant="outline" className="w-full justify-center">
-                            {t.sharing.copyLink}
+                            {t?.sharing?.copyLink || (language === 'ar' ? 'نسخ الرابط' : 'Copy Link')}
                         </Button>
                         <Button onClick={handleWhatsAppShare} className="w-full justify-center bg-green-500 hover:bg-green-600 text-white">
                             <WhatsAppIcon className="w-5 h-5 mr-2" />
-                            {t.sharing.shareOnWhatsApp}
+                            {t?.sharing?.shareOnWhatsApp || (language === 'ar' ? 'مشاركة عبر واتساب' : 'Share via WhatsApp')}
                         </Button>
                     </div>
                 </div>
@@ -139,10 +141,13 @@ const ProjectDetailsPage: React.FC = () => {
                 <div className="relative z-10 container mx-auto px-6 h-full flex flex-col justify-end pb-16 text-white">
                     <div className="flex justify-between items-end gap-4">
                         <div className="flex-grow">
-                            <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight">{project.name[language]}</h1>
+                            <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight">{projectName}</h1>
                             {developer && (
                                 <p className="mt-2 text-xl font-medium">
-                                    {t.propertyCard.by} <Link to={`/partners/${developer.id}`} className="text-amber-300 hover:underline">{developer.name}</Link>
+                                    {t?.propertyCard?.by || (language === 'ar' ? 'بواسطة' : 'By')}{' '}
+                                    <Link to={`/partners/${developer.id}`} className="text-amber-300 hover:underline">
+                                        {language === 'ar' && (developer as any).nameAr ? (developer as any).nameAr : developer.name}
+                                    </Link>
                                 </p>
                             )}
                         </div>
@@ -152,7 +157,7 @@ const ProjectDetailsPage: React.FC = () => {
                                 variant="secondary"
                                 size="icon"
                                 className="bg-white/20 text-white border-white/50 hover:bg-white/30"
-                                aria-label={t.sharing.shareProject}
+                                aria-label={t?.sharing?.shareProject || 'Share'}
                             >
                                 <ShareIcon className="w-6 h-6" />
                             </Button>
@@ -164,25 +169,35 @@ const ProjectDetailsPage: React.FC = () => {
             <div className="container mx-auto px-6 py-20">
                  {/* Project Description */}
                 <div className="max-w-4xl mx-auto mb-20">
-                    <h2 className="text-3xl font-bold text-center text-amber-500 mb-6">{t.propertyDetailsPage.description}</h2>
+                    <h2 className="text-3xl font-bold text-center text-amber-500 mb-6">
+                        {t_page?.description || (language === 'ar' ? 'الوصف' : 'Description')}
+                    </h2>
                     <p className="text-lg text-gray-600 leading-relaxed text-center whitespace-pre-line">
-                        {project.description[language]}
+                        {projectDesc}
                     </p>
                 </div>
 
                 {/* Project Features */}
                 {project.features && project.features.length > 0 && (
                     <div className="mb-20">
-                        <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-900 mb-12">{t_page.projectFeatures}</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-900 mb-12">
+                            {t_page?.projectFeatures || (language === 'ar' ? 'مميزات المشروع' : 'Project Features')}
+                        </h2>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 max-w-5xl mx-auto">
-                            {project.features.map((feature, index) => {
-                                const IconComponent = iconMap[feature.icon] || BuildingIcon;
+                            {project.features.map((feature: any, index: number) => {
+                                const iconName = typeof feature === 'object' && feature !== null ? feature.icon : undefined;
+                                const IconComponent = (iconName && iconMap[iconName]) || BuildingIcon;
+                                const featureText = typeof feature === 'string'
+                                    ? feature
+                                    : (typeof feature?.text === 'object' && feature?.text !== null
+                                        ? (feature.text[language] || feature.text.en || feature.text.ar || '')
+                                        : (feature?.text || ''));
                                 return (
                                 <div key={index} className="text-center flex flex-col items-center">
                                     <div className="bg-amber-100 p-4 rounded-full mb-4">
                                         <IconComponent className="w-8 h-8 text-amber-500" />
                                     </div>
-                                    <p className="font-semibold text-gray-700">{feature.text[language]}</p>
+                                    <p className="font-semibold text-gray-700">{featureText}</p>
                                 </div>
                             )})}
                         </div>
@@ -195,14 +210,15 @@ const ProjectDetailsPage: React.FC = () => {
                 {/* Project Properties */}
                 <div className="mt-20">
                     <h2 className="text-3xl md:text-4xl font-bold text-center text-gray-900 mb-6">
-                        {t_page.availableUnits}
+                        {t_page?.availableUnits || (language === 'ar' ? 'الوحدات المتاحة' : 'Available Units')}
                     </h2>
                      {unitTypes.length > 2 && ( // Show filters only if there's more than one type
                         <div className="flex justify-center flex-wrap gap-3 mb-12">
                             {unitTypes.map((type: string) => {
+                                const propMatch = (projectProperties || []).find(p => p.type?.en === type);
                                 const typeName = type === 'all' 
-                                    ? t_page.allUnits 
-                                    : (projectProperties || []).find(p => p.type.en === type)?.type[language] || type;
+                                    ? (t_page?.allUnits || (language === 'ar' ? 'الكل' : 'All Units'))
+                                    : (propMatch?.type?.[language] || propMatch?.type?.en || type);
 
                                 return (
                                     <button

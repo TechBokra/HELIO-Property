@@ -46,7 +46,7 @@ const ProjectCard: React.FC<ProjectCardProps> = React.memo(({ project, developer
                             src={responsiveImage.src}
                             srcSet={responsiveImage.srcSet}
                             sizes="(max-width: 640px) 90vw, 100vw"
-                            alt={project.name[language]}
+                            alt={project.name?.[language] || project.name?.en || project.name?.ar || ''}
                             className="w-full h-64 object-cover disable-image-interaction"
                             onContextMenu={(e) => e.preventDefault()}
                             loading="lazy"
@@ -55,14 +55,19 @@ const ProjectCard: React.FC<ProjectCardProps> = React.memo(({ project, developer
                     </picture>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
                     <div className="absolute bottom-0 left-0 p-6">
-                        <h3 className="text-white text-2xl font-bold">{project.name[language]}</h3>
+                        <h3 className="text-white text-2xl font-bold">{project.name?.[language] || project.name?.en || project.name?.ar || ''}</h3>
                         {developer && (
-                            <p className="text-amber-300 text-sm">{t.propertyCard.by} {developer.name}</p>
+                            <p className="text-amber-300 text-sm">
+                                {t?.propertyCard?.by || (language === 'ar' ? 'بواسطة' : 'By')}{' '}
+                                {language === 'ar' && (developer as any).nameAr ? (developer as any).nameAr : developer.name}
+                            </p>
                         )}
                     </div>
                 </div>
                 <CardContent className="p-6 flex flex-col flex-grow">
-                    <p className="text-gray-600 text-sm flex-grow mb-4 line-clamp-3">{project.description[language]}</p>
+                    <p className="text-gray-600 text-sm flex-grow mb-4 line-clamp-3">
+                        {project.description?.[language] || project.description?.en || project.description?.ar || ''}
+                    </p>
                     <div className="border-t border-gray-200 pt-4 mt-auto flex justify-between items-center text-gray-500">
                         <div className="flex items-center gap-2">
                            <BuildingIcon className="w-5 h-5" />
