@@ -13,7 +13,7 @@ import {
     type MediaAsset,
     type MediaAssetStatus
 } from '../../../services/mediaLibrary';
-import { getCloudinarySettings, type CloudinaryConfig } from '../../../services/upload';
+import { getCloudinarySettings, uploadFile, type CloudinaryConfig } from '../../../services/upload';
 import { getOptimizedImageUrl } from '../../../utils/imageUtils';
 import { 
     CloudIcon, 
@@ -65,6 +65,43 @@ export const AdminMediaLibraryPage: React.FC = () => {
     const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
     const [assetToDelete, setAssetToDelete] = useState<MediaAsset | null>(null);
     const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        setIsUploading(true);
+        let successCount = 0;
+        try {
+            const trackedStr = localStorage.getItem('tracked_media_uploads') || '[]';
+            let tracked: string[] = [];
+            try { tracked = JSON.parse(trackedStr); } catch { tracked = []; }
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const uploadedUrl = await uploadFile(file);
+                if (uploadedUrl) {
+                    tracked.push(uploadedUrl);
+                    successCount++;
+                }
+            }
+            localStorage.setItem('tracked_media_uploads', JSON.stringify(tracked));
+            showToast(
+                language === 'ar' 
+                    ? `تم بنجاح رفع ${successCount} صورة إلى Cloudinary!` 
+                    : `Successfully uploaded ${successCount} image(s) to Cloudinary!`, 
+                'success'
+            );
+            await queryClient.invalidateQueries({ queryKey: ['adminMediaAssets'] });
+            await refetch();
+        } catch (err: any) {
+            showToast(err?.message || (language === 'ar' ? 'فشل رفع الصورة' : 'Failed to upload image'), 'error');
+        } finally {
+            setIsUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
 
     // Stats
     const stats = useMemo(() => computeMediaStats(assets), [assets]);
@@ -185,6 +222,25 @@ export const AdminMediaLibraryPage: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleFileUpload} 
+                        multiple 
+                        accept="image/*" 
+                        className="hidden" 
+                    />
+
+                    <Button
+                        variant="primary"
+                        onClick={() => fileInputRef.current?.click()}
+                        isLoading={isUploading}
+                        className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold shadow-sm"
+                    >
+                        <PhotoIcon className="w-4 h-4" />
+                        <span>{language === 'ar' ? 'رفع صور إلى Cloudinary' : 'Upload to Cloudinary'}</span>
+                    </Button>
+
                     <Button
                         variant="secondary"
                         onClick={() => refetch()}

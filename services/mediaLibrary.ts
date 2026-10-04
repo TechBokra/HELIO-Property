@@ -155,16 +155,20 @@ export const scanAllMediaAssets = async (): Promise<MediaAsset[]> => {
 
     // 1. Properties
     try {
-        const { data: properties } = await supabase
+        const { data: properties, error: propErr } = await supabase
             .from('properties')
-            .select('id, title_ar, title_en, main_image, gallery, listing_status, listing_end_date, created_at, reference_number');
+            .select('id, title_ar, title_en, main_image, gallery, listing_status, listing_end_date, created_at');
+
+        if (propErr) {
+            console.warn('Media scan: properties query error:', propErr);
+        }
 
         if (properties && Array.isArray(properties)) {
             properties.forEach(prop => {
                 const isSoldOrInactive = ['sold', 'rented', 'inactive', 'archived'].includes(prop.listing_status || '');
                 const hasExpiredDate = prop.listing_end_date ? new Date(prop.listing_end_date) < now : false;
                 const isExpired = isSoldOrInactive || hasExpiredDate;
-                const title = prop.title_ar || prop.title_en || `عقار ${prop.reference_number || prop.id.slice(0, 6)}`;
+                const title = prop.title_ar || prop.title_en || `عقار #${prop.id.slice(0, 6)}`;
 
                 const ref: MediaEntityReference = {
                     type: 'property',
@@ -198,18 +202,23 @@ export const scanAllMediaAssets = async (): Promise<MediaAsset[]> => {
 
     // 2. Projects
     try {
-        const { data: projects } = await supabase
+        const { data: projects, error: projErr } = await supabase
             .from('projects')
-            .select('id, title, image_url, created_at');
+            .select('id, name_ar, name_en, image_url, created_at');
+
+        if (projErr) {
+            console.warn('Media scan: projects query error:', projErr);
+        }
 
         if (projects && Array.isArray(projects)) {
             projects.forEach(proj => {
                 const asset = getOrCreateAsset(proj.image_url, proj.created_at);
                 if (asset) {
+                    const title = proj.name_ar || proj.name_en || 'مشروع سكني';
                     asset.usedIn.push({
                         type: 'project',
                         id: proj.id,
-                        title: `مشروع: ${proj.title || 'بدون اسم'}`,
+                        title: `مشروع: ${title}`,
                         isActive: true
                     });
                 }
@@ -221,18 +230,23 @@ export const scanAllMediaAssets = async (): Promise<MediaAsset[]> => {
 
     // 3. Partners
     try {
-        const { data: partners } = await supabase
+        const { data: partners, error: partErr } = await supabase
             .from('partners')
-            .select('id, name, logo_url, created_at');
+            .select('id, name_ar, name_en, image_url, created_at');
+
+        if (partErr) {
+            console.warn('Media scan: partners query error:', partErr);
+        }
 
         if (partners && Array.isArray(partners)) {
             partners.forEach(partner => {
-                const asset = getOrCreateAsset(partner.logo_url, partner.created_at);
+                const asset = getOrCreateAsset(partner.image_url, partner.created_at);
                 if (asset) {
+                    const name = partner.name_ar || partner.name_en || 'شريك المنصة';
                     asset.usedIn.push({
                         type: 'partner',
                         id: partner.id,
-                        title: `شريك: ${partner.name || 'بدون اسم'}`,
+                        title: `شريك: ${name}`,
                         isActive: true
                     });
                 }
@@ -244,18 +258,23 @@ export const scanAllMediaAssets = async (): Promise<MediaAsset[]> => {
 
     // 4. Portfolio Items
     try {
-        const { data: portfolioItems } = await supabase
+        const { data: portfolioItems, error: portErr } = await supabase
             .from('portfolio_items')
-            .select('id, title, image_src, created_at');
+            .select('id, title_ar, title_en, image_url, created_at');
+
+        if (portErr) {
+            console.warn('Media scan: portfolio items query error:', portErr);
+        }
 
         if (portfolioItems && Array.isArray(portfolioItems)) {
             portfolioItems.forEach(item => {
-                const asset = getOrCreateAsset(item.image_src, item.created_at);
+                const asset = getOrCreateAsset(item.image_url, item.created_at);
                 if (asset) {
+                    const title = item.title_ar || item.title_en || 'معرض أعمال';
                     asset.usedIn.push({
                         type: 'portfolio',
                         id: item.id,
-                        title: `سابقة أعمال: ${item.title || 'معرض أعمال'}`,
+                        title: `تشطيب وديكور: ${title}`,
                         isActive: true
                     });
                 }
@@ -265,9 +284,41 @@ export const scanAllMediaAssets = async (): Promise<MediaAsset[]> => {
         console.warn('Media scan: portfolio items query skipped/failed:', e);
     }
 
-    // 5. Site Content (Hero slides, banners, logo)
+    // 5. Banners (from site_content table)
     try {
-        const content = await getContent();
+        const { data: bannerData } = await supabase
+            .from('site_content')
+            .select('content')
+            .eq('key', 'banners')
+            .single();
+
+        if (bannerData?.content && Array.isArray(bannerData.content)) {
+            bannerData.content.forEach((b: any) => {
+                const img = b.imageUrl || b.image_url;
+                const asset = getOrCreateAsset(img);
+                if (asset) {
+                    asset.usedIn.push({
+                        type: 'banner',
+                        id: b.id || 'banner',
+                        title: `إعلان: ${b.title || 'إعلان ترويجي'}`,
+                        isActive: b.status !== 'inactive'
+                    });
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('Media scan: banners query skipped/failed:', e);
+    }
+
+    // 6. Site Content (Hero slides, logo, finishing services)
+    try {
+        const { data: mainContentData } = await supabase
+            .from('site_content')
+            .select('content')
+            .eq('key', 'main_content')
+            .single();
+
+        const content = mainContentData?.content;
         if (content) {
             if (content.logoUrl) {
                 const logoAsset = getOrCreateAsset(content.logoUrl);
@@ -275,24 +326,40 @@ export const scanAllMediaAssets = async (): Promise<MediaAsset[]> => {
                     logoAsset.usedIn.push({
                         type: 'content',
                         id: 'site_logo',
-                        title: 'شعار الموقع الرئيسي',
+                        title: 'شعار الموقع الرئيسي (Logo)',
                         isActive: true
                     });
                 }
             }
 
-            const heroImages = (content.hero as any)?.images || (content.hero as any)?.slides;
+            const heroImages = content.hero?.images || content.hero?.slides || content.hero?.backgroundImages;
             if (Array.isArray(heroImages)) {
                 heroImages.forEach((slide: any, idx: number) => {
-                    const src = typeof slide === 'string' ? slide : slide?.src;
+                    const src = typeof slide === 'string' ? slide : (slide?.src || slide?.imageUrl || slide?.url);
                     const slideAsset = getOrCreateAsset(src);
                     if (slideAsset) {
                         slideAsset.usedIn.push({
                             type: 'banner',
                             id: `hero_slide_${idx}`,
-                            title: `شريحة الواجهة الرئيسية #${idx + 1}`,
+                            title: `شريحة الهيرو الرئيسية #${idx + 1}`,
                             isActive: true
                         });
+                    }
+                });
+            }
+
+            if (Array.isArray(content.finishingServices)) {
+                content.finishingServices.forEach((serv: any, idx: number) => {
+                    if (serv.imageUrl) {
+                        const sAsset = getOrCreateAsset(serv.imageUrl);
+                        if (sAsset) {
+                            sAsset.usedIn.push({
+                                type: 'content',
+                                id: `finishing_serv_${serv.id || idx}`,
+                                title: `خدمة تشطيب: ${serv.title_ar || serv.title_en || 'باقة'}`,
+                                isActive: true
+                            });
+                        }
                     }
                 });
             }
@@ -456,7 +523,7 @@ export const unlinkMediaAssetFromEntities = async (asset: MediaAsset) => {
             } else if (ref.type === 'project') {
                 await supabase.from('projects').update({ image_url: null }).eq('id', ref.id);
             } else if (ref.type === 'partner') {
-                await supabase.from('partners').update({ logo_url: null }).eq('id', ref.id);
+                await supabase.from('partners').update({ image_url: null }).eq('id', ref.id);
             } else if (ref.type === 'portfolio') {
                 await supabase.from('portfolio_items').delete().eq('id', ref.id);
             }
