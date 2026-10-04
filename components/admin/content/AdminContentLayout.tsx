@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useOutletContext, Link } from 'react-router-dom';
 import { useForm, UseFormReturn } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getContent, updateContent } from '../../../services/content';
 import { useToast } from '../../shared/ToastContext';
 import { useLanguage } from '../../shared/LanguageContext';
@@ -15,7 +15,7 @@ import {
     QuoteIcon, 
     ChartBarIcon, 
     LocationMarkerIcon, 
-    PhoneIcon,
+    PhoneIcon, 
     GlobeAltIcon,
     CubeIcon,
     WrenchScrewdriverIcon,
@@ -34,6 +34,7 @@ const AdminContentLayout: React.FC = () => {
     const { language, t } = useLanguage();
     const t_content = t.adminDashboard.contentManagement;
     const { showToast } = useToast();
+    const queryClient = useQueryClient();
     const { data: initialContent, isLoading, refetch } = useQuery({ queryKey: ['siteContent'], queryFn: getContent });
     
     const formMethods = useForm<SiteContent>();
@@ -46,10 +47,22 @@ const AdminContentLayout: React.FC = () => {
     }, [initialContent, reset]);
     
     const onSubmit = async (data: SiteContent) => {
-        await updateContent(data as Partial<SiteContent>);
-        showToast('Site content updated successfully!', 'success');
-        await refetch();
-        reset(data); 
+        try {
+            const updated = await updateContent(data as Partial<SiteContent>);
+            queryClient.setQueryData(['siteContent'], updated);
+            await queryClient.invalidateQueries({ queryKey: ['siteContent'] });
+            showToast(
+                language === 'ar' 
+                    ? 'تم حفظ المحتوى بنجاح في قاعدة البيانات وتحديث الموقع مباشرة!' 
+                    : 'Site content updated successfully and live on site!', 
+                'success'
+            );
+            await refetch();
+            reset(updated); 
+        } catch (err: any) {
+            console.error('Failed to update content:', err);
+            showToast(language === 'ar' ? 'حدث خطأ أثناء حفظ المحتوى' : 'Failed to save site content', 'error');
+        }
     };
 
     const navGroups = [
@@ -107,7 +120,12 @@ const AdminContentLayout: React.FC = () => {
                     <p className="text-gray-500 dark:text-gray-400">{t_content.subtitle}</p>
                 </div>
                 <div className="flex items-center gap-4 mt-4 sm:mt-0">
-                     <Link to="/" className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-amber-600 transition-colors">
+                     <Link 
+                        to="/" 
+                        target="_self"
+                        className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-amber-600 transition-colors"
+                        title={language === 'ar' ? 'عرض الموقع في نفس الصفحة' : 'View Live Site'}
+                    >
                         <GlobeAltIcon className="w-4 h-4" />
                         {language === 'ar' ? 'عرض الموقع' : 'View Live Site'}
                     </Link>

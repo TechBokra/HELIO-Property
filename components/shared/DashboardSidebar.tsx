@@ -95,16 +95,39 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
     // @ts-ignore
     const partnerName = t.partnerInfo?.[user.id]?.name || user.name;
 
+    const GROUP_NAMES_AR: Record<string, string> = {
+        'Management': 'الإدارة والإحصائيات',
+        'Overview': 'نظرة عامة',
+        'Operations': 'العمليات والشركاء',
+        'Request Triage': 'معالجة الطلبات',
+        'Real Estate Market': 'سوق العقارات',
+        'Platform Operations': 'عمليات المنصة',
+        'Customer Relations': 'علاقات العملاء',
+        'Partner Relations': 'علاقات الشركاء',
+        'Content Management': 'إدارة المحتوى',
+        'Content & Listings': 'المحتوى والإعلانات',
+        'Content': 'إدارة المحتوى',
+        'System': 'النظام والإعدادات',
+        'Partner': 'لوحة الشريك'
+    };
+
     return (
         <div className="flex grow flex-col gap-y-5 overflow-y-auto overflow-x-hidden bg-white px-4 py-4 dashboard-sidebar scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent h-full">
              <div className={`flex h-16 shrink-0 items-center ${isCollapsed ? 'justify-center' : ''} transition-all duration-300`}>
-                <SiteIdentity 
-                    className={`text-amber-500 transition-all duration-300 ${isCollapsed ? 'scale-90' : ''}`}
-                    logoClassName="h-8 w-auto" 
-                    textClassName={`font-bold text-lg text-gray-800 whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-3'}`}
-                    showText={true}
-                    hideTextOnMobile={false}
-                />
+                <Link 
+                    to="/" 
+                    target="_self"
+                    className="hover:opacity-85 transition-opacity block group" 
+                    title={language === 'ar' ? 'الذهاب إلى الموقع الرئيسي' : 'Go to Main Website'}
+                >
+                    <SiteIdentity 
+                        className={`text-amber-500 transition-all duration-300 ${isCollapsed ? 'scale-90' : ''}`}
+                        logoClassName="h-8 w-auto" 
+                        textClassName={`font-bold text-lg text-gray-800 whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-3'}`}
+                        showText={true}
+                        hideTextOnMobile={false}
+                    />
+                </Link>
             </div>
             
             <nav className="flex flex-1 flex-col">
@@ -124,7 +147,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                     {linkGroups.map((group, index) => (
                          <li key={group.name}>
                             <div className={`text-xs font-bold leading-6 text-gray-400 px-2 uppercase tracking-wider mb-1 transition-all duration-300 whitespace-nowrap overflow-hidden ${isCollapsed ? 'h-0 opacity-0' : 'h-6 opacity-100'}`}>
-                                {group.name.replace(/([A-Z])/g, ' $1').trim()}
+                                {isRTL ? (GROUP_NAMES_AR[group.name] || group.name) : group.name.replace(/([A-Z])/g, ' $1').trim()}
                             </div>
                              {/* Separator line when collapsed to distinguish groups visually without text */}
                             {isCollapsed && <div className="h-px bg-gray-100 mx-2 my-2"></div>}

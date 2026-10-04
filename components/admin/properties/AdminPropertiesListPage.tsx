@@ -33,13 +33,15 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
     subtitle: propSubtitle,
     properties: propProperties,
     isLoading: propIsLoading,
-    hideFilters = [],
+    hideFilters,
 }) => {
     const { language, t } = useLanguage();
-    const t_admin = t.adminDashboard;
+    const t_admin = t?.adminDashboard || {};
     const { showToast } = useToast();
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
+
+    const safeHideFilters = useMemo(() => Array.isArray(hideFilters) ? hideFilters : [], [hideFilters]);
 
     const [selectedProperties, setSelectedProperties] = useState<string[]>([]);
     const [actionToConfirm, setActionToConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(null);
@@ -72,18 +74,27 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
         itemsPerPage: 10,
         initialSort: { key: 'listingStartDate', direction: 'descending' },
         initialFilters,
-        searchFn: (item: Property, term) => 
-            (item.title?.en?.toLowerCase().includes(term) || false) || 
-            (item.title?.ar?.includes(term) || false) ||
-            (item.partnerName?.toLowerCase().includes(term) || false) ||
-            (item.referenceNumber?.toLowerCase().includes(term) || false) ||
-            (item.id?.toLowerCase().includes(term) || false),
+        searchFn: (item: Property, term) => {
+            if (!item) return false;
+            const titleEn = item.title?.en ? String(item.title.en).toLowerCase() : '';
+            const titleAr = item.title?.ar ? String(item.title.ar).toLowerCase() : '';
+            const partnerName = item.partnerName ? String(item.partnerName).toLowerCase() : '';
+            const refNumber = item.referenceNumber ? String(item.referenceNumber).toLowerCase() : '';
+            const id = item.id ? String(item.id).toLowerCase() : '';
+            return (
+                titleEn.includes(term) ||
+                titleAr.includes(term) ||
+                partnerName.includes(term) ||
+                refNumber.includes(term) ||
+                id.includes(term)
+            );
+        },
         filterFns: {
-            status: (item: Property, value: string) => item.listingStatus === value,
-            type: (item: Property, value: string) => item.type.en === value,
-            finishing: (item: Property, value: string) => item.finishingStatus?.en === value,
-            verification: (item: Property, value: string) => item.verificationStatus === value,
-            availability: (item: Property, value: string) => (item.availabilityStatus || 'available') === value,
+            status: (item: Property, value: string) => item?.listingStatus === value,
+            type: (item: Property, value: string) => (item?.type?.en || '') === value,
+            finishing: (item: Property, value: string) => (item?.finishingStatus?.en || '') === value,
+            verification: (item: Property, value: string) => item?.verificationStatus === value,
+            availability: (item: Property, value: string) => (item?.availabilityStatus || 'available') === value,
         },
     });
 
@@ -185,11 +196,11 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
                         <TableHead>{t.dashboard.propertyTable.title}</TableHead>
                         <TableHead>{t.propertiesPage.typeLabel}</TableHead>
                         <TableHead>{language === 'ar' ? 'السعر والتحديث' : 'Price & Updated'}</TableHead>
-                        {!hideFilters.includes('partner') && <TableHead>{t_admin.propertyTable.partner}</TableHead>}
+                        {!safeHideFilters.includes('partner') && <TableHead>{t_admin.propertyTable?.partner || 'Partner'}</TableHead>}
                         <TableHead>{language === 'ar' ? 'التوثيق' : 'Verification'}</TableHead>
                         <TableHead>{language === 'ar' ? 'الإتاحة' : 'Availability'}</TableHead>
-                        <TableHead>{t_admin.propertyTable.liveStatus}</TableHead>
-                        <TableHead>{t_admin.propertyTable.actions}</TableHead>
+                        <TableHead>{t_admin.propertyTable?.liveStatus || 'Status'}</TableHead>
+                        <TableHead>{t_admin.propertyTable?.actions || 'Actions'}</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -208,24 +219,24 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
                                 </TableCell>
                                 <TableCell><img src={prop.imageUrl} alt="" className="w-14 h-14 object-cover rounded-md" /></TableCell>
                                 <TableCell className="font-medium text-gray-900 dark:text-white max-w-xs">
-                                    <div className="truncate">{prop.title[language]}</div>
+                                    <div className="truncate">{prop.title?.[language] || prop.title?.en || prop.title?.ar || ''}</div>
                                     {prop.projectName && (
                                         <span className="text-xs text-amber-600 dark:text-amber-400 block truncate">
-                                            {prop.projectName[language]}
+                                            {prop.projectName[language] || prop.projectName.en || prop.projectName.ar || ''}
                                         </span>
                                     )}
                                     {prop.listingStatus === 'draft' && <span className="block text-xs text-amber-600 font-normal">(Draft / Pending Review)</span>}
                                 </TableCell>
-                                <TableCell className="text-xs whitespace-nowrap">{prop.type[language]}</TableCell>
+                                <TableCell className="text-xs whitespace-nowrap">{prop.type?.[language] || prop.type?.en || ''}</TableCell>
                                 <TableCell className="whitespace-nowrap">
-                                    <div className="font-semibold text-sm text-gray-900 dark:text-white">{prop.price[language]}</div>
+                                    <div className="font-semibold text-sm text-gray-900 dark:text-white">{prop.price?.[language] || prop.price?.en || ''}</div>
                                     {prop.priceUpdatedAt && (
                                         <div className="text-[10px] text-gray-400" title={prop.priceUpdatedAt}>
                                             {language === 'ar' ? 'محدث' : 'Updated'}: {new Date(prop.priceUpdatedAt).toLocaleDateString()}
                                         </div>
                                     )}
                                 </TableCell>
-                                {!hideFilters.includes('partner') && <TableCell className="text-xs">{prop.partnerName || '-'}</TableCell>}
+                                {!safeHideFilters.includes('partner') && <TableCell className="text-xs">{prop.partnerName || '-'}</TableCell>}
                                 <TableCell>
                                     <button
                                         type="button"
@@ -376,7 +387,7 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
             </div>
 
             <div className="mb-4 flex flex-wrap gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                {!hideFilters.includes('search') && <Input placeholder={t_admin.filter.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm"/>}
+                {!safeHideFilters.includes('search') && <Input placeholder={t_admin.filter?.search || 'Search...'} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm"/>}
                 
                 <Select value={filters.status || 'all'} onChange={(e) => updateUrlFilter('status', e.target.value)} className="max-w-xs">
                     <option value="all">All Publication Statuses</option>

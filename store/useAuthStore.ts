@@ -276,18 +276,18 @@ export const useAuthStore = create<AuthState>()(
                     return true;
                 }
                 
-                if (user.customPermissions && user.customPermissions.length > 0) {
+                if (user.customPermissions && Array.isArray(user.customPermissions) && user.customPermissions.length > 0) {
                     return user.customPermissions.includes(permission);
                 }
 
-                return state.permissions.includes(permission);
+                return Array.isArray(state.permissions) ? state.permissions.includes(permission) : false;
             },
 
             setCurrentUser: (user: Partner | null) => {
                 if (user) {
                     const resolvedRole = mapPartnerTypeToRole(user.type, user.role, user.email);
                     const permissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                    set({ currentUser: { ...user, role: resolvedRole }, permissions });
+                    set({ currentUser: { ...user, role: resolvedRole }, permissions: permissions || [] });
                 } else {
                     set({ currentUser: null, permissions: [] });
                 }
@@ -298,15 +298,20 @@ export const useAuthStore = create<AuthState>()(
             storage: createJSONStorage(() => localStorage),
             partialize: (state) => ({ currentUser: state.currentUser, permissions: state.permissions }),
             onRehydrateStorage: () => (state) => {
-                if (state && state.currentUser) {
-                    const resolvedRole = mapPartnerTypeToRole(
-                        state.currentUser.type,
-                        state.currentUser.role,
-                        state.currentUser.email
-                    );
-                    const permissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                    state.currentUser = { ...state.currentUser, role: resolvedRole };
-                    state.permissions = permissions;
+                if (state) {
+                    if (!Array.isArray(state.permissions)) {
+                        state.permissions = [];
+                    }
+                    if (state.currentUser) {
+                        const resolvedRole = mapPartnerTypeToRole(
+                            state.currentUser.type,
+                            state.currentUser.role,
+                            state.currentUser.email
+                        );
+                        const permissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
+                        state.currentUser = { ...state.currentUser, role: resolvedRole };
+                        state.permissions = permissions || [];
+                    }
                 }
             }
         }

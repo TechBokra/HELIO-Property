@@ -62,7 +62,7 @@ export const Header = memo<HeaderProps>(({
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm border-b border-gray-200">
             <div className="container mx-auto px-6">
                 <div className="flex justify-between items-center h-16 lg:h-20">
-                    <Link to="/" className="text-amber-500 hover:opacity-80 transition-opacity">
+                    <Link to="/" target="_self" className="text-amber-500 hover:opacity-80 transition-opacity" title={language === 'ar' ? 'الرئيسية' : 'Home'}>
                         <SiteIdentity />
                     </Link>
 

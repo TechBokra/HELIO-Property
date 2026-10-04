@@ -8,7 +8,7 @@ import AdminPropertiesListPage from '../properties/AdminPropertiesListPage';
 
 const AdminPlatformPropertiesPage: React.FC = () => {
     const { language, t } = useLanguage();
-    const t_admin = t.adminDashboard;
+    const t_admin = t?.adminDashboard;
 
     const { data: allProperties, isLoading } = useQuery({ 
         queryKey: ['allPropertiesAdmin'], 
@@ -16,13 +16,23 @@ const AdminPlatformPropertiesPage: React.FC = () => {
     });
 
     const platformProperties = useMemo(() => {
+        if (!Array.isArray(allProperties)) return [];
         // Sort by creation/listing date desc so new drafts appear top
-        return (allProperties || [])
-            .filter(p => 
-                p.partnerId === 'individual-listings' || 
-                p.partnerId === 'admin-user' ||
-                p.partnerId.includes('platform') 
-            )
+        return allProperties
+            .filter(p => {
+                if (!p) return false;
+                const partnerId = (p.partnerId != null ? String(p.partnerId) : '').toLowerCase();
+                const anyP = p as any;
+                const source = (anyP.source != null ? String(anyP.source) : '').toLowerCase();
+                return (
+                    partnerId === 'individual-listings' || 
+                    partnerId === 'admin-user' ||
+                    (partnerId.length > 0 && partnerId.includes('platform')) ||
+                    anyP.isPlatformOwned === true ||
+                    source === 'individual' ||
+                    (source.length > 0 && source.includes('platform'))
+                );
+            })
             // Ensure drafts come first or respect default sort
             .sort((a, b) => {
                 if (a.listingStatus === 'draft' && b.listingStatus !== 'draft') return -1;
@@ -37,7 +47,7 @@ const AdminPlatformPropertiesPage: React.FC = () => {
 
     return (
         <AdminPropertiesListPage
-            title={t_admin.nav.platformProperties}
+            title={t_admin?.nav?.platformProperties || (language === 'ar' ? 'عقارات المنصة' : 'Platform Properties')}
             subtitle={subtitle}
             properties={platformProperties}
             isLoading={isLoading}

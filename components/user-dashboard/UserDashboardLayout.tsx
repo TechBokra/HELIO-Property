@@ -64,7 +64,9 @@ const UserDashboardLayout = () => {
 
                             <Link 
                                 to="/" 
+                                target="_self"
                                 className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-amber-600 transition-colors"
+                                title={language === 'ar' ? 'عرض الموقع في نفس الصفحة' : 'View Site'}
                             >
                                 <GlobeAltIcon className="h-6 w-6" />
                                 <span className="hidden md:inline">{language === 'ar' ? 'الموقع' : 'View Site'}</span>

@@ -67,9 +67,12 @@ export const updateContent = async (updates: Partial<SiteContent>): Promise<Site
     const current = await getContent();
     const newContent = { ...current, ...updates };
 
-    // 1. Save to localStorage for instant local availability
+    // 1. Save to localStorage for instant local availability and broadcast event
     try {
         localStorage.setItem(CONTENT_STORAGE_KEY, JSON.stringify(newContent));
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('onlyhelio_content_updated', { detail: newContent }));
+        }
     } catch (e) {}
 
     // 2. Save to persistent server API

@@ -49,7 +49,15 @@ const UserSidebar = ({ user, onLogout, isOpen, setIsOpen }: UserSidebarProps) =>
                         </div>
                         
                         <div className="flex flex-shrink-0 items-center px-4">
-                            <SiteIdentity className="text-amber-500" logoClassName="h-8 w-auto" />
+                            <Link 
+                                to="/" 
+                                target="_self" 
+                                onClick={() => setIsOpen(false)}
+                                className="hover:opacity-85 transition-opacity block group"
+                                title={language === 'ar' ? 'الذهاب إلى الموقع الرئيسي' : 'Go to Main Website'}
+                            >
+                                <SiteIdentity className="text-amber-500" logoClassName="h-8 w-auto" />
+                            </Link>
                         </div>
                         <div className="mt-5 h-0 flex-1 overflow-y-auto">
                             {isAdmin && (
@@ -93,7 +101,14 @@ const UserSidebar = ({ user, onLogout, isOpen, setIsOpen }: UserSidebarProps) =>
             <div className="hidden lg:fixed lg:inset-y-0 lg:z-40 lg:flex lg:w-72 lg:flex-col">
                 <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white shadow-sm">
                     <div className="flex h-16 flex-shrink-0 items-center px-6 border-b border-gray-100">
-                        <SiteIdentity className="text-amber-500" logoClassName="h-8 w-auto" />
+                        <Link 
+                            to="/" 
+                            target="_self"
+                            className="hover:opacity-85 transition-opacity block group"
+                            title={language === 'ar' ? 'الذهاب إلى الموقع الرئيسي' : 'Go to Main Website'}
+                        >
+                            <SiteIdentity className="text-amber-500" logoClassName="h-8 w-auto" />
+                        </Link>
                     </div>
                     <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
                          <div className="flex flex-col items-center px-4 mb-6">

@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { DecorationCategory } from '../types';
+import { decorationCategoriesData } from '../data/decorationCategories';
 
 // Helper to map DB row to DecorationCategory
 const mapCategoryFromDb = (row: any): DecorationCategory => ({
@@ -9,22 +10,26 @@ const mapCategoryFromDb = (row: any): DecorationCategory => ({
 });
 
 export const getDecorationCategories = async (): Promise<DecorationCategory[]> => {
-    const { data, error } = await supabase
-        .from('decoration_categories')
-        .select('*')
-        .order('display_order', { ascending: true })
-        .order('created_at', { ascending: true });
+    try {
+        const { data, error } = await supabase
+            .from('decoration_categories')
+            .select('*')
+            .order('created_at', { ascending: true });
 
-    if (error) {
-        console.error('Error fetching decoration categories from Supabase:', error);
-        throw new Error(`Failed to load decoration categories: ${error.message}`);
+        if (error) {
+            console.warn('Error fetching decoration categories from Supabase, falling back to static data:', error.message);
+            return decorationCategoriesData;
+        }
+
+        if (!data || data.length === 0) {
+            return decorationCategoriesData;
+        }
+
+        return data.map(mapCategoryFromDb);
+    } catch (err: any) {
+        console.warn('Exception loading decoration categories, using fallback:', err?.message);
+        return decorationCategoriesData;
     }
-
-    if (!data || data.length === 0) {
-        return [];
-    }
-
-    return data.map(mapCategoryFromDb);
 };
 
 export const addDecorationCategory = async (category: Omit<DecorationCategory, 'id'>): Promise<DecorationCategory> => {

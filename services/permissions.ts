@@ -47,6 +47,16 @@ export const getRolePermissions = async (): Promise<Map<Role, Permission[]>> => 
         } catch (e) {}
     }
 
+    const normalizeRole = (r: any): Role => {
+        const s = String(r || '').trim().toLowerCase();
+        if (s === 'developer' || s === 'developer_partner') return Role.DEVELOPER_PARTNER;
+        if (s === 'finishing' || s === 'finishing_partner') return Role.FINISHING_PARTNER;
+        if (s === 'agency' || s === 'agency_partner') return Role.AGENCY_PARTNER;
+        if (s === 'super_admin' || s === 'admin' || s === 'system_admin') return Role.SUPER_ADMIN;
+        if (s === 'customer') return Role.CUSTOMER;
+        return r as Role;
+    };
+
     // Initialize map with all roles from code defaults
     const permissionsMap = new Map<Role, Permission[]>();
     initialRolePermissions.forEach((perms, role) => {
@@ -56,7 +66,8 @@ export const getRolePermissions = async (): Promise<Map<Role, Permission[]>> => 
     // Overwrite with persistent data
     permissionsArray.forEach((p) => {
         if (p?.role && Array.isArray(p.permissions)) {
-            permissionsMap.set(p.role, p.permissions);
+            const canonicalRole = normalizeRole(p.role);
+            permissionsMap.set(canonicalRole, p.permissions);
         }
     });
 

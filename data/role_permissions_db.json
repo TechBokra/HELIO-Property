@@ -1,0 +1,171 @@
+[
+  {
+    "role": "super_admin",
+    "permissions": [
+      "view_admin_dashboard",
+      "view_partner_dashboard",
+      "view_customer_dashboard",
+      "manage_users",
+      "manage_roles_permissions",
+      "manage_settings",
+      "manage_forms",
+      "manage_automation",
+      "manage_banners",
+      "manage_site_content",
+      "manage_filters",
+      "manage_all_partners",
+      "manage_partner_requests",
+      "manage_inquiry_routing",
+      "manage_plans",
+      "manage_all_properties",
+      "manage_platform_properties",
+      "manage_platform_property_leads",
+      "manage_market_properties",
+      "manage_property_requests",
+      "manage_property_inquiries",
+      "manage_contact_requests",
+      "manage_all_projects",
+      "manage_decorations_content",
+      "manage_decorations_leads",
+      "manage_platform_finishing_packages",
+      "manage_platform_finishing_leads",
+      "manage_finishing_partners",
+      "manage_own_profile",
+      "manage_own_projects",
+      "manage_own_properties",
+      "manage_own_portfolio",
+      "manage_own_subscription",
+      "view_own_leads",
+      "manage_team"
+    ]
+  },
+  {
+    "role": "developer_partner",
+    "permissions": [
+      "view_partner_dashboard",
+      "manage_own_profile",
+      "manage_own_projects",
+      "view_own_leads",
+      "manage_own_subscription",
+      "manage_own_properties",
+      "manage_team"
+    ]
+  },
+  {
+    "role": "finishing_partner",
+    "permissions": [
+      "view_partner_dashboard",
+      "manage_own_profile",
+      "manage_own_portfolio",
+      "view_own_leads",
+      "manage_own_subscription",
+      "manage_team"
+    ]
+  },
+  {
+    "role": "agency_partner",
+    "permissions": [
+      "view_partner_dashboard",
+      "manage_own_profile",
+      "manage_own_properties",
+      "view_own_leads",
+      "manage_own_subscription",
+      "manage_team"
+    ]
+  },
+  {
+    "role": "customer",
+    "permissions": [
+      "view_customer_dashboard",
+      "manage_own_profile"
+    ]
+  },
+  {
+    "role": "decoration_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_decorations_content",
+      "manage_decorations_leads"
+    ]
+  },
+  {
+    "role": "platform_finishing_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_platform_finishing_packages",
+      "manage_platform_finishing_leads"
+    ]
+  },
+  {
+    "role": "finishing_market_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_finishing_partners",
+      "manage_partner_requests"
+    ]
+  },
+  {
+    "role": "platform_real_estate_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_platform_properties",
+      "manage_platform_property_leads",
+      "manage_property_requests"
+    ]
+  },
+  {
+    "role": "real_estate_market_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_market_properties",
+      "manage_all_projects",
+      "manage_property_inquiries"
+    ]
+  },
+  {
+    "role": "partner_relations_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_all_partners",
+      "manage_partner_requests",
+      "manage_inquiry_routing",
+      "manage_plans",
+      "manage_automation"
+    ]
+  },
+  {
+    "role": "content_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_banners",
+      "manage_site_content",
+      "manage_filters",
+      "manage_settings",
+      "manage_forms"
+    ]
+  },
+  {
+    "role": "service_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_finishing_partners",
+      "manage_decorations_leads"
+    ]
+  },
+  {
+    "role": "customer_relations_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_property_requests",
+      "manage_property_inquiries",
+      "manage_contact_requests"
+    ]
+  },
+  {
+    "role": "listings_manager",
+    "permissions": [
+      "view_admin_dashboard",
+      "manage_all_properties"
+    ]
+  }
+]
