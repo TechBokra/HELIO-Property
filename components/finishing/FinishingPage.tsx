@@ -265,14 +265,24 @@ const FinishingPage: React.FC = () => {
     const linkedPropertyType = rawType.includes('villa') || rawType.includes('فيلا') || rawType.includes('townhouse') || rawType.includes('twin') ? 'villa' : 'apartment';
 
     // Load canonical services from Supabase
-    const { data: services = [], isLoading: isLoadingServices } = useQuery({
+    const { 
+        data: services = [], 
+        isLoading: isLoadingServices,
+        isError: isServicesError,
+        refetch: refetchServices
+    } = useQuery({
         queryKey: ['canonicalFinishingServices'],
         queryFn: getFinishingServices,
         staleTime: 60000
     });
 
     // Load verified finishing partners from Supabase
-    const { data: partners = [], isLoading: isLoadingPartners } = useQuery({
+    const { 
+        data: partners = [], 
+        isLoading: isLoadingPartners,
+        isError: isPartnersError,
+        refetch: refetchPartners
+    } = useQuery({
         queryKey: ['finishingPartnersSupabase'],
         queryFn: getFinishingPartners,
         staleTime: 60000
@@ -440,7 +450,24 @@ const FinishingPage: React.FC = () => {
             <BannerDisplay location="finishing" />
 
             {/* Canonical Finishing Packages Section (Tabbed) */}
-            {services.length > 0 && (
+            {isServicesError && services.length === 0 ? (
+                <section className="py-16 text-center">
+                    <div className="container mx-auto px-6 max-w-lg bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 shadow-sm">
+                        <p className="text-gray-800 dark:text-gray-200 font-semibold mb-2">
+                            {language === 'ar' ? 'تعذر تحميل خدمات التشطيب المعتمدة' : 'Failed to load finishing services'}
+                        </p>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+                            {language === 'ar' ? 'يرجى التحقق من الاتصال وإعادة المحاولة.' : 'Please check your connection and try again.'}
+                        </p>
+                        <button
+                            onClick={() => refetchServices()}
+                            className="px-6 py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-600 transition-colors text-sm"
+                        >
+                            {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                        </button>
+                    </div>
+                </section>
+            ) : services.length > 0 && (
                 <section className="py-16 md:py-20">
                     <div className="container mx-auto px-6">
                         <div className="text-center mb-10 max-w-3xl mx-auto">

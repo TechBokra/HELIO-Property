@@ -13,8 +13,11 @@ export const invalidateContentCache = () => {
     inFlightContentPromise = null;
 };
 
-// Known Cloudinary CDN replacement for large legacy base64 hero slides
+// Known Cloudinary CDN replacement for large legacy base64 slides and assets
 const HELIOPOLIS_GATE_CDN = 'https://res.cloudinary.com/dwg0hr34g/image/upload/v1791191021/onlyhelio_content/asjvgr1hpcl2ewiff1oh.jpg';
+const WHY_HELIOPOLIS_CDN_0 = 'https://res.cloudinary.com/dwg0hr34g/image/upload/v1791191815/onlyhelio_content/i06vyzy64ogqaa4nnt1m.jpg';
+const WHY_HELIOPOLIS_CDN_1 = 'https://res.cloudinary.com/dwg0hr34g/image/upload/v1791191816/onlyhelio_content/n0vlochxlqhbhsgmcb9d.jpg';
+const LOGO_CDN = 'https://res.cloudinary.com/dwg0hr34g/image/upload/v1791191828/onlyhelio_content/rpw2wpht2j1ktsear2dz.jpg';
 
 /**
  * Sanitizes large base64 data URIs in content to prevent megabyte-scale payload overhead
@@ -33,6 +36,26 @@ const sanitizeContentPayload = (content: any): any => {
             }
             return img;
         });
+    }
+
+    // Sanitize whyNewHeliopolis images if they contain huge data URIs
+    if (content.whyNewHeliopolis?.images && Array.isArray(content.whyNewHeliopolis.images)) {
+        const cdnList = [WHY_HELIOPOLIS_CDN_0, WHY_HELIOPOLIS_CDN_1];
+        content.whyNewHeliopolis.images = content.whyNewHeliopolis.images.map((img: any, idx: number) => {
+            const fallbackCdn = cdnList[idx % cdnList.length];
+            if (typeof img === 'string') {
+                return img.startsWith('data:') ? fallbackCdn : img;
+            }
+            if (img && typeof img === 'object' && typeof img.src === 'string' && img.src.startsWith('data:')) {
+                return { ...img, src: fallbackCdn };
+            }
+            return img;
+        });
+    }
+
+    // Sanitize logoUrl if it contains data URI
+    if (typeof content.logoUrl === 'string' && content.logoUrl.startsWith('data:')) {
+        content.logoUrl = LOGO_CDN;
     }
 
     return content;

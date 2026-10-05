@@ -33,10 +33,15 @@ export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
 
     const resolvedRole = mapPartnerTypeToRole(row.type, row.role, row.email);
 
+    const ADMIN_AVATAR_CDN = 'https://res.cloudinary.com/dwg0hr34g/image/upload/v1791191962/onlyhelio_partners/eegvag9kenl9efztmbhi.png';
+    const resolvedImageUrl = (typeof row.image_url === 'string' && row.image_url.startsWith('data:'))
+        ? ADMIN_AVATAR_CDN
+        : row.image_url || (resolvedRole === Role.SUPER_ADMIN ? 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=400&auto=format&fit=crop' : 'https://via.placeholder.com/150');
+
     return {
         id: row.id,
         email: row.email,
-        imageUrl: row.image_url || (resolvedRole === Role.SUPER_ADMIN ? 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=400&auto=format&fit=crop' : 'https://via.placeholder.com/150'),
+        imageUrl: resolvedImageUrl,
         type: row.type || (resolvedRole === Role.SUPER_ADMIN ? 'admin' : 'customer'),
         status: row.status || 'active',
         subscriptionPlan: row.subscription_plan || (resolvedRole === Role.SUPER_ADMIN ? 'enterprise' : 'basic'),
