@@ -1969,6 +1969,61 @@ FOR DELETE TO authenticated USING (
     )
 );
 
+-- ============================================================================
+-- P1.1: Analytics Events Telemetry Log (Conversion & High-Intent Tracking)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.analytics_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type TEXT NOT NULL,
+    property_id UUID REFERENCES public.properties(id) ON DELETE SET NULL,
+    partner_id UUID REFERENCES public.partners(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    session_id TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_event_type ON public.analytics_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_property_id ON public.analytics_events(property_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_partner_id ON public.analytics_events(partner_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON public.analytics_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session ON public.analytics_events(session_id);
+
+ALTER TABLE public.analytics_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone can record analytics events" ON public.analytics_events;
+CREATE POLICY "Anyone can record analytics events" ON public.analytics_events
+    FOR INSERT
+    TO public
+    WITH CHECK (
+        event_type IN (
+            'whatsapp_click',
+            'call_click',
+            'property_view',
+            'property_inquiry',
+            'finishing_service_view',
+            'finishing_request',
+            'share_click'
+        )
+    );
+
+DROP POLICY IF EXISTS "Admins and managers can view analytics events" ON public.analytics_events;
+CREATE POLICY "Admins and managers can view analytics events" ON public.analytics_events
+    FOR SELECT
+    TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.partners
+            WHERE partners.id = auth.uid()
+            AND (
+                partners.role = 'super_admin'
+                OR partners.role LIKE '%_manager'
+                OR partners.type = 'admin'
+            )
+        )
+    );
+
+
 
 
 

@@ -41,10 +41,24 @@ const saveLocalEvent = (event: AnalyticsEvent) => {
     }
 };
 
+const getSessionId = (): string => {
+    try {
+        let sid = sessionStorage.getItem('onlyhelio_session_id');
+        if (!sid) {
+            sid = 'sid_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now();
+            sessionStorage.setItem('onlyhelio_session_id', sid);
+        }
+        return sid;
+    } catch {
+        return 'anonymous_session';
+    }
+};
+
 export const trackEvent = async (
     eventType: AnalyticsEventType, 
     data: { propertyId?: string; partnerId?: string; metadata?: Record<string, any> } = {}
 ) => {
+    const sessionId = getSessionId();
     const event: AnalyticsEvent = {
         eventType,
         propertyId: data.propertyId,
@@ -58,20 +72,25 @@ export const trackEvent = async (
         createdAt: new Date().toISOString(),
     };
 
-    // Save locally first for instant metrics
+    // Client-side instant buffer (non-authoritative)
     saveLocalEvent(event);
 
-    // Persist to Supabase if available
+    // Primary: Persist to Supabase analytics_events table
     try {
-        await supabase.from('analytics_events').insert({
+        const { error } = await supabase.from('analytics_events').insert({
             event_type: event.eventType,
-            property_id: event.propertyId,
-            partner_id: event.partnerId,
+            property_id: event.propertyId || null,
+            partner_id: event.partnerId || null,
+            session_id: sessionId,
             metadata: event.metadata,
             created_at: event.createdAt,
         });
-    } catch {
-        // Fallback silently if table or network is unavailable
+
+        if (error) {
+            console.warn('Analytics event Supabase insert warning:', error.message);
+        }
+    } catch (err: any) {
+        console.warn('Analytics event insert failed (non-blocking):', err?.message);
     }
 };
 
@@ -91,6 +110,41 @@ export const trackInquirySubmit = (propertyId: string, partnerId?: string) => {
     trackEvent('inquiry_submit', { propertyId, partnerId });
 };
 
+export interface AnalyticsCounts {
+    whatsAppClicks: number;
+    callClicks: number;
+    propertyViews: number;
+    inquirySubmits: number;
+}
+
+export const getAnalyticsEventCounts = async (): Promise<AnalyticsCounts> => {
+    try {
+        const { data, error } = await supabase
+            .from('analytics_events')
+            .select('event_type');
+
+        if (!error && Array.isArray(data)) {
+            return {
+                whatsAppClicks: data.filter(e => e.event_type === 'whatsapp_click').length,
+                callClicks: data.filter(e => e.event_type === 'call_click').length,
+                propertyViews: data.filter(e => e.event_type === 'property_view').length,
+                inquirySubmits: data.filter(e => e.event_type === 'inquiry_submit' || e.event_type === 'property_inquiry').length
+            };
+        }
+    } catch (err) {
+        console.warn('Failed to query analytics_events table:', err);
+    }
+
+    // Graceful fallback to client events buffer
+    const local = getLocalEvents();
+    return {
+        whatsAppClicks: local.filter(e => e.eventType === 'whatsapp_click').length,
+        callClicks: local.filter(e => e.eventType === 'call_click').length,
+        propertyViews: local.filter(e => e.eventType === 'property_view').length,
+        inquirySubmits: local.filter(e => e.eventType === 'inquiry_submit').length
+    };
+};
+
 export interface CommercialKPIs {
     totalListings: number;
     activeListings: number;
@@ -107,20 +161,31 @@ export interface CommercialKPIs {
 export const getCommercialKPIs = (
     properties: any[] = [], 
     leads: any[] = [], 
-    partners: any[] = []
+    partners: any[] = [],
+    serverCounts?: AnalyticsCounts
 ): CommercialKPIs => {
-    const events = getLocalEvents();
-    const whatsAppClicks = events.filter(e => e.eventType === 'whatsapp_click').length;
-    const callClicks = events.filter(e => e.eventType === 'call_click').length;
-    const propertyViews = events.filter(e => e.eventType === 'property_view').length;
+    const localEvents = getLocalEvents();
+    
+    // Server counts are authoritative if provided
+    const whatsAppClicks = serverCounts 
+        ? serverCounts.whatsAppClicks 
+        : localEvents.filter(e => e.eventType === 'whatsapp_click').length;
+        
+    const callClicks = serverCounts 
+        ? serverCounts.callClicks 
+        : localEvents.filter(e => e.eventType === 'call_click').length;
+        
+    const propertyViews = serverCounts 
+        ? serverCounts.propertyViews 
+        : localEvents.filter(e => e.eventType === 'property_view').length;
 
     const totalListings = properties.length;
-    const activeListings = properties.filter(p => p.listingStatus === 'active').length;
+    const activeListings = properties.filter(p => p.listingStatus === 'active' || p.status?.en === 'For Sale' || p.status?.en === 'For Rent').length;
     const newLeadsCount = leads.length;
 
-    const contactedLeads = leads.filter(l => l.status === 'contacted' || l.status === 'site-visit' || l.status === 'quoted' || l.status === 'completed');
+    const contactedLeads = leads.filter(l => l.status === 'contacted' || l.status === 'site-visit' || l.status === 'quoted' || l.status === 'completed' || l.status === 'in-progress');
     const viewingLeads = leads.filter(l => l.status === 'site-visit' || l.status === 'completed');
-    const wonLeads = leads.filter(l => l.status === 'completed' || (l as any).leadQuality === 'won');
+    const wonLeads = leads.filter(l => l.status === 'completed' || l.status === 'closed' || (l as any).leadQuality === 'won');
 
     const contactedRate = newLeadsCount > 0 ? Math.round((contactedLeads.length / newLeadsCount) * 100) : 0;
     const viewingRate = newLeadsCount > 0 ? Math.round((viewingLeads.length / newLeadsCount) * 100) : 0;

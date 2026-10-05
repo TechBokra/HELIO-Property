@@ -49,11 +49,13 @@ export const parseCloudinaryUrl = (url: string) => {
         const cleanName = rawFilename.split('?')[0];
         const dotIdx = cleanName.lastIndexOf('.');
         const ext = dotIdx > -1 ? cleanName.substring(dotIdx + 1) : 'jpg';
+        const baseName = dotIdx > -1 ? cleanName.substring(0, dotIdx) : cleanName;
+        const filename = baseName || (rawFilename.startsWith('?') ? 'avatar_image' : 'external_image');
         return {
             isCloudinary: false,
-            publicId: cleanName,
+            publicId: filename,
             folder: 'external',
-            filename: cleanName,
+            filename,
             format: ext
         };
     }
@@ -186,14 +188,23 @@ export const scanAllMediaAssets = async (): Promise<MediaAsset[]> => {
                 }
 
                 // Gallery Images
+                let galleryList: any[] = [];
                 if (Array.isArray(prop.gallery)) {
-                    prop.gallery.forEach(imgUrl => {
-                        const galAsset = getOrCreateAsset(imgUrl, prop.created_at);
-                        if (galAsset && !galAsset.usedIn.some(u => u.id === prop.id && u.type === 'property')) {
-                            galAsset.usedIn.push(ref);
-                        }
-                    });
+                    galleryList = prop.gallery;
+                } else if (typeof prop.gallery === 'string') {
+                    try {
+                        const parsed = JSON.parse(prop.gallery);
+                        if (Array.isArray(parsed)) galleryList = parsed;
+                    } catch {
+                        if (prop.gallery.startsWith('http')) galleryList = [prop.gallery];
+                    }
                 }
+                galleryList.forEach(imgUrl => {
+                    const galAsset = getOrCreateAsset(imgUrl, prop.created_at);
+                    if (galAsset && !galAsset.usedIn.some(u => u.id === prop.id && u.type === 'property')) {
+                        galAsset.usedIn.push(ref);
+                    }
+                });
             });
         }
     } catch (e) {

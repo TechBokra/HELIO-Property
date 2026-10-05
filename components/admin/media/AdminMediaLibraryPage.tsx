@@ -43,6 +43,8 @@ export const AdminMediaLibraryPage: React.FC = () => {
         data: assets = [], 
         isLoading, 
         isRefetching, 
+        isError,
+        error,
         refetch 
     } = useQuery({
         queryKey: ['adminMediaAssets'],
@@ -493,6 +495,20 @@ export const AdminMediaLibraryPage: React.FC = () => {
                 <div className="p-16 text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
                     <ArrowPathIcon className="w-8 h-8 text-amber-500 animate-spin mx-auto mb-3" />
                     <p className="text-gray-500">جاري فحص وتجميع سجلات وسائط المنصة ومطابقتها مع Cloudinary...</p>
+                </div>
+            ) : isError ? (
+                <div className="p-10 text-center bg-rose-50 dark:bg-rose-950/20 rounded-2xl border border-rose-200 dark:border-rose-800">
+                    <ExclamationTriangleIcon className="w-10 h-10 text-rose-500 mx-auto mb-3" />
+                    <h3 className="text-base font-semibold text-rose-700 dark:text-rose-300">
+                        {language === 'ar' ? 'حدث خطأ أثناء فحص سجلات الوسائط' : 'An error occurred while scanning media records'}
+                    </h3>
+                    <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 max-w-md mx-auto">
+                        {(error as any)?.message || 'يرجى التحقق من اتصال قاعدة البيانات والمحاولة مرة أخرى.'}
+                    </p>
+                    <Button variant="secondary" onClick={() => refetch()} className="mt-4 inline-flex items-center gap-2">
+                        <ArrowPathIcon className="w-4 h-4" />
+                        <span>{language === 'ar' ? 'إعادة المحاولة' : 'Try Again'}</span>
+                    </Button>
                 </div>
             ) : filteredAssets.length === 0 ? (
                 <div className="p-16 text-center bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
