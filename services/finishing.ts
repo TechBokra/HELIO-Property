@@ -20,6 +20,7 @@ import {
 } from '../types';
 import { getContent, updateContent } from './content';
 import { updateLead } from './leads';
+import { siteContentData as fallbackData } from '../data/content';
 
 export const PLATFORM_FINISHING_MANAGER_ID = '3e554896-eee8-4545-9c7f-0a79a4c1a9f1';
 
@@ -214,32 +215,74 @@ const mapRowToService = (row: any): FinishingService => ({
  * Get canonical finishing services from Supabase
  * Prioritizes live public.finishing_services table, falls back to Supabase site_content
  */
+// In-memory cache for finishing services
+let cachedFinishingServices: { data: FinishingService[]; timestamp: number } | null = null;
+let inFlightFinishingPromise: Promise<FinishingService[]> | null = null;
+let finishingTableChecked = false;
+let finishingTableExists = false;
+const FINISHING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export const invalidateFinishingServicesCache = () => {
+    cachedFinishingServices = null;
+    inFlightFinishingPromise = null;
+};
+
 export const getFinishingServices = async (): Promise<FinishingService[]> => {
-    try {
-        const { data, error } = await supabase
-            .from('finishing_services')
-            .select('*')
-            .order('display_order', { ascending: true });
-
-        if (!error && data && data.length > 0) {
-            return data.map(mapRowToService);
-        }
-    } catch {
-        // Table not ready or unavailable, fall through to site_content
+    const now = Date.now();
+    if (cachedFinishingServices && (now - cachedFinishingServices.timestamp) < FINISHING_CACHE_TTL) {
+        return cachedFinishingServices.data;
     }
 
-    // Live Supabase site_content
-    try {
-        const siteContent = await getContent();
-        const rawServices = siteContent?.finishingServices || [];
-        if (rawServices.length > 0) {
-            return rawServices.map((s: any, idx: number) => normalizeFinishingService(s, idx));
-        }
-    } catch (e) {
-        console.error('Error fetching finishing services from site content:', e);
+    if (inFlightFinishingPromise) {
+        return inFlightFinishingPromise;
     }
 
-    return [];
+    inFlightFinishingPromise = (async () => {
+        try {
+            // 1. Try public.finishing_services table if not already known to be missing
+            if (!finishingTableChecked || finishingTableExists) {
+                try {
+                    const { data, error } = await supabase
+                        .from('finishing_services')
+                        .select('*')
+                        .order('display_order', { ascending: true });
+
+                    finishingTableChecked = true;
+                    if (!error && data && data.length > 0) {
+                        finishingTableExists = true;
+                        const mapped = data.map(mapRowToService);
+                        cachedFinishingServices = { data: mapped, timestamp: Date.now() };
+                        return mapped;
+                    } else if (error) {
+                        finishingTableExists = false;
+                    }
+                } catch {
+                    finishingTableChecked = true;
+                    finishingTableExists = false;
+                }
+            }
+
+            // 2. Fall through to Supabase site_content
+            const siteContent = await getContent();
+            const rawServices = siteContent?.finishingServices || [];
+            if (rawServices.length > 0) {
+                const mapped = rawServices.map((s: any, idx: number) => normalizeFinishingService(s, idx));
+                cachedFinishingServices = { data: mapped, timestamp: Date.now() };
+                return mapped;
+            }
+
+            // 3. Fall through to canonical fallback data
+            const fallbackServices = (fallbackData.finishingServices || []).map((s: any, idx: number) => 
+                normalizeFinishingService(s, idx)
+            );
+            cachedFinishingServices = { data: fallbackServices, timestamp: Date.now() };
+            return fallbackServices;
+        } finally {
+            inFlightFinishingPromise = null;
+        }
+    })();
+
+    return inFlightFinishingPromise;
 };
 
 /**

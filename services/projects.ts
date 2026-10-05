@@ -119,14 +119,27 @@ export const getAllProjects = async (): Promise<Project[]> => {
     inFlightProjectsPromise = (async () => {
         try {
             const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
-            if (error || !data || data.length === 0) {
+            
+            if (error) {
+                console.warn("Supabase error fetching projects:", error.message);
+                if (cachedProjects) {
+                    return cachedProjects.data;
+                }
+                throw new Error(`Failed to load projects: ${error.message}`);
+            }
+
+            if (!data || data.length === 0) {
                 return [];
             }
+
             const mapped = data.map(mapProjectFromDb);
             cachedProjects = { data: mapped, timestamp: Date.now() };
             return mapped;
         } catch (e) {
-            return [];
+            if (cachedProjects) {
+                return cachedProjects.data;
+            }
+            throw e;
         } finally {
             inFlightProjectsPromise = null;
         }

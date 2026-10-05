@@ -87,12 +87,29 @@ const ProjectsPage: React.FC = () => {
   const { language, t } = useLanguage();
   const [view, setView] = useState<'grid' | 'list'>('grid');
   
-  const { data: siteContent, isLoading: isLoadingContent } = useSiteContent();
-  const { data: projects, isLoading: isLoadingProjs } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
-  const { data: partners, isLoading: isLoadingPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
-  const { data: properties, isLoading: isLoadingProps } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties });
+  const { data: siteContent } = useSiteContent();
+  const { 
+    data: projects, 
+    isLoading: isLoadingProjs, 
+    isError: isProjectsError, 
+    refetch: refetchProjects 
+  } = useQuery({ 
+    queryKey: ['allProjects'], 
+    queryFn: getAllProjects,
+    staleTime: 1000 * 60 * 5 
+  });
+  const { data: partners } = useQuery({ 
+    queryKey: ['allPartnersAdmin'], 
+    queryFn: getAllPartnersForAdmin,
+    staleTime: 1000 * 60 * 5 
+  });
+  const { data: properties } = useQuery({ 
+    queryKey: ['allProperties'], 
+    queryFn: getAllProperties,
+    staleTime: 1000 * 60 * 5 
+  });
   
-  const isLoading = isLoadingProjs || isLoadingPartners || isLoadingProps || isLoadingContent;
+  const isLoading = isLoadingProjs;
   
   // Use dynamic content if available, fallback to translation file
   const content = siteContent?.projectsPage?.[language] || t.projectsPage;
@@ -150,6 +167,25 @@ const ProjectsPage: React.FC = () => {
                         {Array.from({ length: 3 }).map((_, i) => <ProjectListItemSkeleton key={i} />)}
                     </div>
                 )}
+            </div>
+        ) : isProjectsError ? (
+            <div className="max-w-lg mx-auto text-center py-16 bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+                <p className="text-gray-800 font-semibold mb-2">
+                    {language === 'ar' ? 'تعذر تحميل المشروعات حالياً' : 'Failed to load projects'}
+                </p>
+                <p className="text-gray-500 text-sm mb-6">
+                    {language === 'ar' ? 'يرجى التحقق من اتصالك بالإنترنت وإعادة المحاولة.' : 'Please check your connection and try again.'}
+                </p>
+                <button
+                    onClick={() => refetchProjects()}
+                    className="px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
+                >
+                    {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                </button>
+            </div>
+        ) : projectsWithDetails.length === 0 ? (
+            <div className="max-w-md mx-auto text-center py-16 bg-white rounded-2xl border border-gray-200 p-8 text-gray-500">
+                {language === 'ar' ? 'لا توجد مشروعات متاحة حالياً.' : 'No projects available at the moment.'}
             </div>
         ) : (
             <div className="animate-fadeIn max-w-7xl mx-auto">

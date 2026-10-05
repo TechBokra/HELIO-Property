@@ -34,15 +34,17 @@ const ServiceCard: React.FC<{ icon: React.ReactNode; title: string; description:
     </Link>
 );
 
+import { siteContentData as fallbackData } from '../../data/content';
+
 const Services: React.FC = () => {
     const { language } = useLanguage();
     const { data: siteContent, isLoading } = useSiteContent();
 
-    if (isLoading || !siteContent) {
+    const t = siteContent?.services?.[language] || fallbackData.services[language];
+
+    if (isLoading && !t) {
         return <section className="py-20 bg-gray-50 animate-pulse h-96"></section>;
     }
-
-    const t = siteContent.services[language];
 
     return (
         <section className="py-20 bg-gray-50 subtle-bg">

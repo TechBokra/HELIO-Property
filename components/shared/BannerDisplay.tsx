@@ -14,8 +14,12 @@ interface BannerDisplayProps {
 
 const BannerDisplay: React.FC<BannerDisplayProps> = ({ location }) => {
     const { language } = useLanguage();
-    const { data: banners, isLoading: loading } = useQuery({ queryKey: ['banners'], queryFn: getAllBanners });
     const [currentIndex, setCurrentIndex] = useState(0);
+    const { data: banners, isLoading: loading } = useQuery({ 
+        queryKey: ['banners'], 
+        queryFn: getAllBanners,
+        staleTime: 1000 * 60 * 5
+    });
 
     const activeBanners = useMemo(() => {
         const now = new Date();

@@ -55,15 +55,21 @@ const PartnerCard: React.FC<{ partner: AdminPartner }> = ({ partner }) => {
     );
 };
 
+import { siteContentData as fallbackData } from '../../data/content';
+import { ArrowPathIcon } from '../ui/Icons';
+
 const Partners: React.FC = () => {
     const { language } = useLanguage();
-    const { data: partners, isLoading: isLoadingPartners } = usePartners();
-    const { data: siteContent, isLoading: isLoadingContent } = useSiteContent();
-    const isLoading = isLoadingPartners || isLoadingContent;
+    const { 
+        data: partners = [], 
+        isLoading: isLoadingPartners, 
+        isError: isPartnersError, 
+        refetch: refetchPartners 
+    } = usePartners();
+    const { data: siteContent } = useSiteContent();
 
     const content = useMemo(() => {
-        if (!siteContent) return null;
-        return siteContent.partners[language];
+        return siteContent?.partners?.[language] || fallbackData.partners[language];
     }, [siteContent, language]);
 
     const categorizedPartners = useMemo(() => {
@@ -85,9 +91,32 @@ const Partners: React.FC = () => {
         return { majorDevelopers, cityDevelopers, sections };
     }, [partners, content]);
 
-    if (isLoading || !content) {
+    if (isLoadingPartners) {
         return <div className="py-20 bg-gray-50 animate-pulse h-[500px]"></div>;
     }
+
+    if (isPartnersError) {
+        return (
+            <div className="py-16 bg-gray-50 text-center">
+                <div className="container mx-auto px-6 max-w-lg">
+                    <p className="text-gray-700 font-medium mb-4">
+                        {language === 'ar' ? 'تعذر تحميل قائمة الشركاء حالياً.' : 'Failed to load partners list.'}
+                    </p>
+                    <button
+                        onClick={() => refetchPartners()}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
+                    >
+                        <ArrowPathIcon className="w-4 h-4" />
+                        {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    const hasAnyPartners = categorizedPartners.majorDevelopers.length > 0 || 
+        categorizedPartners.cityDevelopers.length > 0 || 
+        categorizedPartners.sections.length > 0;
 
     return (
         <div className="py-20 bg-gray-50 subtle-bg">
@@ -98,6 +127,12 @@ const Partners: React.FC = () => {
                         {content.description}
                     </p>
                 </div>
+
+                {!hasAnyPartners && (
+                    <div className="text-center py-12 bg-white rounded-xl border border-gray-200 max-w-2xl mx-auto text-gray-500">
+                        {language === 'ar' ? 'جاري تجهيز وتحديث قائمة الشركاء المعتمدين.' : 'Partner directory is currently being updated.'}
+                    </div>
+                )}
 
                 {categorizedPartners.majorDevelopers.length > 0 && (
                     <div className="mb-16">

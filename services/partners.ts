@@ -81,13 +81,21 @@ export const getAllPartners = async (): Promise<Partner[]> => {
                 .order('created_at', { ascending: false });
 
             if (error) {
-                console.error('Error fetching partners from Supabase:', error);
+                console.warn('Error fetching partners from Supabase:', error.message);
+                if (cachedPartners) {
+                    return cachedPartners.data;
+                }
                 throw new Error(`Failed to load partners: ${error.message}`);
             }
 
             const mapped = (data || []).map(mapPartnerFromDb);
             cachedPartners = { data: mapped, timestamp: Date.now() };
             return mapped;
+        } catch (err) {
+            if (cachedPartners) {
+                return cachedPartners.data;
+            }
+            throw err;
         } finally {
             inFlightPartnersPromise = null;
         }
@@ -97,17 +105,8 @@ export const getAllPartners = async (): Promise<Partner[]> => {
 };
 
 export const getAllPartnersForAdmin = async (): Promise<AdminPartner[]> => {
-    const { data, error } = await supabase
-        .from('partners')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('Error fetching admin partners from Supabase:', error);
-        throw new Error(`Failed to load admin partners: ${error.message}`);
-    }
-
-    return (data || []).map(mapPartnerFromDb) as AdminPartner[];
+    const partners = await getAllPartners();
+    return partners as AdminPartner[];
 };
 
 export const getPartnerById = async (id: string): Promise<Partner | undefined> => {

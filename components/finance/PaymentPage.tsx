@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { createTransaction } from '../../services/finance';
-import { getContent } from '../../services/content';
+import { useSiteContent } from '../../hooks/useSiteContent';
 import { addRequest } from '../../services/requests';
 import { addLead } from '../../services/leads';
 import { upgradePartnerPlan } from '../../services/partners';
@@ -31,11 +31,8 @@ const PaymentPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     
-    // Fetch site content but don't block render if it fails/loads
-    const { data: siteContent, isLoading: isLoadingContent } = useQuery({ 
-        queryKey: ['siteContent'], 
-        queryFn: getContent 
-    });
+    // Fetch site content with immediate fallback
+    const { data: siteContent } = useSiteContent();
     
     // Payment State
     const [amount, setAmount] = useState<number>(0);

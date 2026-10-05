@@ -33,11 +33,32 @@ const PropertiesPage: React.FC = () => {
     } = filterControls;
     
     // Fetch dependencies (dropdown options)
-    const { data: projects, isLoading: pLoading } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
-    const { data: partners, isLoading: paLoading } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
-    const { data: propertyTypes, isLoading: ptLoading } = useQuery({ queryKey: ['propertyTypes'], queryFn: getAllPropertyTypes });
-    const { data: finishingStatuses, isLoading: fsLoading } = useQuery({ queryKey: ['finishingStatuses'], queryFn: getAllFinishingStatuses });
-    const { data: amenities, isLoading: amLoading } = useQuery({ queryKey: ['amenities'], queryFn: getAllAmenities });
+    // Fetch dependencies (dropdown options) with 10-minute cache
+    const { data: projects } = useQuery({ 
+        queryKey: ['allProjects'], 
+        queryFn: getAllProjects,
+        staleTime: 1000 * 60 * 10
+    });
+    const { data: partners } = useQuery({ 
+        queryKey: ['allPartnersAdmin'], 
+        queryFn: getAllPartnersForAdmin,
+        staleTime: 1000 * 60 * 10
+    });
+    const { data: propertyTypes } = useQuery({ 
+        queryKey: ['propertyTypes'], 
+        queryFn: getAllPropertyTypes,
+        staleTime: 1000 * 60 * 10
+    });
+    const { data: finishingStatuses } = useQuery({ 
+        queryKey: ['finishingStatuses'], 
+        queryFn: getAllFinishingStatuses,
+        staleTime: 1000 * 60 * 10
+    });
+    const { data: amenities } = useQuery({ 
+        queryKey: ['amenities'], 
+        queryFn: getAllAmenities,
+        staleTime: 1000 * 60 * 10
+    });
     
     // Memoize filters to prevent unnecessary query refetches
     const queryFilters = useMemo(() => ({
@@ -51,7 +72,12 @@ const PropertiesPage: React.FC = () => {
     ]);
 
     // Fetch properties
-    const { data: propertiesData, isLoading: propsLoading } = useQuery({
+    const { 
+        data: propertiesData, 
+        isLoading: propsLoading,
+        isError: isPropsError,
+        refetch: refetchProps
+    } = useQuery({
         queryKey: ['properties', page, queryFilters],
         queryFn: () => getPaginatedProperties({ 
             page: page, 
@@ -59,12 +85,10 @@ const PropertiesPage: React.FC = () => {
             filters: { ...queryFilters, view: (view as 'grid' | 'list') },
             disablePagination: false,
         }),
-        // FIX: Replaced deprecated `keepPreviousData: true` with `placeholderData: keepPreviousData` for TanStack Query v5.
         placeholderData: keepPreviousData,
+        staleTime: 1000 * 60 * 2, // 2 minutes cache for listing pages
     });
     
-    const isLoadingDependencies = pLoading || paLoading || ptLoading || fsLoading || amLoading;
-    const isLoadingAny = isLoadingDependencies || propsLoading;
     const properties = propertiesData?.properties || [];
     const totalProperties = propertiesData?.total || 0;
     const totalPages = Math.ceil(totalProperties / ITEMS_PER_PAGE);
@@ -120,9 +144,24 @@ const PropertiesPage: React.FC = () => {
 
             {/* Main Content Area */}
             <div className="container mx-auto px-6 py-12">
-                {isLoadingAny ? (
+                {propsLoading ? (
                     <div className={`grid ${gridClasses}`}>
                         {Array.from({ length: 6 }).map((_, i) => filterControls.view === 'list' ? <PropertyListItemSkeleton key={i} /> : <PropertyCardSkeleton key={i} />)}
+                    </div>
+                ) : isPropsError ? (
+                    <div className="max-w-lg mx-auto text-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-8">
+                        <p className="text-gray-800 dark:text-gray-200 font-semibold mb-2">
+                            {language === 'ar' ? 'حدث خطأ أثناء تحميل العقارات' : 'Failed to load properties'}
+                        </p>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+                            {language === 'ar' ? 'يرجى التحقق من اتصالك بالإنترنت ثم إعادة المحاولة.' : 'Please check your connection and try again.'}
+                        </p>
+                        <button
+                            onClick={() => refetchProps()}
+                            className="px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
+                        >
+                            {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                        </button>
                     </div>
                 ) : (
                     <>

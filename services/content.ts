@@ -2,102 +2,143 @@ import { supabase } from '../lib/supabase';
 import type { SiteContent } from '../types';
 import { siteContentData as fallbackData } from '../data/content';
 
-const CONTENT_STORAGE_KEY = 'onlyhelio_site_content_override';
 
-export const getContent = async (): Promise<SiteContent> => {
-    let baseContent: any = null;
+// In-memory cache & in-flight promise deduplication
+let cachedContent: { data: SiteContent; timestamp: number } | null = null;
+let inFlightContentPromise: Promise<SiteContent> | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes fresh in memory
 
-    // 1. Try local server persistence API first
-    try {
-        const res = await fetch('/api/site-content');
-        if (res.ok) {
-            const serverData = await res.json();
-            if (serverData && typeof serverData === 'object' && Object.keys(serverData).length > 0) {
-                baseContent = serverData;
+export const invalidateContentCache = () => {
+    cachedContent = null;
+    inFlightContentPromise = null;
+};
+
+// Known Cloudinary CDN replacement for large legacy base64 hero slides
+const HELIOPOLIS_GATE_CDN = 'https://res.cloudinary.com/dwg0hr34g/image/upload/v1791191021/onlyhelio_content/asjvgr1hpcl2ewiff1oh.jpg';
+
+/**
+ * Sanitizes large base64 data URIs in content to prevent megabyte-scale payload overhead
+ */
+const sanitizeContentPayload = (content: any): any => {
+    if (!content || typeof content !== 'object') return content;
+    
+    // Sanitize hero images if they contain huge data URIs
+    if (content.hero?.images && Array.isArray(content.hero.images)) {
+        content.hero.images = content.hero.images.map((img: any) => {
+            if (typeof img === 'string') {
+                return img.startsWith('data:') ? HELIOPOLIS_GATE_CDN : img;
             }
-        }
-    } catch (e) {
-        // Server API not reachable in current context, continue to next source
+            if (img && typeof img === 'object' && typeof img.src === 'string' && img.src.startsWith('data:')) {
+                return { ...img, src: HELIOPOLIS_GATE_CDN };
+            }
+            return img;
+        });
     }
 
-    // 2. If not from server, try Supabase site_content table
-    if (!baseContent) {
+    return content;
+};
+
+export const getContent = async (): Promise<SiteContent> => {
+    const now = Date.now();
+    if (cachedContent && (now - cachedContent.timestamp) < CACHE_TTL_MS) {
+        return cachedContent.data;
+    }
+
+    if (inFlightContentPromise) {
+        return inFlightContentPromise;
+    }
+
+    inFlightContentPromise = (async () => {
         try {
+            let baseContent: any = null;
+
+            // Direct query to authoritative Supabase site_content table
             const { data: mainContent, error } = await supabase
                 .from('site_content')
                 .select('content')
                 .eq('key', 'main_content')
-                .single();
+                .maybeSingle();
 
-            if (!error && mainContent?.content) {
-                baseContent = mainContent.content;
+            if (error) {
+                console.warn('Supabase site_content query notice:', error.message);
+                // Return cached data or fallback rather than throwing and crashing the UI
+                if (cachedContent) {
+                    return cachedContent.data;
+                }
+            } else if (mainContent?.content) {
+                baseContent = sanitizeContentPayload(mainContent.content);
             }
-        } catch (e) {
-            // Supabase fetch note
+
+            const sourceData = baseContent || fallbackData;
+
+            // Deep merge safely with fallbackData so no keys are ever undefined
+            const mergedContent: SiteContent = {
+                ...fallbackData,
+                ...sourceData,
+                hero: { 
+                    ...fallbackData.hero, 
+                    ...(sourceData.hero || {}),
+                    images: (sourceData.hero?.images && sourceData.hero.images.length > 0) 
+                        ? sourceData.hero.images 
+                        : fallbackData.hero.images
+                },
+                footer: { ...fallbackData.footer, ...(sourceData.footer || {}) },
+                contactConfiguration: { ...fallbackData.contactConfiguration, ...(sourceData.contactConfiguration || {}) },
+                services: { ...fallbackData.services, ...(sourceData.services || {}) },
+                whyNewHeliopolis: { 
+                    ...fallbackData.whyNewHeliopolis, 
+                    ...(sourceData.whyNewHeliopolis || {}),
+                    images: (sourceData.whyNewHeliopolis?.images && sourceData.whyNewHeliopolis.images.length > 0)
+                        ? sourceData.whyNewHeliopolis.images
+                        : fallbackData.whyNewHeliopolis.images
+                },
+                whyUs: { ...fallbackData.whyUs, ...(sourceData.whyUs || {}) },
+                socialProof: { ...fallbackData.socialProof, ...(sourceData.socialProof || {}) },
+                partners: { ...fallbackData.partners, ...(sourceData.partners || {}) },
+                testimonials: { ...fallbackData.testimonials, ...(sourceData.testimonials || {}) },
+                homeCTA: { ...fallbackData.homeCTA, ...(sourceData.homeCTA || {}) },
+                homeListings: { ...fallbackData.homeListings, ...(sourceData.homeListings || {}) },
+                finishingServices: (sourceData.finishingServices && sourceData.finishingServices.length > 0)
+                    ? sourceData.finishingServices 
+                    : fallbackData.finishingServices,
+            };
+
+            cachedContent = { data: mergedContent, timestamp: Date.now() };
+            return mergedContent;
+        } catch (err) {
+            console.warn('Unexpected error in getContent, using fallback:', err);
+            return cachedContent ? cachedContent.data : fallbackData;
+        } finally {
+            inFlightContentPromise = null;
         }
-    }
+    })();
 
-    // 3. Check browser localStorage override if admin made local edits
-    let localOverride: any = null;
-    try {
-        const stored = localStorage.getItem(CONTENT_STORAGE_KEY);
-        if (stored) {
-            localOverride = JSON.parse(stored);
-        }
-    } catch (e) {}
-
-    const sourceData = localOverride || baseContent || fallbackData;
-
-    // Merge properly with fallbackData so no keys are ever undefined
-    const mergedContent: SiteContent = {
-        ...fallbackData,
-        ...sourceData,
-        hero: { ...fallbackData.hero, ...(sourceData.hero || {}) },
-        footer: { ...fallbackData.footer, ...(sourceData.footer || {}) },
-        contactConfiguration: { ...fallbackData.contactConfiguration, ...(sourceData.contactConfiguration || {}) },
-        finishingServices: sourceData.finishingServices !== undefined 
-            ? sourceData.finishingServices 
-            : fallbackData.finishingServices,
-    };
-
-    return mergedContent;
+    return inFlightContentPromise;
 };
 
 export const updateContent = async (updates: Partial<SiteContent>): Promise<SiteContent> => {
     const current = await getContent();
     const newContent = { ...current, ...updates };
 
-    // 1. Save to localStorage for instant local availability and broadcast event
+    invalidateContentCache();
+
+    // 1. Broadcast in-memory event across components in the current tab
     try {
-        localStorage.setItem(CONTENT_STORAGE_KEY, JSON.stringify(newContent));
         if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('onlyhelio_content_updated', { detail: newContent }));
         }
-    } catch (e) {}
+    } catch {}
 
-    // 2. Save to persistent server API
-    try {
-        await fetch('/api/site-content', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newContent)
-        });
-    } catch (e) {
-        console.warn('Server API content save warning:', e);
+    // 2. Authoritative save to Supabase site_content
+    const { error } = await supabase
+        .from('site_content')
+        .upsert({ key: 'main_content', content: newContent });
+
+    if (error) {
+        console.error('Supabase site_content sync error:', error.message);
+        throw new Error(`Failed to save site content: ${error.message}`);
     }
 
-    // 3. Attempt to save to Supabase site_content
-    try {
-        const { error } = await supabase
-            .from('site_content')
-            .upsert({ key: 'main_content', content: newContent });
-
-        if (error) {
-            console.warn('Supabase site_content sync note:', error.message);
-        }
-    } catch (e) {
-        console.warn('Supabase background sync exception:', e);
-    }
-
+    cachedContent = { data: newContent, timestamp: Date.now() };
     return newContent;
 };

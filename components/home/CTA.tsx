@@ -3,17 +3,19 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../shared/LanguageContext';
 import { useSiteContent } from '../../hooks/useSiteContent';
 
+import { siteContentData as fallbackData } from '../../data/content';
+
 const CTA: React.FC = () => {
     const { language, t } = useLanguage();
     const { data: siteContent } = useSiteContent();
 
-    const ctaConfig = siteContent?.homeCTA;
+    const ctaConfig = siteContent?.homeCTA || fallbackData.homeCTA;
 
-    if (!ctaConfig?.enabled) {
+    if (!ctaConfig || ctaConfig.enabled === false) {
         return null;
     }
 
-    const content = ctaConfig[language];
+    const content = ctaConfig[language] || ctaConfig.en || { title: '', subtitle: '', link: '/properties', button: '' };
 
     return (
         <section className="py-20 md:py-32 bg-white subtle-bg">

@@ -8,11 +8,16 @@ import { useLanguage } from '../shared/LanguageContext';
 import { QuoteIcon } from '../ui/Icons';
 import { useSiteContent } from '../../hooks/useSiteContent';
 
+import { siteContentData as fallbackData } from '../../data/content';
+
 const Testimonial: React.FC = () => {
     const { language } = useLanguage();
     const { data: siteContent, isLoading } = useSiteContent();
 
-    if (isLoading || !siteContent?.testimonials?.items || siteContent.testimonials.items.length === 0) {
+    const testimonialsContent = siteContent?.testimonials || fallbackData.testimonials;
+    const testimonialItems = testimonialsContent?.items || [];
+
+    if (isLoading && testimonialItems.length === 0) {
         return (
             <section className="py-20 bg-white subtle-bg animate-pulse">
                 <div className="container mx-auto px-6 h-64"></div>
@@ -20,10 +25,12 @@ const Testimonial: React.FC = () => {
         );
     }
     
-    const testimonialsContent = siteContent.testimonials;
-    const sectionTitle = testimonialsContent[language].title;
-    const sectionSubtitle = testimonialsContent[language].subtitle;
-    const testimonialItems = testimonialsContent.items;
+    if (testimonialItems.length === 0) {
+        return null;
+    }
+    
+    const sectionTitle = testimonialsContent[language]?.title || fallbackData.testimonials[language].title;
+    const sectionSubtitle = testimonialsContent[language]?.subtitle || fallbackData.testimonials[language].subtitle;
 
     return (
         <section className="py-20 bg-white subtle-bg">

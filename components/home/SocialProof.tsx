@@ -3,11 +3,15 @@ import React from 'react';
 import { useLanguage } from '../shared/LanguageContext';
 import { useSiteContent } from '../../hooks/useSiteContent';
 
+import { siteContentData as fallbackData } from '../../data/content';
+
 const SocialProof: React.FC = () => {
     const { language } = useLanguage();
     const { data: siteContent, isLoading } = useSiteContent();
 
-    if (isLoading) {
+    const stats = siteContent?.socialProof?.stats || fallbackData.socialProof.stats;
+
+    if (isLoading && !stats) {
         return (
             <section className="bg-gray-50 py-20 animate-pulse">
                 <div className="container mx-auto px-6">
@@ -24,11 +28,9 @@ const SocialProof: React.FC = () => {
         );
     }
     
-    if (!siteContent?.socialProof?.stats || siteContent.socialProof.stats.length === 0) {
+    if (!stats || stats.length === 0) {
         return null;
     }
-    
-    const stats = siteContent.socialProof.stats;
 
     return (
         <section className="bg-gray-50 py-20">

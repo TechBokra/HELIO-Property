@@ -3,13 +3,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { useLanguage } from '../shared/LanguageContext';
 
+import { siteContentData as fallbackData } from '../../data/content';
+
 const AboutCity: React.FC = () => {
     const { language } = useLanguage();
     const { data: siteContent, isLoading } = useSiteContent();
     const [currentSlide, setCurrentSlide] = useState(0);
     const timeoutRef = useRef<number | null>(null);
 
-    const images = siteContent?.whyNewHeliopolis.images || [];
+    const whyData = siteContent?.whyNewHeliopolis || fallbackData.whyNewHeliopolis;
+    const images = (whyData?.images && whyData.images.length > 0) ? whyData.images : fallbackData.whyNewHeliopolis.images;
 
     useEffect(() => {
         if (images.length === 0) return;
@@ -21,7 +24,9 @@ const AboutCity: React.FC = () => {
     
     const goToSlide = (slideIndex: number) => setCurrentSlide(slideIndex);
 
-    if (isLoading || !siteContent) {
+    const t = whyData?.[language] || fallbackData.whyNewHeliopolis[language];
+
+    if (isLoading && !t) {
         return (
             <section className="py-20 bg-gray-50 animate-pulse">
                 <div className="container mx-auto px-6">
@@ -43,8 +48,6 @@ const AboutCity: React.FC = () => {
             </section>
         );
     }
-
-    const t = siteContent.whyNewHeliopolis[language];
     
     return (
         <section className="py-20 bg-gray-50">

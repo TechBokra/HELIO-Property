@@ -4,11 +4,16 @@ import { useSiteContent } from '../../hooks/useSiteContent';
 import { useLanguage } from '../shared/LanguageContext';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 
+import { siteContentData as fallbackData } from '../../data/content';
+
 const Hero: React.FC = () => {
     const { language, t } = useLanguage();
-    const { data: siteContent, isLoading } = useSiteContent();
+    const { data: siteContent } = useSiteContent();
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
-    const heroImages = siteContent?.hero?.images || [];
+    
+    const heroImages = (siteContent?.hero?.images && siteContent.hero.images.length > 0)
+        ? siteContent.hero.images 
+        : fallbackData.hero.images;
 
     useEffect(() => {
         if (heroImages.length === 0) return;
@@ -18,22 +23,26 @@ const Hero: React.FC = () => {
         return () => clearTimeout(timer);
     }, [currentImageIndex, heroImages.length]);
 
-    const currentImageAlt = heroImages[currentImageIndex]?.alt[language] || `${t.nav.properties} ${currentImageIndex + 1}`;
+    const activeImage = heroImages[currentImageIndex] || heroImages[0];
+    const currentImageAlt = activeImage?.alt?.[language] || activeImage?.alt?.en || `${t.nav.properties} ${currentImageIndex + 1}`;
+
+    const heroTitle = siteContent?.hero?.[language]?.title || fallbackData.hero[language].title;
+    const heroSubtitle = siteContent?.hero?.[language]?.subtitle || fallbackData.hero[language].subtitle;
 
     return (
         <section className="relative h-[85vh] flex items-center justify-center text-center text-white overflow-hidden">
             {heroImages.map((image, index) => {
-                const optimizedSmall = getOptimizedImageUrl(image.src, 768, 70);
-                const optimizedLarge = getOptimizedImageUrl(image.src, 1400, 75);
+                const isDataUri = typeof image.src === 'string' && image.src.startsWith('data:');
+                const optimizedSmall = isDataUri ? image.src : getOptimizedImageUrl(image.src, 768, 70);
+                const optimizedLarge = isDataUri ? image.src : getOptimizedImageUrl(image.src, 1400, 75);
 
                 return (
-                    <div key={image.src} className={`slider-image ${index === currentImageIndex ? 'active' : ''}`}>
+                    <div key={image.src?.substring(0, 50) || index} className={`slider-image ${index === currentImageIndex ? 'active' : ''}`}>
                         <div className="watermarked w-full h-full">
                             <img
                                 src={optimizedLarge}
-                                srcSet={`${optimizedSmall} 768w, ${optimizedLarge} 1400w`}
-                                sizes="100vw"
-                                alt={image.alt[language] || ''}
+                                {...(!isDataUri ? { srcSet: `${optimizedSmall} 768w, ${optimizedLarge} 1400w`, sizes: '100vw' } : {})}
+                                alt={image.alt?.[language] || image.alt?.en || ''}
                                 className="w-full h-full object-cover disable-image-interaction"
                                 onContextMenu={(e) => e.preventDefault()}
                                 loading={index === 0 ? "eager" : "lazy"}
@@ -54,21 +63,12 @@ const Hero: React.FC = () => {
             </div>
 
             <div className="relative z-20 px-4 container mx-auto flex flex-col items-center">
-                {isLoading || !siteContent ? (
-                    <div className="animate-pulse w-full max-w-4xl">
-                        <div className="h-10 md:h-16 bg-gray-400/30 rounded-md w-3/4 mx-auto mb-4"></div>
-                        <div className="h-6 md:h-8 bg-gray-400/30 rounded-md w-full max-w-3xl mx-auto mb-10"></div>
-                    </div>
-                ) : (
-                    <>
-                        <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4 text-shadow animate-slideInUp" style={{ animationDelay: '100ms' }}>
-                            {siteContent.hero[language].title}
-                        </h1>
-                        <p className="max-w-3xl mx-auto text-lg md:text-xl text-gray-200 mb-10 text-shadow animate-slideInUp" style={{ animationDelay: '200ms' }}>
-                            {siteContent.hero[language].subtitle}
-                        </p>
-                    </>
-                )}
+                <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4 text-shadow animate-slideInUp" style={{ animationDelay: '100ms' }}>
+                    {heroTitle}
+                </h1>
+                <p className="max-w-3xl mx-auto text-lg md:text-xl text-gray-200 mb-10 text-shadow animate-slideInUp" style={{ animationDelay: '200ms' }}>
+                    {heroSubtitle}
+                </p>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-10 animate-slideInUp" style={{ animationDelay: '300ms' }}>
                     <Link

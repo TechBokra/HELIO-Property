@@ -47,6 +47,11 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
   const isFav = isFavorite(id, 'property');
   const isCommercialProp = isCommercial(props);
 
+  const localizedTitle = title?.[language] || title?.ar || title?.en || '';
+  const localizedStatus = status?.[language] || status?.ar || status?.en || '';
+  const localizedPrice = price?.[language] || price?.ar || price?.en || '';
+  const localizedFinishing = finishingStatus?.[language] || finishingStatus?.ar || finishingStatus?.en || '';
+
   const responsiveImage = useMemo(() => {
     return getResponsiveImageSources(imageUrl_large || imageUrl || imageUrl_medium || imageUrl_small);
   }, [imageUrl, imageUrl_large, imageUrl_medium, imageUrl_small]);
@@ -83,7 +88,7 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
         <Link 
             to={`/properties/${id}`} 
             className="absolute inset-0 z-0 focus:outline-none focus:ring-2 focus:ring-amber-500 rounded-lg"
-            aria-label={`${title[language]} - ${t.propertyCard.viewProject}`}
+            aria-label={`${localizedTitle} - ${t.propertyCard.viewProject}`}
         >
             <span className="sr-only">View details</span>
         </Link>
@@ -101,7 +106,7 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
                     src={responsiveImage.src}
                     srcSet={responsiveImage.srcSet}
                     sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
-                    alt={title[language]} 
+                    alt={localizedTitle} 
                     className="w-full h-56 object-cover disable-image-interaction"
                     onContextMenu={(e) => e.preventDefault()}
                     loading="lazy"
@@ -110,7 +115,7 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
             </picture>
           <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-1.5">
             <span className="text-white font-semibold px-2.5 py-1 rounded-md text-xs shadow-sm" style={{ backgroundColor: isForSale ? '#16a34a' : '#0284c7' }}>
-              {status[language]}
+              {localizedStatus}
             </span>
             {props.availabilityStatus === 'sold' ? (
               <span className="bg-red-600 text-white font-bold px-2 py-1 rounded-md text-xs shadow-sm">
@@ -157,15 +162,15 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
           </div>
         </div>
         <CardContent className="p-5 flex flex-col flex-grow relative z-10 pointer-events-none">
-          <p className="text-2xl font-bold text-amber-500 mb-1">{price[language]}</p>
+          <p className="text-2xl font-bold text-amber-500 mb-1">{localizedPrice}</p>
           {displayPricePerMeter && (
             <p className="text-sm text-gray-500 mb-2">{displayPricePerMeter}</p>
           )}
-          <h3 className="text-lg font-bold text-gray-900 truncate mb-1 group-hover:text-amber-500 transition-colors">{title[language]}</h3>
+          <h3 className="text-lg font-bold text-gray-900 truncate mb-1 group-hover:text-amber-500 transition-colors">{localizedTitle}</h3>
           
           <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
               {finishingStatus && (
-                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{finishingStatus[language]}</span>
+                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{localizedFinishing}</span>
               )}
               {verifiedAt && (
                 <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1" title={language === 'ar' ? 'تاريخ التحقق من العقار' : 'Verification Date'}>

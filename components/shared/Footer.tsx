@@ -31,18 +31,20 @@ const SocialLink: FC<{ href: string; children: ReactNode }> = ({ href, children 
     );
 };
 
+import { siteContentData as fallbackData } from '../../data/content';
+
 const Footer: FC = () => {
     const { language, t } = useLanguage();
     const { data: siteContent, isLoading } = useSiteContent();
 
-    // Safety check: Ensure siteContent and footer object exist before accessing
-    if (isLoading || !siteContent || !siteContent.footer) {
+    const content = siteContent?.footer || fallbackData.footer;
+
+    // Safety check: Ensure footer object exists
+    if (isLoading && !content) {
         return <footer className="bg-gray-100 pt-12 h-64 animate-pulse"></footer>;
     }
 
-    const content = siteContent.footer;
-    // Safety check: Ensure language key exists in footer content
-    const contentLang = content[language] || content['en'] || {};
+    const contentLang = content[language] || content['en'] || fallbackData.footer[language] || {};
 
     const phoneLink = content.isWhatsAppOnly 
         ? `https://wa.me/${(content.phone || '').replace(/\D/g, '')}` 

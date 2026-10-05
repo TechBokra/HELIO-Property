@@ -5,19 +5,50 @@ import type { Banner } from '../types';
 // Banners are stored in 'site_content' table under key 'banners'
 // This is a simple key-value storage pattern for lists that don't need heavy relational queries
 
+let cachedBanners: { data: Banner[]; timestamp: number } | null = null;
+let inFlightBannersPromise: Promise<Banner[]> | null = null;
+const BANNERS_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
+export const invalidateBannersCache = () => {
+    cachedBanners = null;
+    inFlightBannersPromise = null;
+};
+
 export const getAllBanners = async (): Promise<Banner[]> => {
-    const { data, error } = await supabase
-        .from('site_content')
-        .select('content')
-        .eq('key', 'banners')
-        .single();
-    
-    if (error) {
-        // If not found, return empty array
-        return [];
+    const now = Date.now();
+    if (cachedBanners && (now - cachedBanners.timestamp) < BANNERS_CACHE_TTL) {
+        return cachedBanners.data;
     }
-    
-    return data.content as Banner[];
+
+    if (inFlightBannersPromise) {
+        return inFlightBannersPromise;
+    }
+
+    inFlightBannersPromise = (async () => {
+        try {
+            const { data, error } = await supabase
+                .from('site_content')
+                .select('content')
+                .eq('key', 'banners')
+                .maybeSingle();
+            
+            if (error) {
+                console.warn("Supabase notice fetching banners:", error.message);
+                return cachedBanners ? cachedBanners.data : [];
+            }
+            
+            const banners = Array.isArray(data?.content) ? (data.content as Banner[]) : [];
+            cachedBanners = { data: banners, timestamp: Date.now() };
+            return banners;
+        } catch (e) {
+            console.warn("Exception fetching banners, returning fallback:", e);
+            return cachedBanners ? cachedBanners.data : [];
+        } finally {
+            inFlightBannersPromise = null;
+        }
+    })();
+
+    return inFlightBannersPromise;
 };
 
 export const addBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> => {

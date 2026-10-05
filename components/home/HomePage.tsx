@@ -28,13 +28,13 @@ const HomePage: React.FC = () => {
             <SEO title={pageTitle} description={pageDescription} />
             <Hero />
             <BannerDisplay location="home" />
-            {siteContent?.socialProof?.enabled && <SocialProof />}
-            {siteContent?.services?.enabled && <Services />}
-            {siteContent?.whyNewHeliopolis?.enabled && <AboutCity />}
-            {siteContent?.whyUs?.enabled && <Integrations />}
+            {(siteContent?.socialProof?.enabled ?? true) && <SocialProof />}
+            {(siteContent?.services?.enabled ?? true) && <Services />}
+            {(siteContent?.whyNewHeliopolis?.enabled ?? true) && <AboutCity />}
+            {(siteContent?.whyUs?.enabled ?? true) && <Integrations />}
             <LatestProperties />
-            {siteContent?.partners?.enabled && <Partners />}
-            {siteContent?.testimonials?.enabled && <Testimonial />}
+            {(siteContent?.partners?.enabled ?? true) && <Partners />}
+            {(siteContent?.testimonials?.enabled ?? true) && <Testimonial />}
             <CTA />
         </>
     );

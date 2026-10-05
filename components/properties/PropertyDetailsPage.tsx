@@ -35,7 +35,16 @@ const PropertyDetailsPage: React.FC = () => {
     const navigate = useNavigate();
 
     const fetchProperty = useCallback(() => getPropertyById(propertyId!), [propertyId]);
-    const { data: property, isLoading: isLoadingProp } = useQuery({ queryKey: [`property-${propertyId}`], queryFn: fetchProperty, enabled: !!propertyId });
+    const { 
+        data: property, 
+        isLoading: isLoadingProp, 
+        isError: isPropError, 
+        refetch: refetchProperty 
+    } = useQuery({ 
+        queryKey: [`property-${propertyId}`], 
+        queryFn: fetchProperty, 
+        enabled: !!propertyId 
+    });
     
     const { data: partner, isLoading: isLoadingPartner } = useQuery({
         queryKey: [`partner-${property?.partnerId}`],
@@ -50,6 +59,15 @@ const PropertyDetailsPage: React.FC = () => {
     
     const isLoading = isLoadingProp || isLoadingPartner;
     const isFav = propertyId ? isFavorite(propertyId, 'property') : false;
+
+    // Safe bilingual helpers (prevents crashes from undefined bilingual fields)
+    const propTitle = property?.title?.[language] || property?.title?.ar || property?.title?.en || '';
+    const propDesc = property?.description?.[language] || property?.description?.ar || property?.description?.en || '';
+    const propAddr = property?.address?.[language] || property?.address?.ar || property?.address?.en || '';
+    const propPrice = property?.price?.[language] || property?.price?.ar || property?.price?.en || '';
+    const propPricePerMeter = property?.pricePerMeter?.[language] || property?.pricePerMeter?.ar || property?.pricePerMeter?.en || '';
+    const propType = property?.type?.[language] || property?.type?.ar || property?.type?.en || '';
+    const propFinishing = property?.finishingStatus?.[language] || property?.finishingStatus?.ar || property?.finishingStatus?.en || '';
 
     const handleFavoriteClick = useCallback(() => {
         if(!propertyId) return;
@@ -70,10 +88,10 @@ const PropertyDetailsPage: React.FC = () => {
             navigate('/request-service', { 
                 state: {
                     partnerId: property?.partnerId, 
-                    serviceTitle: `${t_page.inquiryAbout} "${property?.title[language]}"`,
+                    serviceTitle: `${t_page.inquiryAbout} "${propTitle}"`,
                     propertyId: property?.id,
                     serviceType: 'property',
-                    propertyTitle: property?.title[language]
+                    propertyTitle: propTitle
                 } 
             });
             return;
@@ -84,25 +102,25 @@ const PropertyDetailsPage: React.FC = () => {
             navigate('/request-service', { 
                 state: {
                     partnerId: property?.partnerId, 
-                    serviceTitle: `${t_page.inquiryAbout} "${property?.title[language]}"`,
+                    serviceTitle: `${t_page.inquiryAbout} "${propTitle}"`,
                     propertyId: property?.id,
                     serviceType: 'property',
-                    propertyTitle: property?.title[language]
+                    propertyTitle: propTitle
                 } 
             });
         } else {
             setContactModalOpen(true);
         }
-    }, [partner, property, language, t_page.inquiryAbout, navigate]);
+    }, [partner, property, propTitle, t_page.inquiryAbout, navigate]);
 
     const handleImageClick = (index: number) => {
         setLightboxStartIndex(index);
         setLightboxOpen(true);
     };
 
-    const pageTitle = property ? `${property.title[language]} | ONLY HELIO` : 'ONLY HELIO';
-    const pageDescription = property ? property.description[language].substring(0, 160) : '';
-    const amenityKeys = property ? property.amenities[language] : [];
+    const pageTitle = property ? `${propTitle} | ONLY HELIO` : 'ONLY HELIO';
+    const pageDescription = propDesc.substring(0, 160);
+    const amenityKeys = property ? (property.amenities?.[language] || property.amenities?.ar || property.amenities?.en || []) : [];
     const allImages = property ? [property.imageUrl, ...property.gallery].filter(Boolean) : [];
 
     useEffect(() => {
@@ -118,8 +136,8 @@ const PropertyDetailsPage: React.FC = () => {
     
     const whatsappText = encodeURIComponent(
         language === 'ar'
-            ? `مرحبًا، أود الاستفسار عن العقار المعروض على ONLY HELIO:\n"${property?.title.ar}"\nكود العقار: ${refCode}\nالسعر: ${property?.price.ar}\nرابط العقار: ${propertyUrl}`
-            : `Hello, I'm inquiring about the property on ONLY HELIO:\n"${property?.title.en}"\nRef: ${refCode}\nPrice: ${property?.price.en}\nLink: ${propertyUrl}`
+            ? `مرحبًا، أود الاستفسار عن العقار المعروض على ONLY HELIO:\n"${property?.title?.ar || propTitle}"\nكود العقار: ${refCode}\nالسعر: ${property?.price?.ar || propPrice}\nرابط العقار: ${propertyUrl}`
+            : `Hello, I'm inquiring about the property on ONLY HELIO:\n"${property?.title?.en || propTitle}"\nRef: ${refCode}\nPrice: ${property?.price?.en || propPrice}\nLink: ${propertyUrl}`
     );
     const whatsappUrl = `https://wa.me/${targetWhatsApp}?text=${whatsappText}`;
     const phoneUrl = `tel:${targetPhone}`;
@@ -129,8 +147,8 @@ const PropertyDetailsPage: React.FC = () => {
         return {
             "@context": "https://schema.org",
             "@type": "RealEstateListing",
-            "name": property.title[language],
-            "description": property.description[language],
+            "name": propTitle,
+            "description": propDesc,
             "image": [property.imageUrl, ...(property.gallery || [])],
             "offers": {
                 "@type": "Offer",
@@ -145,11 +163,11 @@ const PropertyDetailsPage: React.FC = () => {
                 "addressCountry": "EG"
             }
         };
-    }, [property, language]);
+    }, [property, propTitle, propDesc]);
 
     const handleWhatsAppShare = () => {
         const urlToShare = window.location.href;
-        const text = encodeURIComponent(`${property?.title[language]}\n${urlToShare}`);
+        const text = encodeURIComponent(`${propTitle}\n${urlToShare}`);
         window.open(`https://wa.me/?text=${text}`, '_blank');
         handleCloseShareModal();
     };
@@ -167,6 +185,30 @@ const PropertyDetailsPage: React.FC = () => {
 
     if (isLoading) {
         return <PropertyDetailsSkeleton />;
+    }
+
+    if (isPropError) {
+        return (
+            <div className="text-center py-20 container mx-auto px-4">
+                <div className="max-w-md mx-auto bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 rounded-xl p-8">
+                    <span className="text-3xl">⚠️</span>
+                    <h1 className="text-xl font-bold mt-4 text-gray-900 dark:text-white">
+                        {language === 'ar' ? 'تعذر تحميل بيانات العقار' : 'Failed to load property details'}
+                    </h1>
+                    <p className="mt-2 text-sm text-gray-500">
+                        {language === 'ar' ? 'حدث خطأ مؤقت في الاتصال بقاعدة البيانات، يرجى المحاولة مرة أخرى.' : 'A temporary connection error occurred. Please try again.'}
+                    </p>
+                    <div className="mt-6 flex justify-center gap-3">
+                        <Button variant="primary" onClick={() => refetchProperty()}>
+                            {language === 'ar' ? 'إعادة المحاولة' : 'Try Again'}
+                        </Button>
+                        <Link to="/properties" className="inline-block bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white font-semibold px-4 py-2 rounded-lg text-sm">
+                            {t_page.backButton}
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     if (!property) {
@@ -236,7 +278,7 @@ const PropertyDetailsPage: React.FC = () => {
                 onSelectForm={() => navigate('/request-service', { 
                     state: { 
                         partnerId: property.partnerId, 
-                        serviceTitle: `${t_page.inquiryAbout} "${property.title[language]}"`,
+                        serviceTitle: `${t_page.inquiryAbout} "${propTitle}"`,
                         propertyId: property.id
                     } 
                 })}
@@ -266,7 +308,7 @@ const PropertyDetailsPage: React.FC = () => {
             <div className="container mx-auto px-6">
                 <div className="lg:flex justify-between items-start mb-4">
                     <div>
-                        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">{property.title[language]}</h1>
+                        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">{propTitle}</h1>
                         <div className="flex flex-wrap items-center gap-2 mt-2">
                             <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                                 {property.referenceNumber || property.id.slice(0, 8)}
@@ -286,7 +328,7 @@ const PropertyDetailsPage: React.FC = () => {
                                 </span>
                             ) : null}
                             <p className="text-gray-500 dark:text-gray-400 flex items-center gap-1 text-sm ml-2">
-                                <LocationMarkerIcon className="w-4 h-4" /> {property.address[language]}
+                                <LocationMarkerIcon className="w-4 h-4" /> {propAddr}
                             </p>
                         </div>
                     </div>
@@ -305,11 +347,11 @@ const PropertyDetailsPage: React.FC = () => {
                         <StackedImageGallery
                             images={allImages}
                             onImageClick={handleImageClick}
-                            alt={property.title[language]}
+                            alt={propTitle}
                         />
                        
                         <DetailSection title={t_page.description}>
-                            <p className="whitespace-pre-line text-gray-600 dark:text-gray-300 leading-relaxed">{property.description[language]}</p>
+                            <p className="whitespace-pre-line text-gray-600 dark:text-gray-300 leading-relaxed">{propDesc}</p>
                         </DetailSection>
 
                         <DetailSection title={t_page.location}>

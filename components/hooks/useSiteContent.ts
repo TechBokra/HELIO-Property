@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getContent } from '../../services/content';
+import { siteContentData as fallbackData } from '../../data/content';
 
 export const useSiteContent = () => {
     const queryClient = useQueryClient();
@@ -22,6 +23,7 @@ export const useSiteContent = () => {
     return useQuery({
         queryKey: ['siteContent'],
         queryFn: getContent,
-        staleTime: 1000 * 5, // Fresh every 5 seconds or instant on mutation
+        placeholderData: fallbackData,
+        staleTime: 1000 * 60 * 5, // 5 minutes cache; instant sync via custom event on mutation
     });
 };

@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { getOptimizedImageUrl } from '../../utils/imageUtils';
 
 interface StackedImageGalleryProps {
   images: string[];
@@ -97,10 +98,10 @@ const StackedImageGallery: React.FC<StackedImageGalleryProps> = ({ images, onIma
             }}
           >
             <img
-              src={src}
+              src={getOptimizedImageUrl(src, 1200, 80)}
               alt={`${alt} - image ${index + 1}`}
               className="w-full h-full object-cover rounded-lg shadow-2xl"
-              loading="lazy"
+              loading={index === images.length - 1 ? 'eager' : 'lazy'}
             />
           </div>
         );

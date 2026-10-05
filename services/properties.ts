@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
-import { getAllPartners } from './partners'; 
-import { getAllProjects } from './projects';
+import { getAllPartners, getPartnerById } from './partners'; 
+import { getAllProjects, getProjectById } from './projects';
 import type { Property, PropertyFiltersType, Partner, Project, PropertyHistoryEntry } from '../types';
 import { filterProperties } from '../utils/propertyFilters';
 
@@ -249,13 +249,19 @@ const mapPropertyFromDb = (row: any): Property => {
 /**
  * Hydrates partner & project details in batch
  */
+/**
+ * Hydrates partner & project details efficiently using cached catalogs
+ */
 const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[]> => {
     if (properties.length === 0) return [];
 
     try {
+        const partnerIds = new Set(properties.map(p => p.partnerId).filter(Boolean));
+        const projectIds = new Set(properties.map(p => p.projectId).filter(Boolean));
+
         const [allPartners, allProjects] = await Promise.all([
-            getAllPartners().catch(e => { console.error("Failed to fetch partners", e); return []; }),
-            getAllProjects().catch(e => { console.error("Failed to fetch projects", e); return []; })
+            partnerIds.size > 0 ? getAllPartners().catch(() => []) : Promise.resolve([]),
+            projectIds.size > 0 ? getAllProjects().catch(() => []) : Promise.resolve([])
         ]);
 
         const partnerMap = new Map<string, Partner>();
@@ -277,64 +283,124 @@ const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[
         });
 
     } catch (e) {
-        console.error("Error hydrating properties:", e);
+        console.warn("Non-blocking property hydration notice:", e);
         return properties;
     }
+};
+
+// In-memory cache & deduplication for properties
+let cachedAllProperties: { data: Property[]; timestamp: number } | null = null;
+let inFlightAllPropertiesPromise: Promise<Property[]> | null = null;
+
+let cachedPublicProperties: { data: Property[]; timestamp: number } | null = null;
+let inFlightPublicPropertiesPromise: Promise<Property[]> | null = null;
+
+const PROPERTIES_CACHE_TTL = 90 * 1000; // 90 seconds in-memory cache
+
+export const invalidatePropertiesCache = () => {
+    cachedAllProperties = null;
+    inFlightAllPropertiesPromise = null;
+    cachedPublicProperties = null;
+    inFlightPublicPropertiesPromise = null;
 };
 
 /**
  * Fetches all properties for Admin management
  */
 export const getAllProperties = async (): Promise<Property[]> => {
-    try {
-        const { data, error } = await supabase
-            .from('properties')
-            .select('*')
-            .order('created_at', { ascending: false });
-        
-        if (error) {
-            console.error("Supabase error in getAllProperties:", error);
-            return [];
-        }
-
-        if (!data || data.length === 0) {
-            return [];
-        }
-
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
-        console.error("Failed to fetch all properties:", e);
-        return [];
+    const now = Date.now();
+    if (cachedAllProperties && (now - cachedAllProperties.timestamp) < PROPERTIES_CACHE_TTL) {
+        return cachedAllProperties.data;
     }
+
+    if (inFlightAllPropertiesPromise) {
+        return inFlightAllPropertiesPromise;
+    }
+
+    inFlightAllPropertiesPromise = (async () => {
+        try {
+            const { data, error } = await supabase
+                .from('properties')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
+            if (error) {
+                console.warn("Supabase notice in getAllProperties:", error.message);
+                if (cachedAllProperties) {
+                    return cachedAllProperties.data;
+                }
+                throw new Error(`Failed to fetch properties: ${error.message}`);
+            }
+
+            if (!data || data.length === 0) {
+                return [];
+            }
+
+            const rawProperties = data.map(mapPropertyFromDb);
+            const hydrated = await hydratePropertiesBatch(rawProperties);
+            cachedAllProperties = { data: hydrated, timestamp: Date.now() };
+            return hydrated;
+        } catch (e) {
+            if (cachedAllProperties) {
+                return cachedAllProperties.data;
+            }
+            throw e;
+        } finally {
+            inFlightAllPropertiesPromise = null;
+        }
+    })();
+
+    return inFlightAllPropertiesPromise;
 };
 
 /**
  * Fetches publicly visible properties (active or sold listings, never drafts or archived)
  */
 export const getProperties = async (): Promise<Property[]> => {
-    try {
-        const { data, error } = await supabase
-            .from('properties')
-            .select('*')
-            .in('listing_status', ['active', 'sold'])
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            console.error("Supabase error in getProperties:", error);
-            return [];
-        }
-
-        if (!data || data.length === 0) {
-            return [];
-        }
-
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
-        console.error("Failed to get public properties:", e);
-        return [];
+    const now = Date.now();
+    if (cachedPublicProperties && (now - cachedPublicProperties.timestamp) < PROPERTIES_CACHE_TTL) {
+        return cachedPublicProperties.data;
     }
+
+    if (inFlightPublicPropertiesPromise) {
+        return inFlightPublicPropertiesPromise;
+    }
+
+    inFlightPublicPropertiesPromise = (async () => {
+        try {
+            const { data, error } = await supabase
+                .from('properties')
+                .select('*')
+                .in('listing_status', ['active', 'sold'])
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.warn("Supabase notice in getProperties:", error.message);
+                if (cachedPublicProperties) {
+                    return cachedPublicProperties.data;
+                }
+                throw new Error(`Failed to get public properties: ${error.message}`);
+            }
+
+            if (!data || data.length === 0) {
+                return [];
+            }
+
+            const rawProperties = data.map(mapPropertyFromDb);
+            const hydrated = await hydratePropertiesBatch(rawProperties);
+            cachedPublicProperties = { data: hydrated, timestamp: Date.now() };
+            return hydrated;
+        } catch (e) {
+            if (cachedPublicProperties) {
+                return cachedPublicProperties.data;
+            }
+            throw e;
+        } finally {
+            inFlightPublicPropertiesPromise = null;
+        }
+    })();
+
+    return inFlightPublicPropertiesPromise;
 };
 
 /**
@@ -342,28 +408,23 @@ export const getProperties = async (): Promise<Property[]> => {
  */
 export const getPropertiesByPartnerId = async (partnerId: string): Promise<Property[]> => {
     if (!partnerId) return [];
-    try {
-        const { data, error } = await supabase
-            .from('properties')
-            .select('*')
-            .eq('partner_id', partnerId)
-            .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('partner_id', partnerId)
+        .order('created_at', { ascending: false });
 
-        if (error) {
-            console.error("Supabase error in getPropertiesByPartnerId:", error);
-            return [];
-        }
+    if (error) {
+        console.error("Supabase error in getPropertiesByPartnerId:", error);
+        throw new Error(`Failed to get partner properties: ${error.message}`);
+    }
 
-        if (!data || data.length === 0) {
-            return [];
-        }
-
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
-        console.error("Failed to get partner properties:", e);
+    if (!data || data.length === 0) {
         return [];
     }
+
+    const rawProperties = data.map(mapPropertyFromDb);
+    return hydratePropertiesBatch(rawProperties);
 };
 
 /**
@@ -371,46 +432,61 @@ export const getPropertiesByPartnerId = async (partnerId: string): Promise<Prope
  */
 export const getPropertiesByProjectId = async (projectId: string): Promise<Property[]> => {
     if (!projectId) return [];
-    try {
-        const { data, error } = await supabase
-            .from('properties')
-            .select('*')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
 
-        if (error || !data || data.length === 0) {
-            return [];
-        }
+    if (error) {
+        console.error("Supabase error in getPropertiesByProjectId:", error);
+        throw new Error(`Failed to get project properties: ${error.message}`);
+    }
 
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
+    if (!data || data.length === 0) {
         return [];
     }
+
+    const rawProperties = data.map(mapPropertyFromDb);
+    return hydratePropertiesBatch(rawProperties);
 };
 
 /**
- * Fetches single property by ID
+ * Fetches single property by ID with fast targeted hydration
  */
 export const getPropertyById = async (id: string): Promise<Property | undefined> => {
     if (!id) return undefined;
-    try {
-        const { data, error } = await supabase
-            .from('properties')
-            .select('*')
-            .eq('id', id)
-            .maybeSingle();
+    const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-        if (error || !data) {
-            return undefined;
-        }
+    if (error) {
+        console.error("Supabase error in getPropertyById:", error);
+        throw new Error(`Failed to load property: ${error.message}`);
+    }
 
-        const rawProp = mapPropertyFromDb(data);
-        const hydratedArray = await hydratePropertiesBatch([rawProp]);
-        return hydratedArray[0];
-    } catch (e) {
+    if (!data) {
         return undefined;
     }
+
+    const rawProp = mapPropertyFromDb(data);
+
+    // Fast-path targeted hydration: only load the specific partner and project
+    try {
+        const [partner, project] = await Promise.all([
+            rawProp.partnerId ? getPartnerById(rawProp.partnerId).catch(() => undefined) : Promise.resolve(undefined),
+            rawProp.projectId ? getProjectById(rawProp.projectId).catch(() => undefined) : Promise.resolve(undefined)
+        ]);
+        rawProp.partnerName = partner?.name;
+        rawProp.partnerImageUrl = partner?.imageUrl;
+        rawProp.projectName = project?.name;
+    } catch (e) {
+        console.warn("Non-blocking property hydration warning:", e);
+    }
+
+    return rawProp;
 };
 
 /**
@@ -596,6 +672,7 @@ export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' 
             // Table may be pending migration
         }
 
+        invalidatePropertiesCache();
         return mapPropertyFromDb(data);
     } catch (e) {
         console.error("Failed to insert property into Supabase:", e);
@@ -752,6 +829,7 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
             console.error("Supabase update error:", error);
             throw error;
         }
+        invalidatePropertiesCache();
         return mapPropertyFromDb(data);
     } catch (e) {
         console.error("Error updating property in Supabase:", e);
@@ -768,5 +846,6 @@ export const deleteProperty = async (propertyId: string): Promise<boolean> => {
         console.error("Error deleting property:", error);
         return false;
     }
+    invalidatePropertiesCache();
     return true;
 };

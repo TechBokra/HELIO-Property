@@ -1,7 +1,6 @@
 import { useRef, type FC, type ReactNode, type MouseEvent } from 'react';
 import { LocationMarkerIcon } from '../ui/Icons';
-import { useQuery } from '@tanstack/react-query';
-import { getContent } from '../../services/content';
+import { useSiteContent } from '../../hooks/useSiteContent';
 import { useLanguage } from './LanguageContext';
 
 // Estimated geographical boundaries for the New Heliopolis map image
@@ -42,7 +41,7 @@ const UnifiedMap: FC<UnifiedMapProps> = ({
     height = '100%'
 }) => {
     const { language } = useLanguage();
-    const { data: siteContent, isLoading } = useQuery({ queryKey: ['siteContent'], queryFn: getContent });
+    const { data: siteContent, isLoading } = useSiteContent();
     const mapRef = useRef<HTMLDivElement>(null);
 
     const convertToPixel = (lat: number, lng: number) => {
