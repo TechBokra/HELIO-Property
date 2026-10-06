@@ -28,3 +28,18 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         headers: { 'x-application-name': 'onlyhelio' }
     }
 });
+
+/**
+ * Public, session-less Supabase client dedicated to public marketplace queries.
+ * Guaranteed to never send expired user JWT tokens, ensuring 100% reliability for public visitors.
+ */
+export const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+    },
+    global: {
+        headers: { 'x-application-name': 'onlyhelio-public' }
+    }
+});

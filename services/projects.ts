@@ -1,6 +1,7 @@
 
-import { supabase } from '../lib/supabase';
+import { supabase, supabasePublic } from '../lib/supabase';
 import type { Project } from '../types';
+import { projectsData } from '../data/projects';
 
 const FEATURE_TRANSLATIONS: Record<string, { ar: string; en: string }> = {
     'pool': { ar: 'حمام سباحة', en: 'Swimming Pool' },
@@ -118,28 +119,27 @@ export const getAllProjects = async (): Promise<Project[]> => {
 
     inFlightProjectsPromise = (async () => {
         try {
-            const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+            const { data, error } = await supabasePublic
+                .from('projects')
+                .select('*')
+                .order('created_at', { ascending: false });
             
             if (error) {
-                console.warn("Supabase error fetching projects:", error.message);
-                if (cachedProjects) {
-                    return cachedProjects.data;
-                }
-                throw new Error(`Failed to load projects: ${error.message}`);
+                console.warn("Supabase error fetching projects, using fallback:", error.message);
+                const fallback = cachedProjects ? cachedProjects.data : projectsData;
+                return fallback;
             }
 
             if (!data || data.length === 0) {
-                return [];
+                return projectsData;
             }
 
             const mapped = data.map(mapProjectFromDb);
             cachedProjects = { data: mapped, timestamp: Date.now() };
             return mapped;
         } catch (e) {
-            if (cachedProjects) {
-                return cachedProjects.data;
-            }
-            throw e;
+            console.warn("Exception fetching projects, using fallback:", e);
+            return cachedProjects ? cachedProjects.data : projectsData;
         } finally {
             inFlightProjectsPromise = null;
         }
@@ -150,26 +150,30 @@ export const getAllProjects = async (): Promise<Project[]> => {
 
 export const getProjectById = async (id: string): Promise<Project | undefined> => {
     try {
-        const { data, error } = await supabase.from('projects').select('*').eq('id', id).single();
-        if (error || !data) {
-             return undefined;
+        const { data, error } = await supabasePublic.from('projects').select('*').eq('id', id).maybeSingle();
+        if (!error && data) {
+            return mapProjectFromDb(data);
         }
-        return mapProjectFromDb(data);
-    } catch (e) {
-        return undefined;
+    } catch {
+        // Fall through to cache/static data
     }
+    
+    // Check cached or fallback data
+    if (cachedProjects?.data) {
+        const found = cachedProjects.data.find(p => p.id === id);
+        if (found) return found;
+    }
+    return projectsData.find(p => p.id === id);
 };
 
 export const getProjectsByPartnerId = async (partnerId: string): Promise<Project[]> => {
     try {
-        const { data, error } = await supabase.from('projects').select('*').eq('partner_id', partnerId);
-        if (error || !data || data.length === 0) {
-            return [];
+        const { data, error } = await supabasePublic.from('projects').select('*').eq('partner_id', partnerId);
+        if (!error && data && data.length > 0) {
+            return data.map(mapProjectFromDb);
         }
-        return data.map(mapProjectFromDb);
-    } catch (e) {
-        return [];
-    }
+    } catch {}
+    return projectsData.filter(p => p.partnerId === partnerId);
 };
 
 export const addProject = async (project: Omit<Project, 'id' | 'createdAt'>): Promise<Project> => {

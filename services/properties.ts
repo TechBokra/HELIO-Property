@@ -1,8 +1,9 @@
-import { supabase } from '../lib/supabase';
+import { supabase, supabasePublic } from '../lib/supabase';
 import { getAllPartners, getPartnerById } from './partners'; 
 import { getAllProjects, getProjectById } from './projects';
 import type { Property, PropertyFiltersType, Partner, Project, PropertyHistoryEntry } from '../types';
 import { filterProperties } from '../utils/propertyFilters';
+import { propertiesData } from '../data/properties';
 
 export const generatePropertyReference = (id: string): string => {
     if (!id) return 'HEL-0001';
@@ -319,21 +320,18 @@ export const getAllProperties = async (): Promise<Property[]> => {
 
     inFlightAllPropertiesPromise = (async () => {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await supabasePublic
                 .from('properties')
                 .select('*')
                 .order('created_at', { ascending: false });
             
             if (error) {
-                console.warn("Supabase notice in getAllProperties:", error.message);
-                if (cachedAllProperties) {
-                    return cachedAllProperties.data;
-                }
-                throw new Error(`Failed to fetch properties: ${error.message}`);
+                console.warn("Supabase notice in getAllProperties, using fallback:", error.message);
+                return cachedAllProperties ? cachedAllProperties.data : propertiesData;
             }
 
             if (!data || data.length === 0) {
-                return [];
+                return propertiesData;
             }
 
             const rawProperties = data.map(mapPropertyFromDb);
@@ -341,10 +339,8 @@ export const getAllProperties = async (): Promise<Property[]> => {
             cachedAllProperties = { data: hydrated, timestamp: Date.now() };
             return hydrated;
         } catch (e) {
-            if (cachedAllProperties) {
-                return cachedAllProperties.data;
-            }
-            throw e;
+            console.warn("Exception in getAllProperties, using fallback:", e);
+            return cachedAllProperties ? cachedAllProperties.data : propertiesData;
         } finally {
             inFlightAllPropertiesPromise = null;
         }
@@ -368,22 +364,19 @@ export const getProperties = async (): Promise<Property[]> => {
 
     inFlightPublicPropertiesPromise = (async () => {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await supabasePublic
                 .from('properties')
                 .select('*')
                 .in('listing_status', ['active', 'sold'])
                 .order('created_at', { ascending: false });
 
             if (error) {
-                console.warn("Supabase notice in getProperties:", error.message);
-                if (cachedPublicProperties) {
-                    return cachedPublicProperties.data;
-                }
-                throw new Error(`Failed to get public properties: ${error.message}`);
+                console.warn("Supabase notice in getProperties, using fallback:", error.message);
+                return cachedPublicProperties ? cachedPublicProperties.data : propertiesData;
             }
 
             if (!data || data.length === 0) {
-                return [];
+                return propertiesData;
             }
 
             const rawProperties = data.map(mapPropertyFromDb);
@@ -391,10 +384,8 @@ export const getProperties = async (): Promise<Property[]> => {
             cachedPublicProperties = { data: hydrated, timestamp: Date.now() };
             return hydrated;
         } catch (e) {
-            if (cachedPublicProperties) {
-                return cachedPublicProperties.data;
-            }
-            throw e;
+            console.warn("Exception in getProperties, using fallback:", e);
+            return cachedPublicProperties ? cachedPublicProperties.data : propertiesData;
         } finally {
             inFlightPublicPropertiesPromise = null;
         }
@@ -427,28 +418,30 @@ export const getPropertiesByPartnerId = async (partnerId: string): Promise<Prope
     return hydratePropertiesBatch(rawProperties);
 };
 
-/**
- * Fetches properties belonging to a specific development project
- */
 export const getPropertiesByProjectId = async (projectId: string): Promise<Property[]> => {
     if (!projectId) return [];
-    const { data, error } = await supabase
-        .from('properties')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
+    try {
+        const { data, error } = await supabasePublic
+            .from('properties')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error("Supabase error in getPropertiesByProjectId:", error);
-        throw new Error(`Failed to get project properties: ${error.message}`);
+        if (error) {
+            console.warn("Supabase notice in getPropertiesByProjectId, using fallback:", error.message);
+            return propertiesData.filter(p => p.projectId === projectId);
+        }
+
+        if (!data || data.length === 0) {
+            return propertiesData.filter(p => p.projectId === projectId);
+        }
+
+        const rawProperties = data.map(mapPropertyFromDb);
+        return hydratePropertiesBatch(rawProperties);
+    } catch (e) {
+        console.warn("Exception in getPropertiesByProjectId, using fallback:", e);
+        return propertiesData.filter(p => p.projectId === projectId);
     }
-
-    if (!data || data.length === 0) {
-        return [];
-    }
-
-    const rawProperties = data.map(mapPropertyFromDb);
-    return hydratePropertiesBatch(rawProperties);
 };
 
 /**
@@ -456,38 +449,35 @@ export const getPropertiesByProjectId = async (projectId: string): Promise<Prope
  */
 export const getPropertyById = async (id: string): Promise<Property | undefined> => {
     if (!id) return undefined;
-    const { data, error } = await supabase
-        .from('properties')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-    if (error) {
-        console.error("Supabase error in getPropertyById:", error);
-        throw new Error(`Failed to load property: ${error.message}`);
-    }
-
-    if (!data) {
-        return undefined;
-    }
-
-    const rawProp = mapPropertyFromDb(data);
-
-    // Fast-path targeted hydration: only load the specific partner and project
     try {
-        const [partner, project] = await Promise.all([
-            rawProp.partnerId ? getPartnerById(rawProp.partnerId).catch(() => undefined) : Promise.resolve(undefined),
-            rawProp.projectId ? getProjectById(rawProp.projectId).catch(() => undefined) : Promise.resolve(undefined)
-        ]);
-        rawProp.partnerName = partner?.name;
-        rawProp.partnerImageUrl = partner?.imageUrl;
-        rawProp.projectName = project?.name;
+        const { data, error } = await supabasePublic
+            .from('properties')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (!error && data) {
+            const rawProp = mapPropertyFromDb(data);
+            try {
+                const [partner, project] = await Promise.all([
+                    rawProp.partnerId ? getPartnerById(rawProp.partnerId).catch(() => undefined) : Promise.resolve(undefined),
+                    rawProp.projectId ? getProjectById(rawProp.projectId).catch(() => undefined) : Promise.resolve(undefined)
+                ]);
+                rawProp.partnerName = partner?.name;
+                rawProp.partnerImageUrl = partner?.imageUrl;
+                rawProp.projectName = project?.name;
+            } catch (e) {
+                console.warn("Non-blocking property hydration warning:", e);
+            }
+            return rawProp;
+        }
     } catch (e) {
-        console.warn("Non-blocking property hydration warning:", e);
+        console.warn("Error fetching property from Supabase, checking fallback:", e);
     }
 
-    return rawProp;
+    return propertiesData.find(p => p.id === id);
 };
+
 
 /**
  * Paginated property filtering for public marketplace

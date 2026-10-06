@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import type { Language, Project, Partner } from '../../types';
+import type { Language, Project, Partner, Property } from '../../types';
 import { BuildingIcon, GridIcon, ListIcon } from '../ui/Icons';
 import SEO from '../shared/SEO';
 import ProjectCardSkeleton from '../shared/ProjectCardSkeleton';
@@ -15,6 +15,7 @@ import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardContent } from '../ui/Card';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { getResponsiveImageSources } from '../../utils/imageUtils';
+import { projectsData } from '../../data/projects';
 
 interface ProjectCardProps {
     project: Project; 
@@ -89,21 +90,22 @@ const ProjectsPage: React.FC = () => {
   
   const { data: siteContent } = useSiteContent();
   const { 
-    data: projects, 
+    data: projects = projectsData, 
     isLoading: isLoadingProjs, 
     isError: isProjectsError, 
     refetch: refetchProjects 
-  } = useQuery({ 
+  } = useQuery<Project[]>({ 
     queryKey: ['allProjects'], 
     queryFn: getAllProjects,
+    placeholderData: projectsData,
     staleTime: 1000 * 60 * 5 
   });
-  const { data: partners } = useQuery({ 
+  const { data: partners } = useQuery<Partner[]>({ 
     queryKey: ['allPartnersAdmin'], 
     queryFn: getAllPartnersForAdmin,
     staleTime: 1000 * 60 * 5 
   });
-  const { data: properties } = useQuery({ 
+  const { data: properties } = useQuery<Property[]>({ 
     queryKey: ['allProperties'], 
     queryFn: getAllProperties,
     staleTime: 1000 * 60 * 5 
@@ -114,16 +116,15 @@ const ProjectsPage: React.FC = () => {
   // Use dynamic content if available, fallback to translation file
   const content = siteContent?.projectsPage?.[language] || t.projectsPage;
   
+  const projectsList = Array.isArray(projects) ? projects : projectsData;
+
   const projectsWithDetails = useMemo(() => {
-    if (!projects) return [];
-    return projects.map(project => {
+    return projectsList.map(project => {
         const developer = (partners || []).find(p => p.id === project.partnerId);
         const unitsCount = (properties || []).filter(p => p.projectId === project.id).length;
         return { project, developer, unitsCount };
     });
-    // Removed the .filter() that checked for developer.status === 'active' 
-    // to ensure projects show up even if partner data is incomplete in fallback mode.
-  }, [projects, partners, properties]);
+  }, [projectsList, partners, properties]);
 
   return (
     <div className="bg-gray-50 py-20">
@@ -156,7 +157,7 @@ const ProjectsPage: React.FC = () => {
             </div>
         </div>
 
-        {isLoading ? (
+        {isLoading && projectsList.length === 0 ? (
             <div className="animate-fadeIn max-w-7xl mx-auto">
                 {view === 'grid' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -168,7 +169,7 @@ const ProjectsPage: React.FC = () => {
                     </div>
                 )}
             </div>
-        ) : isProjectsError ? (
+        ) : isProjectsError && projectsList.length === 0 ? (
             <div className="max-w-lg mx-auto text-center py-16 bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
                 <p className="text-gray-800 font-semibold mb-2">
                     {language === 'ar' ? 'تعذر تحميل المشروعات حالياً' : 'Failed to load projects'}

@@ -39,21 +39,28 @@ const ProjectDetailsPage: React.FC = () => {
     const { showToast } = useToast();
 
     const fetchProject = useCallback(() => getProjectById(projectId!), [projectId]);
-    const { data: project, isLoading: isLoadingProjs } = useQuery({ queryKey: [`project-${projectId}`], queryFn: fetchProject, enabled: !!projectId });
+    const { data: project, isLoading: isLoadingProjs } = useQuery({ 
+        queryKey: [`project-${projectId}`], 
+        queryFn: fetchProject, 
+        enabled: !!projectId,
+        staleTime: 1000 * 60 * 5
+    });
     
-    const { data: projectProperties, isLoading: isLoadingProps } = useQuery({
+    const { data: projectProperties = [], isLoading: isLoadingProps } = useQuery({
         queryKey: [`project-properties-${projectId}`],
         queryFn: () => getPropertiesByProjectId(projectId!),
         enabled: !!projectId,
+        staleTime: 1000 * 60 * 5
     });
 
-    const { data: developer, isLoading: isLoadingPartner } = useQuery({
+    const { data: developer } = useQuery({
         queryKey: [`partner-${project?.partnerId}`],
         queryFn: () => getPartnerById(project!.partnerId),
         enabled: !!project?.partnerId,
+        staleTime: 1000 * 60 * 5
     });
 
-    const isLoading = isLoadingProjs || isLoadingProps || isLoadingPartner;
+    const isLoading = isLoadingProjs && !project;
 
     const [activeType, setActiveType] = useState('all');
     const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -236,7 +243,13 @@ const ProjectDetailsPage: React.FC = () => {
                             })}
                         </div>
                     )}
-                    {filteredProperties.length > 0 ? (
+                    {isLoadingProps && (!projectProperties || projectProperties.length === 0) ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="h-72 bg-gray-200 animate-pulse rounded-xl" />
+                            ))}
+                        </div>
+                    ) : filteredProperties.length > 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                             {filteredProperties.map(prop => (
                                 <PropertyCard key={prop.id} {...prop} />
