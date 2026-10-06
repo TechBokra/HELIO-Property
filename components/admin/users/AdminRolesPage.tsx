@@ -18,45 +18,104 @@ interface PermissionMeta {
 }
 
 const PERMISSION_LABELS: Record<Permission, PermissionMeta> = {
+    // DASHBOARD
     [Permission.VIEW_ADMIN_DASHBOARD]: { ar: 'عرض لوحة الإدارة', en: 'View Admin Dashboard', category: 'dashboard' },
     [Permission.VIEW_PARTNER_DASHBOARD]: { ar: 'عرض لوحة الشريك', en: 'View Partner Dashboard', category: 'dashboard' },
     [Permission.VIEW_CUSTOMER_DASHBOARD]: { ar: 'عرض لوحة العميل', en: 'View Customer Dashboard', category: 'dashboard' },
     
+    // REAL ESTATE & PROPERTIES
+    [Permission.VIEW_PROPERTIES]: { ar: 'عرض العقارات', en: 'View Properties', category: 'real_estate' },
     [Permission.MANAGE_ALL_PROPERTIES]: { ar: 'إدارة جميع العقارات', en: 'Manage All Properties', category: 'real_estate' },
     [Permission.MANAGE_PLATFORM_PROPERTIES]: { ar: 'إدارة عقارات المنصة الحصرية', en: 'Manage Platform Properties', category: 'real_estate' },
-    [Permission.MANAGE_PLATFORM_PROPERTY_LEADS]: { ar: 'إدارة عملاء عقارات المنصة', en: 'Manage Platform Property Leads', category: 'real_estate' },
     [Permission.MANAGE_MARKET_PROPERTIES]: { ar: 'إدارة عقارات السوق المفتوح', en: 'Manage Market Properties', category: 'real_estate' },
-    [Permission.MANAGE_PROPERTY_REQUESTS]: { ar: 'إدارة طلبات إدراج العقارات', en: 'Manage Property Requests', category: 'real_estate' },
-    [Permission.MANAGE_PROPERTY_INQUIRIES]: { ar: 'إدارة استفسارات العقارات', en: 'Manage Property Inquiries', category: 'real_estate' },
+    [Permission.PUBLISH_PROPERTIES]: { ar: 'نشر العقارات', en: 'Publish Properties', category: 'real_estate' },
+    [Permission.ARCHIVE_PROPERTIES]: { ar: 'أرشفة وحذف العقارات', en: 'Archive Properties', category: 'real_estate' },
+    [Permission.MANAGE_OWN_PROPERTIES]: { ar: 'إدارة العقارات الخاصة', en: 'Manage Own Properties', category: 'real_estate' },
+    
+    // PROJECTS
+    [Permission.VIEW_PROJECTS]: { ar: 'عرض المشاريع', en: 'View Projects', category: 'real_estate' },
     [Permission.MANAGE_ALL_PROJECTS]: { ar: 'إدارة جميع المشاريع', en: 'Manage All Projects', category: 'real_estate' },
+    [Permission.MANAGE_OWN_PROJECTS]: { ar: 'إدارة المشاريع الخاصة', en: 'Manage Own Projects', category: 'real_estate' },
 
-    [Permission.MANAGE_DECORATIONS_CONTENT]: { ar: 'إدارة محتوى الديكور', en: 'Manage Decorations Content', category: 'finishing' },
-    [Permission.MANAGE_DECORATIONS_LEADS]: { ar: 'إدارة طلبات الديكور', en: 'Manage Decorations Leads', category: 'finishing' },
-    [Permission.MANAGE_PLATFORM_FINISHING_PACKAGES]: { ar: 'إدارة باقات تشطيب المنصة', en: 'Manage Platform Finishing Packages', category: 'finishing' },
-    [Permission.MANAGE_PLATFORM_FINISHING_LEADS]: { ar: 'إدارة طلبات تشطيب المنصة', en: 'Manage Platform Finishing Leads', category: 'finishing' },
-    [Permission.MANAGE_FINISHING_PARTNERS]: { ar: 'إدارة شركاء التشطيب', en: 'Manage Finishing Partners', category: 'finishing' },
-
+    // PARTNERS
+    [Permission.VIEW_PARTNERS]: { ar: 'عرض الشركاء', en: 'View Partners', category: 'partners' },
     [Permission.MANAGE_ALL_PARTNERS]: { ar: 'إدارة جميع الشركاء', en: 'Manage All Partners', category: 'partners' },
+    [Permission.VERIFY_PARTNERS]: { ar: 'توثيق وتفعيل الشركاء', en: 'Verify Partners', category: 'partners' },
+    [Permission.SUSPEND_PARTNERS]: { ar: 'تعليق وإيقاف الشركاء', en: 'Suspend Partners', category: 'partners' },
     [Permission.MANAGE_PARTNER_REQUESTS]: { ar: 'إدارة طلبات الشراكة', en: 'Manage Partner Requests', category: 'partners' },
     [Permission.MANAGE_INQUIRY_ROUTING]: { ar: 'إدارة توجيه الطلبات', en: 'Manage Inquiry Routing', category: 'partners' },
     [Permission.MANAGE_PLANS]: { ar: 'إدارة باقات الاشتراك', en: 'Manage Plans', category: 'partners' },
+
+    // CUSTOMERS
+    [Permission.VIEW_CUSTOMERS]: { ar: 'عرض العملاء والمستخدمين', en: 'View Customers', category: 'partners' },
+    [Permission.MANAGE_CUSTOMERS]: { ar: 'إدارة حسابات العملاء', en: 'Manage Customers', category: 'partners' },
+
+    // LEADS & REQUESTS
+    [Permission.VIEW_LEADS]: { ar: 'عرض طلبات العملاء والمهتمين', en: 'View Leads', category: 'partners' },
+    [Permission.MANAGE_LEADS]: { ar: 'إدارة طلبات العملاء والمهتمين', en: 'Manage Leads', category: 'partners' },
+    [Permission.ASSIGN_LEADS]: { ar: 'توزيع وتعيين طلبات العملاء', en: 'Assign Leads', category: 'partners' },
+    [Permission.VIEW_REQUESTS]: { ar: 'عرض طلبات العقارات والتواصل', en: 'View Requests', category: 'partners' },
+    [Permission.MANAGE_REQUESTS]: { ar: 'معالجة وإدارة الطلبات', en: 'Manage Requests', category: 'partners' },
+    [Permission.ASSIGN_REQUESTS]: { ar: 'تعيين وتوجيه الطلبات', en: 'Assign Requests', category: 'partners' },
+    [Permission.MANAGE_PLATFORM_PROPERTY_LEADS]: { ar: 'إدارة عملاء عقارات المنصة', en: 'Manage Platform Property Leads', category: 'partners' },
+    [Permission.MANAGE_PROPERTY_REQUESTS]: { ar: 'إدارة طلبات إدراج العقارات', en: 'Manage Property Requests', category: 'partners' },
+    [Permission.MANAGE_PROPERTY_INQUIRIES]: { ar: 'إدارة استفسارات العقارات', en: 'Manage Property Inquiries', category: 'partners' },
     [Permission.MANAGE_CONTACT_REQUESTS]: { ar: 'إدارة رسائل التواصل', en: 'Manage Contact Messages', category: 'partners' },
+    [Permission.VIEW_OWN_LEADS]: { ar: 'عرض طلبات العملاء الخاصة', en: 'View Own Leads', category: 'partners' },
+
+    // FINISHING
+    [Permission.VIEW_FINISHING]: { ar: 'عرض قسم التشطيبات', en: 'View Finishing', category: 'finishing' },
+    [Permission.MANAGE_PLATFORM_FINISHING_PACKAGES]: { ar: 'إدارة باقات تشطيب المنصة', en: 'Manage Platform Finishing Packages', category: 'finishing' },
+    [Permission.MANAGE_PLATFORM_FINISHING_LEADS]: { ar: 'إدارة طلبات تشطيب المنصة', en: 'Manage Platform Finishing Leads', category: 'finishing' },
+    [Permission.MANAGE_FINISHING_PARTNERS]: { ar: 'إدارة شركاء التشطيب', en: 'Manage Finishing Partners', category: 'finishing' },
+    [Permission.MANAGE_QUOTES]: { ar: 'إدارة المقايسات والعروض', en: 'Manage Quotes', category: 'finishing' },
+    [Permission.MANAGE_EXECUTION]: { ar: 'إدارة ومتابعة التنفيذ', en: 'Manage Execution', category: 'finishing' },
+
+    // DECORATIONS
+    [Permission.VIEW_DECORATIONS]: { ar: 'عرض قسم الديكور', en: 'View Decorations', category: 'finishing' },
+    [Permission.MANAGE_DECORATIONS_CONTENT]: { ar: 'إدارة محتوى الديكور', en: 'Manage Decorations Content', category: 'finishing' },
+    [Permission.MANAGE_DECORATIONS_LEADS]: { ar: 'إدارة طلبات الديكور', en: 'Manage Decorations Leads', category: 'finishing' },
+
+    // CONTENT & MEDIA
+    [Permission.VIEW_SITE_CONTENT]: { ar: 'عرض محتوى الموقع', en: 'View Site Content', category: 'system' },
+    [Permission.MANAGE_SITE_CONTENT]: { ar: 'إدارة محتوى الموقع', en: 'Manage Site Content', category: 'system' },
+    [Permission.MANAGE_BANNERS]: { ar: 'إدارة الإعلانات والبانرات', en: 'Manage Banners', category: 'system' },
+    [Permission.MANAGE_MEDIA]: { ar: 'إدارة مكتبة الوسائط والملفات', en: 'Manage Media Library', category: 'system' },
+
+    // ANALYTICS & REPORTS
+    [Permission.VIEW_ANALYTICS]: { ar: 'عرض الإحصائيات والأداء', en: 'View Analytics', category: 'system' },
+    [Permission.VIEW_REPORTS]: { ar: 'عرض التقارير التشغيلية', en: 'View Reports', category: 'system' },
+    [Permission.EXPORT_REPORTS]: { ar: 'تصدير التقارير والبيانات', en: 'Export Reports', category: 'system' },
+
+    // FINANCE
+    [Permission.VIEW_FINANCE]: { ar: 'عرض السجلات المالية والاشتراكات', en: 'View Finance', category: 'system' },
+    [Permission.MANAGE_FINANCE]: { ar: 'إدارة المالية والفواتير', en: 'Manage Finance', category: 'system' },
+
+    // USERS & GOVERNANCE
+    [Permission.VIEW_USERS]: { ar: 'عرض قائمة المستخدمين والإداريين', en: 'View Users', category: 'system' },
+    [Permission.MANAGE_USERS]: { ar: 'إدارة المستخدمين وحسابات الإدارة', en: 'Manage Users', category: 'system' },
+    [Permission.VIEW_ROLES_PERMISSIONS]: { ar: 'عرض جدول الأدوار والصلاحيات', en: 'View Roles & Permissions', category: 'system' },
+    [Permission.MANAGE_ROLES_PERMISSIONS]: { ar: 'إدارة الأدوار والصلاحيات', en: 'Manage Roles & Permissions', category: 'system' },
+    [Permission.VIEW_AUDIT_LOG]: { ar: 'عرض سجل التدقيق والعمليات', en: 'View Audit Log', category: 'system' },
+
+    // AUTOMATION
+    [Permission.VIEW_AUTOMATION]: { ar: 'عرض قواعد الأتمتة', en: 'View Automation', category: 'system' },
+    [Permission.MANAGE_AUTOMATION]: { ar: 'إدارة قواعد الأتمتة والتوجيه', en: 'Manage Automation', category: 'system' },
+
+    // FORMS
+    [Permission.VIEW_FORMS]: { ar: 'عرض النماذج الديناميكية', en: 'View Forms', category: 'system' },
+    [Permission.MANAGE_FORMS]: { ar: 'إدارة وبناء النماذج', en: 'Manage Forms', category: 'system' },
+
+    // SETTINGS & FILTERS
+    [Permission.VIEW_SETTINGS]: { ar: 'عرض إعدادات المنصة', en: 'View Settings', category: 'system' },
+    [Permission.MANAGE_SETTINGS]: { ar: 'إدارة إعدادات المنصة', en: 'Manage Settings', category: 'system' },
+    [Permission.MANAGE_FILTERS]: { ar: 'إدارة خيارات وفلاتر البحث', en: 'Manage Filters', category: 'system' },
+
+    // PARTNER SELF-SERVICE
     [Permission.MANAGE_OWN_PROFILE]: { ar: 'إدارة الملف الشخصي', en: 'Manage Own Profile', category: 'partners' },
-    [Permission.MANAGE_OWN_PROJECTS]: { ar: 'إدارة المشاريع الخاصة', en: 'Manage Own Projects', category: 'partners' },
-    [Permission.MANAGE_OWN_PROPERTIES]: { ar: 'إدارة العقارات الخاصة', en: 'Manage Own Properties', category: 'partners' },
     [Permission.MANAGE_OWN_PORTFOLIO]: { ar: 'إدارة معرض الأعمال الخاص', en: 'Manage Own Portfolio', category: 'partners' },
     [Permission.MANAGE_OWN_SUBSCRIPTION]: { ar: 'إدارة الاشتراك والباقة', en: 'Manage Own Subscription', category: 'partners' },
-    [Permission.VIEW_OWN_LEADS]: { ar: 'عرض طلبات العملاء الخاصة', en: 'View Own Leads', category: 'partners' },
-    [Permission.MANAGE_TEAM]: { ar: 'إدارة فريق العمل والموظفين', en: 'Manage Team Members', category: 'partners' },
-
-    [Permission.MANAGE_USERS]: { ar: 'إدارة المستخدمين', en: 'Manage Users', category: 'system' },
-    [Permission.MANAGE_ROLES_PERMISSIONS]: { ar: 'إدارة الأدوار والصلاحيات', en: 'Manage Roles & Permissions', category: 'system' },
-    [Permission.MANAGE_SETTINGS]: { ar: 'إدارة الإعدادات العامة', en: 'Manage Settings', category: 'system' },
-    [Permission.MANAGE_FORMS]: { ar: 'إدارة النماذج الديناميكية', en: 'Manage Forms', category: 'system' },
-    [Permission.MANAGE_AUTOMATION]: { ar: 'إدارة قواعد الأتمتة', en: 'Manage Automation', category: 'system' },
-    [Permission.MANAGE_BANNERS]: { ar: 'إدارة الإعلانات والبانرات', en: 'Manage Banners', category: 'system' },
-    [Permission.MANAGE_SITE_CONTENT]: { ar: 'إدارة محتوى الموقع', en: 'Manage Site Content', category: 'system' },
-    [Permission.MANAGE_FILTERS]: { ar: 'إدارة خيارات الفلترة', en: 'Manage Filters', category: 'system' }
+    [Permission.MANAGE_TEAM]: { ar: 'إدارة فريق العمل والموظفين', en: 'Manage Team Members', category: 'partners' }
 };
 
 interface RoleMetadataItem {

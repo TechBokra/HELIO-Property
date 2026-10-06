@@ -1,4 +1,3 @@
-
 import { Role, Permission, PartnerType } from '../types';
 
 export const rolePermissions: Map<Role, Permission[]> = new Map([
@@ -6,43 +5,46 @@ export const rolePermissions: Map<Role, Permission[]> = new Map([
     Role.SUPER_ADMIN,
     Object.values(Permission),
   ],
-  // --- External Partners ---
+
+  // --- External Roles ---
   [
     Role.DEVELOPER_PARTNER,
     [
       Permission.VIEW_PARTNER_DASHBOARD,
-      Permission.MANAGE_OWN_PROFILE,
+      Permission.VIEW_PROJECTS,
       Permission.MANAGE_OWN_PROJECTS,
+      Permission.VIEW_PROPERTIES,
+      Permission.MANAGE_OWN_PROPERTIES,
       Permission.VIEW_OWN_LEADS,
+      Permission.MANAGE_OWN_PROFILE,
       Permission.MANAGE_OWN_SUBSCRIPTION,
-      Permission.MANAGE_OWN_PROPERTIES, // Developers manage properties within projects
-      Permission.MANAGE_TEAM, // Can manage sub-users
+      Permission.MANAGE_TEAM,
     ],
   ],
   [
     Role.FINISHING_PARTNER,
     [
       Permission.VIEW_PARTNER_DASHBOARD,
-      Permission.MANAGE_OWN_PROFILE,
+      Permission.VIEW_FINISHING,
       Permission.MANAGE_OWN_PORTFOLIO,
       Permission.VIEW_OWN_LEADS,
+      Permission.MANAGE_OWN_PROFILE,
       Permission.MANAGE_OWN_SUBSCRIPTION,
-      Permission.MANAGE_TEAM, // Can manage sub-users
+      Permission.MANAGE_TEAM,
     ],
   ],
   [
     Role.AGENCY_PARTNER,
     [
       Permission.VIEW_PARTNER_DASHBOARD,
-      Permission.MANAGE_OWN_PROFILE,
+      Permission.VIEW_PROPERTIES,
       Permission.MANAGE_OWN_PROPERTIES,
       Permission.VIEW_OWN_LEADS,
+      Permission.MANAGE_OWN_PROFILE,
       Permission.MANAGE_OWN_SUBSCRIPTION,
-      Permission.MANAGE_TEAM, // Can manage sub-users
+      Permission.MANAGE_TEAM,
     ],
   ],
-
-  // --- Customer / Client ---
   [
     Role.CUSTOMER,
     [
@@ -51,115 +53,165 @@ export const rolePermissions: Map<Role, Permission[]> = new Map([
     ],
   ],
 
-  // --- Internal Managers ---
-  
-  // 1. Decoration Manager (Platform)
-  [
-    Role.DECORATION_MANAGER,
-    [
-      Permission.VIEW_ADMIN_DASHBOARD,
-      Permission.MANAGE_DECORATIONS_CONTENT, // Portfolio, Categories
-      Permission.MANAGE_DECORATIONS_LEADS,   // Requests
-    ],
-  ],
-
-  // 2. Platform Finishing Manager (Internal Team)
-  [
-    Role.PLATFORM_FINISHING_MANAGER,
-    [
-      Permission.VIEW_ADMIN_DASHBOARD,
-      Permission.MANAGE_PLATFORM_FINISHING_PACKAGES, // Services, Pricing
-      Permission.MANAGE_PLATFORM_FINISHING_LEADS,    // Requests
-    ],
-  ],
-
-  // 3. Finishing Market Manager (Partners Oversight)
-  [
-    Role.FINISHING_MARKET_MANAGER,
-    [
-      Permission.VIEW_ADMIN_DASHBOARD,
-      Permission.MANAGE_FINISHING_PARTNERS, // Review Finishing Partners
-      Permission.MANAGE_PARTNER_REQUESTS,   // Approve new finishing partners
-    ],
-  ],
-
-  // 4. Platform Real Estate Manager (Brokerage / Individual Listings)
-  [
-    Role.PLATFORM_REAL_ESTATE_MANAGER,
-    [
-      Permission.VIEW_ADMIN_DASHBOARD,
-      Permission.MANAGE_PLATFORM_PROPERTIES,      // Drafts, Active Platform Listings
-      Permission.MANAGE_PLATFORM_PROPERTY_LEADS,  // Direct inquiries
-      Permission.MANAGE_PROPERTY_REQUESTS,        // Listing requests from individuals
-    ],
-  ],
-
-  // 5. Real Estate Market Manager (General Oversight)
+  // --- Internal Platform Management Roles ---
+  // 1. Real Estate Market Manager (General Market Oversight)
   [
     Role.REAL_ESTATE_MARKET_MANAGER,
     [
       Permission.VIEW_ADMIN_DASHBOARD,
-      Permission.MANAGE_MARKET_PROPERTIES, // View all market props
-      Permission.MANAGE_ALL_PROJECTS,      // View projects
-      Permission.MANAGE_PROPERTY_INQUIRIES, // General search requests
+      Permission.VIEW_PROPERTIES,
+      Permission.MANAGE_MARKET_PROPERTIES,
+      Permission.VIEW_PROJECTS,
+      Permission.MANAGE_ALL_PROJECTS,
+      Permission.VIEW_LEADS,
+      Permission.VIEW_REQUESTS,
+      Permission.MANAGE_PROPERTY_INQUIRIES,
+      Permission.VIEW_ANALYTICS,
+      Permission.VIEW_REPORTS,
     ],
   ],
 
-  // 6. Partner Relations Manager (Onboarding & Rules)
+  // 2. Platform Real Estate Manager (Brokerage / Direct Platform Listings)
+  [
+    Role.PLATFORM_REAL_ESTATE_MANAGER,
+    [
+      Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_PROPERTIES,
+      Permission.MANAGE_PLATFORM_PROPERTIES,
+      Permission.PUBLISH_PROPERTIES,
+      Permission.ARCHIVE_PROPERTIES,
+      Permission.VIEW_LEADS,
+      Permission.MANAGE_PLATFORM_PROPERTY_LEADS,
+      Permission.VIEW_REQUESTS,
+      Permission.MANAGE_PROPERTY_REQUESTS,
+      Permission.VIEW_ANALYTICS,
+    ],
+  ],
+
+  // 3. Listings Manager (Catalog Consistency)
+  [
+    Role.LISTINGS_MANAGER,
+    [
+      Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_PROPERTIES,
+      Permission.MANAGE_ALL_PROPERTIES,
+      Permission.PUBLISH_PROPERTIES,
+      Permission.VIEW_PROJECTS,
+      Permission.VIEW_LEADS,
+    ],
+  ],
+
+  // 4. Partner Relations Manager (Onboarding & Governance)
   [
     Role.PARTNER_RELATIONS_MANAGER,
     [
       Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_PARTNERS,
       Permission.MANAGE_ALL_PARTNERS,
+      Permission.VERIFY_PARTNERS,
+      Permission.SUSPEND_PARTNERS,
       Permission.MANAGE_PARTNER_REQUESTS,
       Permission.MANAGE_INQUIRY_ROUTING,
       Permission.MANAGE_PLANS,
-      Permission.MANAGE_AUTOMATION, // Routing Rules
+      Permission.VIEW_AUTOMATION,
+      Permission.MANAGE_AUTOMATION,
+      Permission.VIEW_ANALYTICS,
+      Permission.VIEW_REPORTS,
     ],
   ],
 
-  // 7. Content Manager (CMS)
-   [
-    Role.CONTENT_MANAGER,
-    [
-      Permission.VIEW_ADMIN_DASHBOARD,
-      Permission.MANAGE_BANNERS,
-      Permission.MANAGE_SITE_CONTENT,
-      Permission.MANAGE_FILTERS,
-      Permission.MANAGE_SETTINGS,
-      Permission.MANAGE_FORMS, // Dynamic Forms
-    ],
-  ],
-
-  // --- Legacy / General Roles (For backward compatibility) ---
-  [
-    Role.SERVICE_MANAGER,
-    [
-        Permission.VIEW_ADMIN_DASHBOARD,
-        Permission.MANAGE_FINISHING_PARTNERS,
-        Permission.MANAGE_DECORATIONS_LEADS,
-    ]
-  ],
+  // 5. Customer Relations Manager (Customer Accounts & Inquiries)
   [
     Role.CUSTOMER_RELATIONS_MANAGER,
     [
-        Permission.VIEW_ADMIN_DASHBOARD,
-        Permission.MANAGE_PROPERTY_REQUESTS,
-        Permission.MANAGE_PROPERTY_INQUIRIES,
-        Permission.MANAGE_CONTACT_REQUESTS,
-    ]
+      Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_CUSTOMERS,
+      Permission.MANAGE_CUSTOMERS,
+      Permission.VIEW_LEADS,
+      Permission.VIEW_REQUESTS,
+      Permission.MANAGE_REQUESTS,
+      Permission.MANAGE_PROPERTY_REQUESTS,
+      Permission.MANAGE_PROPERTY_INQUIRIES,
+      Permission.MANAGE_CONTACT_REQUESTS,
+    ],
   ],
+
+  // 6. Platform Finishing Manager (Turnkey & Operations)
   [
-    Role.LISTINGS_MANAGER,
+    Role.PLATFORM_FINISHING_MANAGER,
     [
-        Permission.VIEW_ADMIN_DASHBOARD,
-        Permission.MANAGE_ALL_PROPERTIES,
-    ]
-  ]
+      Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_FINISHING,
+      Permission.MANAGE_PLATFORM_FINISHING_PACKAGES,
+      Permission.MANAGE_PLATFORM_FINISHING_LEADS,
+      Permission.MANAGE_QUOTES,
+      Permission.MANAGE_EXECUTION,
+      Permission.VIEW_LEADS,
+      Permission.VIEW_REQUESTS,
+    ],
+  ],
+
+  // 7. Finishing Market Manager (Finishing Partners Oversight)
+  [
+    Role.FINISHING_MARKET_MANAGER,
+    [
+      Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_FINISHING,
+      Permission.MANAGE_FINISHING_PARTNERS,
+      Permission.VIEW_PARTNERS,
+      Permission.MANAGE_PARTNER_REQUESTS,
+      Permission.VIEW_LEADS,
+    ],
+  ],
+
+  // 8. Decoration Manager (Platform Portfolio & Requests)
+  [
+    Role.DECORATION_MANAGER,
+    [
+      Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_DECORATIONS,
+      Permission.MANAGE_DECORATIONS_CONTENT,
+      Permission.MANAGE_DECORATIONS_LEADS,
+      Permission.VIEW_LEADS,
+      Permission.VIEW_REQUESTS,
+    ],
+  ],
+
+  // 9. Content Manager (CMS & Media)
+  [
+    Role.CONTENT_MANAGER,
+    [
+      Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_SITE_CONTENT,
+      Permission.MANAGE_SITE_CONTENT,
+      Permission.MANAGE_BANNERS,
+      Permission.MANAGE_MEDIA,
+      Permission.VIEW_FORMS,
+      Permission.MANAGE_FORMS,
+      Permission.VIEW_SETTINGS,
+      Permission.MANAGE_SETTINGS,
+      Permission.MANAGE_FILTERS,
+    ],
+  ],
+
+  // --- Legacy / General Roles (Kept for backward compatibility) ---
+  [
+    Role.SERVICE_MANAGER,
+    [
+      Permission.VIEW_ADMIN_DASHBOARD,
+      Permission.VIEW_FINISHING,
+      Permission.MANAGE_FINISHING_PARTNERS,
+      Permission.VIEW_DECORATIONS,
+      Permission.MANAGE_DECORATIONS_LEADS,
+    ],
+  ],
 ]);
 
-
-export const mapPartnerTypeToRole = (type?: PartnerType | string, role?: string, email?: string): Role => {
+/**
+ * Resolves a canonical Role strictly from database attributes.
+ * Never performs email-based promotion or client overrides.
+ */
+export const mapPartnerTypeToRole = (type?: PartnerType | string, role?: string): Role => {
     const cleanRole = (role || '').trim().toLowerCase();
     const cleanType = (type || '').trim().toLowerCase();
 
@@ -196,7 +248,7 @@ export const mapPartnerTypeToRole = (type?: PartnerType | string, role?: string,
         }
     }
 
-    // 3. Fallback to Type
+    // 2. Fallback strictly to account Type
     switch (cleanType) {
         case 'admin':
         case 'system':

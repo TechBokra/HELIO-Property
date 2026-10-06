@@ -16,13 +16,9 @@ interface UserSidebarProps {
 const UserSidebar = ({ user, onLogout, isOpen, setIsOpen }: UserSidebarProps) => {
     const { language, t } = useLanguage();
     const isRTL = language === 'ar';
-    const cleanEmail = (user.email || '').trim().toLowerCase();
     const isAdmin = user.role === Role.SUPER_ADMIN || 
                     (user.role && user.role.includes('manager')) || 
-                    (user.role && user.role.includes('admin')) ||
-                    cleanEmail === 'admin@onlyhelio.com' ||
-                    cleanEmail === 'tam.elshafey@gmail.com' ||
-                    cleanEmail === 'admin@newheliopolis.com';
+                    (user.role && user.role.includes('admin'));
     
     const navLinks = [
         { name: t.nav.home, href: '/my-dashboard', icon: HomeIcon, exact: true },

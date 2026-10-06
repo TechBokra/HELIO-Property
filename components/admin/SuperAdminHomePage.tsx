@@ -128,7 +128,7 @@ const SuperAdminHomePage: React.FC = () => {
                     actionLabel: language === 'ar' ? 'تدقيق العقار' : 'Audit Listing',
                     actionUrl: `/admin/properties/list?verification=pending&highlight=${prop.id}`,
                     urgency: 'medium',
-                    date: prop.createdAt || new Date().toISOString()
+                    date: prop.createdAt || prop.listingStartDate || new Date().toISOString()
                 });
             }
         });

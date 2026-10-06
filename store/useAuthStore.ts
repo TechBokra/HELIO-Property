@@ -1,12 +1,10 @@
-
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Partner, Role, Permission } from '../types';
-import { getPartnerById, createProfileForExistingUser, mapPartnerFromDb } from '../services/partners';
+import { getPartnerById, createProfileForExistingUser } from '../services/partners';
 import { rolePermissions, mapPartnerTypeToRole } from '../data/permissions';
 import { supabase } from '../lib/supabase';
 import { useFavoritesStore } from './useFavoritesStore';
-import { partnersData } from '../data/partners';
 
 interface AuthState {
     currentUser: Partner | null;
@@ -33,59 +31,66 @@ export const useAuthStore = create<AuthState>()(
 
             initialize: async () => {
                 try {
-                    // Check active session on load
+                    // Check active session on load with Supabase as final authority
                     const { data: { session }, error } = await supabase.auth.getSession();
                     
-                    if (error) {
-                        console.warn("Auth initialization warning:", error.message);
+                    if (error || !session?.user) {
+                        // Purge any stale client-side state
+                        set({ currentUser: null, permissions: [] });
+                        localStorage.removeItem('onlyhelio-auth-storage');
                         return;
                     }
 
-                    if (session?.user) {
-                        let userProfile = await getPartnerById(session.user.id);
-                        
-                        // Self-healing: if session exists but no profile, create it
-                        if (!userProfile) {
-                            try {
-                                console.warn("Missing profile for active session. Attempting recovery...");
-                                userProfile = await createProfileForExistingUser(session.user);
-                            } catch(e) {
-                                console.error("Self-healing failed during init", e);
-                            }
-                        }
-
-                        if (userProfile) {
-                            // Ensure role is mapped correctly
-                            const userRole = mapPartnerTypeToRole(userProfile.type, userProfile.role, userProfile.email);
-                            const permissions = rolePermissions.get(userRole) || (userRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                            const updatedProfile = { ...userProfile, role: userRole };
-                            set({ currentUser: updatedProfile, permissions });
-                            useFavoritesStore.getState().syncWithCloud(session.user.id);
+                    let userProfile = await getPartnerById(session.user.id);
+                    
+                    // Self-healing: if session exists in auth.users but missing public profile
+                    if (!userProfile) {
+                        try {
+                            console.warn("Missing profile for active session. Attempting recovery...");
+                            userProfile = await createProfileForExistingUser(session.user);
+                        } catch (e) {
+                            console.error("Self-healing failed during init", e);
                         }
                     }
 
-                    // Listen for auth changes
-                    supabase.auth.onAuthStateChange(async (event, session) => {
-                        if (event === 'SIGNED_IN' && session?.user) {
-                             // Fetch profile again to ensure fresh data
-                            const userProfile = await getPartnerById(session.user.id);
-                            if (userProfile) {
-                                const userRole = mapPartnerTypeToRole(userProfile.type, userProfile.role, userProfile.email);
-                                const permissions = rolePermissions.get(userRole) || (userRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                                const updatedProfile = { ...userProfile, role: userRole };
-                                set({ currentUser: updatedProfile, permissions });
-                                useFavoritesStore.getState().syncWithCloud(session.user.id);
+                    if (userProfile) {
+                        const userRole = mapPartnerTypeToRole(userProfile.type, userProfile.role);
+                        const basePermissions = rolePermissions.get(userRole) || (userRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
+                        const custom = Array.isArray(userProfile.customPermissions) ? userProfile.customPermissions : [];
+                        const mergedPermissions = Array.from(new Set([...basePermissions, ...custom]));
+
+                        const updatedProfile = { ...userProfile, role: userRole };
+                        set({ currentUser: updatedProfile, permissions: mergedPermissions });
+                        useFavoritesStore.getState().syncWithCloud(session.user.id);
+                    } else {
+                        // Profile could not be verified
+                        set({ currentUser: null, permissions: [] });
+                        localStorage.removeItem('onlyhelio-auth-storage');
+                    }
+
+                    // Listen for live auth events from Supabase
+                    supabase.auth.onAuthStateChange(async (event, currentSession) => {
+                        if (event === 'SIGNED_IN' && currentSession?.user) {
+                            const profile = await getPartnerById(currentSession.user.id);
+                            if (profile) {
+                                const role = mapPartnerTypeToRole(profile.type, profile.role);
+                                const base = rolePermissions.get(role) || (role === Role.SUPER_ADMIN ? Object.values(Permission) : []);
+                                const custom = Array.isArray(profile.customPermissions) ? profile.customPermissions : [];
+                                const merged = Array.from(new Set([...base, ...custom]));
+
+                                set({ currentUser: { ...profile, role }, permissions: merged });
+                                useFavoritesStore.getState().syncWithCloud(currentSession.user.id);
                             }
                         } else if (event === 'SIGNED_OUT') {
                             set({ currentUser: null, permissions: [] });
                             useFavoritesStore.getState().clearAuthenticatedFavorites();
-                            // Clear local storage explicitly to be safe
                             localStorage.removeItem('onlyhelio-auth-storage');
                         }
                     });
                 } catch (e) {
-                    console.error("Auth store initialization failed completely:", e);
+                    console.error("Auth store initialization failed:", e);
                     set({ currentUser: null, permissions: [] });
+                    localStorage.removeItem('onlyhelio-auth-storage');
                 }
             },
 
@@ -93,115 +98,46 @@ export const useAuthStore = create<AuthState>()(
                 set({ isLoading: true });
                 const cleanEmail = email.trim().toLowerCase();
                 try {
-                    let authUser: any = null;
+                    // Strict Authenticated Login via Supabase Auth
                     const { data, error } = await supabase.auth.signInWithPassword({
                         email: cleanEmail,
                         password: pass
                     });
 
-                    if (!error && data?.user) {
-                        authUser = data.user;
-                    } else {
-                        // Supabase standard auth returned error (e.g. Invalid login credentials)
-                        console.warn("Supabase standard auth attempt returned:", error?.message);
-
-                        let partnerProfile: Partner | null = null;
-
-                        // 1. Check Supabase partners table
-                        try {
-                            const { data: dbPartner } = await supabase
-                                .from('partners')
-                                .select('*')
-                                .ilike('email', cleanEmail)
-                                .maybeSingle();
-
-                            if (dbPartner) {
-                                partnerProfile = mapPartnerFromDb(dbPartner);
-                            }
-                        } catch (dbErr) {
-                            console.warn("DB partner lookup fallback error:", dbErr);
-                        }
-
-                        // 2. Check local demo partners
-                        if (!partnerProfile) {
-                            const localDemo = partnersData.find(p => p.email.toLowerCase() === cleanEmail);
-                            if (localDemo) {
-                                partnerProfile = {
-                                    ...localDemo,
-                                    name: localDemo.id,
-                                    description: '',
-                                    imageUrl: (localDemo as any).imageUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&h=200&q=80',
-                                    role: (localDemo as any).role || mapPartnerTypeToRole(localDemo.type)
-                                } as unknown as Partner;
-                            }
-                        }
-
-                        // 3. Check platform owner account
-                        if (!partnerProfile && (cleanEmail === 'tam.elshafey@gmail.com' || cleanEmail === 'admin@onlyhelio.com')) {
-                            partnerProfile = {
-                                id: cleanEmail === 'tam.elshafey@gmail.com' ? '0e49c228-f7ec-49a5-8589-53bc01a2109a' : '9fa46f11-9e5f-4220-8520-27ad077210e5',
-                                email: cleanEmail,
-                                name: cleanEmail === 'tam.elshafey@gmail.com' ? 'Tamer Elshafey' : 'Super Admin',
-                                nameAr: cleanEmail === 'tam.elshafey@gmail.com' ? 'تامر الشافعي' : 'المدير العام',
-                                imageUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&h=200&q=80',
-                                role: Role.SUPER_ADMIN,
-                                type: 'system',
-                                status: 'active',
-                                subscriptionPlan: 'enterprise',
-                                displayType: 'standard',
-                                contactMethods: { form: { enabled: true } },
-                                createdAt: new Date().toISOString()
-                            } as unknown as Partner;
-                        }
-
-                        if (partnerProfile) {
-                            const userRole = mapPartnerTypeToRole(partnerProfile.type, partnerProfile.role, partnerProfile.email);
-                            const permissions = rolePermissions.get(userRole) || (userRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                            const updatedProfile = { ...partnerProfile, role: userRole };
-
-                            set({
-                                currentUser: updatedProfile,
-                                permissions,
-                                isLoading: false
-                            });
-                            useFavoritesStore.getState().syncWithCloud(updatedProfile.id);
-                            return updatedProfile;
-                        }
-
-                        // Not recognized, throw original error
-                        throw error;
+                    if (error || !data?.user) {
+                        // Fail immediately: No demo bypasses, no static fallbacks, no synthetic admin creation
+                        throw new Error(error?.message || "Invalid login credentials.");
                     }
 
-                    // Standard path when authUser succeeded:
-                    let userProfile = await getPartnerById(authUser.id);
+                    // Hydrate authoritative profile from database
+                    let userProfile = await getPartnerById(data.user.id);
                     
                     if (!userProfile) {
                         try {
-                            console.warn("Profile missing for existing auth user. Attempting to create default profile...");
-                            userProfile = await createProfileForExistingUser(authUser);
+                            userProfile = await createProfileForExistingUser(data.user);
                         } catch (createError) {
-                            console.error("Failed to create default profile:", createError);
+                            console.error("Failed to hydrate profile:", createError);
                         }
                     }
 
-                    if (userProfile) {
-                        const userRole = mapPartnerTypeToRole(userProfile.type, userProfile.role, userProfile.email);
-                        const permissions = rolePermissions.get(userRole) || (userRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                        const updatedProfile = { ...userProfile, role: userRole };
-                        
-                        set({ 
-                            currentUser: updatedProfile, 
-                            permissions, 
-                            isLoading: false 
-                        });
-                        useFavoritesStore.getState().syncWithCloud(authUser.id);
-                        return updatedProfile;
-                    } else {
-                        console.error("Profile not found for user:", authUser.id);
-                        throw new Error("Profile setup incomplete. Please contact support.");
+                    if (!userProfile) {
+                        throw new Error("User profile not found in database.");
                     }
+
+                    const userRole = mapPartnerTypeToRole(userProfile.type, userProfile.role);
+                    const basePermissions = rolePermissions.get(userRole) || (userRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
+                    const custom = Array.isArray(userProfile.customPermissions) ? userProfile.customPermissions : [];
+                    const mergedPermissions = Array.from(new Set([...basePermissions, ...custom]));
+                    const updatedProfile = { ...userProfile, role: userRole };
+
+                    set({ 
+                        currentUser: updatedProfile, 
+                        permissions: mergedPermissions, 
+                        isLoading: false 
+                    });
+                    useFavoritesStore.getState().syncWithCloud(data.user.id);
+                    return updatedProfile;
                 } catch (error: any) {
-                    console.error("Login failed", error);
                     set({ currentUser: null, permissions: [], isLoading: false });
                     throw error;
                 }
@@ -223,7 +159,7 @@ export const useAuthStore = create<AuthState>()(
                     });
 
                     if (error) throw error;
-                    if (!data.user) throw new Error("No user returned");
+                    if (!data.user) throw new Error("No user returned from registration");
 
                     let userProfile = await getPartnerById(data.user.id);
                     if (!userProfile) {
@@ -237,7 +173,7 @@ export const useAuthStore = create<AuthState>()(
                         });
                     }
 
-                    const userRole = userProfile?.role || Role.CUSTOMER;
+                    const userRole = Role.CUSTOMER;
                     const permissions = rolePermissions.get(userRole) || [];
                     const updatedProfile = { ...userProfile, role: userRole };
 
@@ -248,7 +184,6 @@ export const useAuthStore = create<AuthState>()(
                     });
                     return updatedProfile;
                 } catch (error: any) {
-                    console.error("Customer registration failed:", error);
                     set({ currentUser: null, permissions: [], isLoading: false });
                     throw error;
                 }
@@ -256,38 +191,50 @@ export const useAuthStore = create<AuthState>()(
 
             logout: async () => {
                 set({ isLoading: true });
-                await supabase.auth.signOut();
-                useFavoritesStore.getState().clearAuthenticatedFavorites();
-                set({ currentUser: null, permissions: [], isLoading: false });
+                try {
+                    await supabase.auth.signOut();
+                } catch (e) {
+                    console.warn("Sign out error", e);
+                } finally {
+                    useFavoritesStore.getState().clearAuthenticatedFavorites();
+                    set({ currentUser: null, permissions: [], isLoading: false });
+                    localStorage.removeItem('onlyhelio-auth-storage');
+                }
             },
 
+            /**
+             * Authoritative permission check.
+             * Evaluates strictly against the user's canonical role and assigned permissions.
+             * Zero hardcoded email exceptions.
+             */
             hasPermission: (permission: Permission) => {
                 const state = get();
                 const user = state.currentUser;
                 if (!user) return false;
                 
-                const cleanEmail = (user.email || '').trim().toLowerCase();
-                if (
-                    user.role === Role.SUPER_ADMIN || 
-                    cleanEmail === 'admin@onlyhelio.com' || 
-                    cleanEmail === 'tam.elshafey@gmail.com' ||
-                    cleanEmail === 'admin@newheliopolis.com'
-                ) {
+                // Super Admin has unrestricted authority
+                if (user.role === Role.SUPER_ADMIN) {
                     return true;
                 }
                 
-                if (user.customPermissions && Array.isArray(user.customPermissions) && user.customPermissions.length > 0) {
-                    return user.customPermissions.includes(permission);
+                // Explicit custom permissions assigned by Super Admin
+                if (user.customPermissions && Array.isArray(user.customPermissions)) {
+                    if (user.customPermissions.includes(permission)) {
+                        return true;
+                    }
                 }
 
+                // Assigned canonical role permissions
                 return Array.isArray(state.permissions) ? state.permissions.includes(permission) : false;
             },
 
             setCurrentUser: (user: Partner | null) => {
                 if (user) {
-                    const resolvedRole = mapPartnerTypeToRole(user.type, user.role, user.email);
-                    const permissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                    set({ currentUser: { ...user, role: resolvedRole }, permissions: permissions || [] });
+                    const resolvedRole = mapPartnerTypeToRole(user.type, user.role);
+                    const basePermissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
+                    const custom = Array.isArray(user.customPermissions) ? user.customPermissions : [];
+                    const merged = Array.from(new Set([...basePermissions, ...custom]));
+                    set({ currentUser: { ...user, role: resolvedRole }, permissions: merged });
                 } else {
                     set({ currentUser: null, permissions: [] });
                 }
@@ -298,20 +245,15 @@ export const useAuthStore = create<AuthState>()(
             storage: createJSONStorage(() => localStorage),
             partialize: (state) => ({ currentUser: state.currentUser, permissions: state.permissions }),
             onRehydrateStorage: () => (state) => {
-                if (state) {
-                    if (!Array.isArray(state.permissions)) {
-                        state.permissions = [];
-                    }
-                    if (state.currentUser) {
-                        const resolvedRole = mapPartnerTypeToRole(
-                            state.currentUser.type,
-                            state.currentUser.role,
-                            state.currentUser.email
-                        );
-                        const permissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                        state.currentUser = { ...state.currentUser, role: resolvedRole };
-                        state.permissions = permissions || [];
-                    }
+                if (state?.currentUser) {
+                    // Normalize rehydrated role strictly from stored type/role, but session will be re-verified by initialize()
+                    const resolvedRole = mapPartnerTypeToRole(
+                        state.currentUser.type,
+                        state.currentUser.role
+                    );
+                    const permissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
+                    state.currentUser = { ...state.currentUser, role: resolvedRole };
+                    state.permissions = permissions || [];
                 }
             }
         }

@@ -23,13 +23,9 @@ const UserDashboardLayout = () => {
     if (!currentUser) return null;
     
     const isRTL = language === 'ar';
-    const cleanEmail = (currentUser.email || '').trim().toLowerCase();
     const isAdmin = currentUser.role === Role.SUPER_ADMIN || 
                     (currentUser.role && currentUser.role.includes('manager')) || 
-                    (currentUser.role && currentUser.role.includes('admin')) ||
-                    cleanEmail === 'admin@onlyhelio.com' ||
-                    cleanEmail === 'tam.elshafey@gmail.com' ||
-                    cleanEmail === 'admin@newheliopolis.com';
+                    (currentUser.role && currentUser.role.includes('admin'));
 
     return (
         <div className="min-h-screen bg-gray-50">

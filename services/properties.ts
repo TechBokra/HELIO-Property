@@ -239,6 +239,8 @@ const mapPropertyFromDb = (row: any): Property => {
         lastAvailabilityConfirmedAt: row.last_availability_confirmed_at || meta.lastAvailabilityConfirmedAt || row.updated_at,
         createdBy: row.created_by || meta.createdBy,
         updatedBy: row.updated_by || meta.updatedBy,
+        createdAt: row.created_at || row.listing_start_date,
+        updatedAt: row.updated_at,
         history: meta.history || [],
 
         imageUrl_small: row.main_image, 

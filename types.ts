@@ -22,40 +22,103 @@ export enum Role {
 }
 
 export enum Permission {
+    // DASHBOARD
     VIEW_ADMIN_DASHBOARD = 'view_admin_dashboard',
     VIEW_PARTNER_DASHBOARD = 'view_partner_dashboard',
     VIEW_CUSTOMER_DASHBOARD = 'view_customer_dashboard',
-    MANAGE_USERS = 'manage_users',
-    MANAGE_ROLES_PERMISSIONS = 'manage_roles_permissions',
-    MANAGE_SETTINGS = 'manage_settings',
-    MANAGE_FORMS = 'manage_forms',
-    MANAGE_AUTOMATION = 'manage_automation',
-    MANAGE_BANNERS = 'manage_banners',
-    MANAGE_SITE_CONTENT = 'manage_site_content',
-    MANAGE_FILTERS = 'manage_filters',
+
+    // PROPERTIES
+    VIEW_PROPERTIES = 'view_properties',
+    MANAGE_ALL_PROPERTIES = 'manage_all_properties',
+    MANAGE_PLATFORM_PROPERTIES = 'manage_platform_properties',
+    MANAGE_MARKET_PROPERTIES = 'manage_market_properties',
+    PUBLISH_PROPERTIES = 'publish_properties',
+    ARCHIVE_PROPERTIES = 'archive_properties',
+    MANAGE_OWN_PROPERTIES = 'manage_own_properties',
+
+    // PROJECTS
+    VIEW_PROJECTS = 'view_projects',
+    MANAGE_ALL_PROJECTS = 'manage_all_projects',
+    MANAGE_OWN_PROJECTS = 'manage_own_projects',
+
+    // PARTNERS
+    VIEW_PARTNERS = 'view_partners',
     MANAGE_ALL_PARTNERS = 'manage_all_partners',
+    VERIFY_PARTNERS = 'verify_partners',
+    SUSPEND_PARTNERS = 'suspend_partners',
     MANAGE_PARTNER_REQUESTS = 'manage_partner_requests',
     MANAGE_INQUIRY_ROUTING = 'manage_inquiry_routing',
     MANAGE_PLANS = 'manage_plans',
-    MANAGE_ALL_PROPERTIES = 'manage_all_properties',
-    MANAGE_PLATFORM_PROPERTIES = 'manage_platform_properties',
+
+    // CUSTOMERS
+    VIEW_CUSTOMERS = 'view_customers',
+    MANAGE_CUSTOMERS = 'manage_customers',
+
+    // LEADS & REQUESTS
+    VIEW_LEADS = 'view_leads',
+    MANAGE_LEADS = 'manage_leads',
+    ASSIGN_LEADS = 'assign_leads',
+    VIEW_REQUESTS = 'view_requests',
+    MANAGE_REQUESTS = 'manage_requests',
+    ASSIGN_REQUESTS = 'assign_requests',
     MANAGE_PLATFORM_PROPERTY_LEADS = 'manage_platform_property_leads',
-    MANAGE_MARKET_PROPERTIES = 'manage_market_properties',
     MANAGE_PROPERTY_REQUESTS = 'manage_property_requests',
     MANAGE_PROPERTY_INQUIRIES = 'manage_property_inquiries',
     MANAGE_CONTACT_REQUESTS = 'manage_contact_requests',
-    MANAGE_ALL_PROJECTS = 'manage_all_projects',
-    MANAGE_DECORATIONS_CONTENT = 'manage_decorations_content',
-    MANAGE_DECORATIONS_LEADS = 'manage_decorations_leads',
+    VIEW_OWN_LEADS = 'view_own_leads',
+
+    // FINISHING
+    VIEW_FINISHING = 'view_finishing',
     MANAGE_PLATFORM_FINISHING_PACKAGES = 'manage_platform_finishing_packages',
     MANAGE_PLATFORM_FINISHING_LEADS = 'manage_platform_finishing_leads',
     MANAGE_FINISHING_PARTNERS = 'manage_finishing_partners',
+    MANAGE_QUOTES = 'manage_quotes',
+    MANAGE_EXECUTION = 'manage_execution',
+
+    // DECORATIONS
+    VIEW_DECORATIONS = 'view_decorations',
+    MANAGE_DECORATIONS_CONTENT = 'manage_decorations_content',
+    MANAGE_DECORATIONS_LEADS = 'manage_decorations_leads',
+
+    // CONTENT & MEDIA
+    VIEW_SITE_CONTENT = 'view_site_content',
+    MANAGE_SITE_CONTENT = 'manage_site_content',
+    MANAGE_BANNERS = 'manage_banners',
+    MANAGE_MEDIA = 'manage_media',
+
+    // ANALYTICS & REPORTS
+    VIEW_ANALYTICS = 'view_analytics',
+    VIEW_REPORTS = 'view_reports',
+    EXPORT_REPORTS = 'export_reports',
+
+    // FINANCE
+    VIEW_FINANCE = 'view_finance',
+    MANAGE_FINANCE = 'manage_finance',
+
+    // USERS & GOVERNANCE
+    VIEW_USERS = 'view_users',
+    MANAGE_USERS = 'manage_users',
+    VIEW_ROLES_PERMISSIONS = 'view_roles_permissions',
+    MANAGE_ROLES_PERMISSIONS = 'manage_roles_permissions',
+    VIEW_AUDIT_LOG = 'view_audit_log',
+
+    // AUTOMATION
+    VIEW_AUTOMATION = 'view_automation',
+    MANAGE_AUTOMATION = 'manage_automation',
+
+    // FORMS
+    VIEW_FORMS = 'view_forms',
+    MANAGE_FORMS = 'manage_forms',
+
+    // SETTINGS & FILTERS
+    VIEW_SETTINGS = 'view_settings',
+    MANAGE_SETTINGS = 'manage_settings',
+    MANAGE_FILTERS = 'manage_filters',
+
+    // PARTNER SELF-SERVICE
     MANAGE_OWN_PROFILE = 'manage_own_profile',
-    MANAGE_OWN_PROJECTS = 'manage_own_projects',
-    MANAGE_OWN_PROPERTIES = 'manage_own_properties',
     MANAGE_OWN_PORTFOLIO = 'manage_own_portfolio',
     MANAGE_OWN_SUBSCRIPTION = 'manage_own_subscription',
-    VIEW_OWN_LEADS = 'view_own_leads',
     MANAGE_TEAM = 'manage_team'
 }
 
@@ -184,6 +247,8 @@ export interface Property {
     lastAvailabilityConfirmedAt?: string;
     createdBy?: string;
     updatedBy?: string;
+    createdAt?: string;
+    updatedAt?: string;
     history?: PropertyHistoryEntry[];
 }
 

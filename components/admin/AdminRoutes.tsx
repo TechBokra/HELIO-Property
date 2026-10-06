@@ -1,7 +1,8 @@
-
 import React, { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import LoadingFallback from '../shared/LoadingFallback';
+import ProtectedRoute from '../auth/ProtectedRoute';
+import { Permission } from '../../types';
 
 const AdminHomePage = React.lazy(() => import('./AdminHomePage'));
 const AdminAnalyticsPage = React.lazy(() => import('./AdminAnalyticsPage'));
@@ -34,7 +35,6 @@ const AdminFinishingRequestDetailsPage = React.lazy(() => import('./AdminFinishi
 
 const AdminPlatformDecorationsPage = React.lazy(() => import('./platform-ops/AdminPlatformDecorationsPage'));
 const AdminPortfolioFormPage = React.lazy(() => import('./decorations/AdminPortfolioFormPage'));
-const AdminPortfolioFormEditPage = React.lazy(() => import('./decorations/AdminPortfolioFormPage'));
 
 const AdminPlatformPropertiesPage = React.lazy(() => import('./platform-ops/AdminPlatformPropertiesPage'));
 
@@ -77,57 +77,263 @@ const AdminRoutes: React.FC = () => {
     return (
         <Suspense fallback={<LoadingFallback />}>
             <Routes>
+                {/* 1. Control Center Dashboard */}
                 <Route index element={<AdminHomePage />} />
-                <Route path="analytics" element={<AdminAnalyticsPage />} />
-                <Route path="reports" element={<AdminReportsPage />} />
-                <Route path="leads" element={<AdminLeadsPage />} />
+
+                {/* 2. Commercial Intelligence */}
+                <Route 
+                    path="analytics" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_ANALYTICS}>
+                            <AdminAnalyticsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="reports" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_REPORTS}>
+                            <AdminReportsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="leads" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_LEADS}>
+                            <AdminLeadsPage />
+                        </ProtectedRoute>
+                    } 
+                />
                 
-                {/* Partners Management */}
-                <Route path="partners" element={<AdminPartnersLayout />}>
+                {/* 3. Partners Management */}
+                <Route 
+                    path="partners" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_PARTNERS}>
+                            <AdminPartnersLayout />
+                        </ProtectedRoute>
+                    }
+                >
                     <Route index element={<AdminPartnersDashboard />} />
                     <Route path="list" element={<AdminPartnersPage />} />
-                    <Route path="requests" element={<AdminPartnerRequestsPage />} />
-                    <Route path="plans" element={<AdminPlansPage />} />
+                    <Route 
+                        path="requests" 
+                        element={
+                            <ProtectedRoute permission={Permission.MANAGE_PARTNER_REQUESTS}>
+                                <AdminPartnerRequestsPage />
+                            </ProtectedRoute>
+                        } 
+                    />
+                    <Route 
+                        path="plans" 
+                        element={
+                            <ProtectedRoute permission={Permission.MANAGE_PLANS}>
+                                <AdminPlansPage />
+                            </ProtectedRoute>
+                        } 
+                    />
                 </Route>
-                <Route path="partners/new" element={<AdminPartnerFormPage />} />
-                <Route path="partners/edit/:partnerId" element={<AdminPartnerFormPage />} />
-                <Route path="partners/requests/:requestId" element={<AdminPartnerRequestDetailsPage />} />
-                <Route path="partners/plans/edit/:planCategory/:planKey" element={<AdminPlanEditPage />} />
-                <Route path="partners/inquiry-routing" element={<AdminInquiryManagementPage />} />
+                <Route 
+                    path="partners/new" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_ALL_PARTNERS}>
+                            <AdminPartnerFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="partners/edit/:partnerId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_ALL_PARTNERS}>
+                            <AdminPartnerFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="partners/requests/:requestId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_PARTNER_REQUESTS}>
+                            <AdminPartnerRequestDetailsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="partners/plans/edit/:planCategory/:planKey" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_PLANS}>
+                            <AdminPlanEditPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="partners/inquiry-routing" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_INQUIRY_ROUTING}>
+                            <AdminInquiryManagementPage />
+                        </ProtectedRoute>
+                    } 
+                />
 
-                {/* Properties Management */}
-                <Route path="properties" element={<AdminPropertiesLayout />}>
+                {/* 4. Properties Management */}
+                <Route 
+                    path="properties" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_PROPERTIES}>
+                            <AdminPropertiesLayout />
+                        </ProtectedRoute>
+                    }
+                >
                     <Route index element={<AdminPropertiesDashboard />} />
                     <Route path="list" element={<AdminPropertiesListPage />} />
-                    <Route path="listing-requests" element={<AdminPropertyRequestsPage />} />
-                    <Route path="search-requests" element={<AdminPropertyInquiriesPage />} />
-                    <Route path="filters" element={<AdminFilterManagementPage />} />
+                    <Route 
+                        path="listing-requests" 
+                        element={
+                            <ProtectedRoute permission={Permission.MANAGE_PROPERTY_REQUESTS}>
+                                <AdminPropertyRequestsPage />
+                            </ProtectedRoute>
+                        } 
+                    />
+                    <Route 
+                        path="search-requests" 
+                        element={
+                            <ProtectedRoute permission={Permission.MANAGE_PROPERTY_INQUIRIES}>
+                                <AdminPropertyInquiriesPage />
+                            </ProtectedRoute>
+                        } 
+                    />
+                    <Route 
+                        path="filters" 
+                        element={
+                            <ProtectedRoute permission={Permission.MANAGE_FILTERS}>
+                                <AdminFilterManagementPage />
+                            </ProtectedRoute>
+                        } 
+                    />
                 </Route>
-                <Route path="properties/new" element={<PropertyFormPage />} />
-                <Route path="properties/edit/:propertyId" element={<PropertyFormPage />} />
-                <Route path="properties/listing-requests/:requestId" element={<AdminPropertyRequestDetailsPage />} />
+                <Route 
+                    path="properties/new" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_ALL_PROPERTIES}>
+                            <PropertyFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="properties/edit/:propertyId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_ALL_PROPERTIES}>
+                            <PropertyFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="properties/listing-requests/:requestId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_PROPERTY_REQUESTS}>
+                            <AdminPropertyRequestDetailsPage />
+                        </ProtectedRoute>
+                    } 
+                />
 
-                {/* Projects */}
-                <Route path="projects" element={<AdminProjectsPage />} />
-                <Route path="projects/new" element={<ProjectFormPage />} />
-                <Route path="projects/edit/:projectId" element={<ProjectFormPage />} />
+                {/* 5. Projects */}
+                <Route 
+                    path="projects" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_PROJECTS}>
+                            <AdminProjectsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="projects/new" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_ALL_PROJECTS}>
+                            <ProjectFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="projects/edit/:projectId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_ALL_PROJECTS}>
+                            <ProjectFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
 
-                {/* Request Triage / Contact */}
-                <Route path="contact-requests" element={<AdminContactRequestsPage />} />
+                {/* 6. Contact & Service Requests */}
+                <Route 
+                    path="contact-requests" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_CONTACT_REQUESTS}>
+                            <AdminContactRequestsPage />
+                        </ProtectedRoute>
+                    } 
+                />
 
-                {/* Platform Operations */}
-                <Route path="platform-finishing/*" element={<AdminPlatformFinishingPage />} />
-                <Route path="platform-finishing/requests/:requestId" element={<AdminFinishingRequestDetailsPage />} />
+                {/* 7. Platform Operations */}
+                <Route 
+                    path="platform-finishing/*" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_PLATFORM_FINISHING_LEADS}>
+                            <AdminPlatformFinishingPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="platform-finishing/requests/:requestId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_PLATFORM_FINISHING_LEADS}>
+                            <AdminFinishingRequestDetailsPage />
+                        </ProtectedRoute>
+                    } 
+                />
                 
-                <Route path="platform-decorations/*" element={<AdminPlatformDecorationsPage />} />
-                <Route path="platform-decorations/portfolio/new" element={<AdminPortfolioFormPage />} />
-                <Route path="platform-decorations/portfolio/edit/:itemId" element={<AdminPortfolioFormPage />} />
+                <Route 
+                    path="platform-decorations/*" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_DECORATIONS_LEADS}>
+                            <AdminPlatformDecorationsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="platform-decorations/portfolio/new" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_DECORATIONS_CONTENT}>
+                            <AdminPortfolioFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="platform-decorations/portfolio/edit/:itemId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_DECORATIONS_CONTENT}>
+                            <AdminPortfolioFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
                 
-                <Route path="platform-properties" element={<AdminPlatformPropertiesPage />} />
+                <Route 
+                    path="platform-properties" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_PLATFORM_PROPERTIES}>
+                            <AdminPlatformPropertiesPage />
+                        </ProtectedRoute>
+                    } 
+                />
 
-                {/* Content Management */}
-                <Route path="content" element={<AdminContentLayout />}>
-                    <Route index element={<ContentHeroPage />} /> {/* Default to Hero */}
+                {/* 8. Content Management */}
+                <Route 
+                    path="content" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_SITE_CONTENT}>
+                            <AdminContentLayout />
+                        </ProtectedRoute>
+                    }
+                >
+                    <Route index element={<ContentHeroPage />} />
                     <Route path="hero" element={<ContentHeroPage />} />
                     <Route path="home-listings" element={<ContentHomeListingsPage />} />
                     <Route path="social-proof" element={<ContentSocialProofPage />} />
@@ -145,24 +351,122 @@ const AdminRoutes: React.FC = () => {
                     <Route path="quotes" element={<ContentQuotesPage />} />
                     <Route path="footer" element={<ContentFooterPage />} />
                 </Route>
-                <Route path="banners" element={<AdminBannersPage />} />
-                <Route path="banners/new" element={<AdminBannerFormPage />} />
-                <Route path="banners/edit/:bannerId" element={<AdminBannerFormPage />} />
-                <Route path="media" element={<AdminMediaLibraryPage />} />
-                <Route path="cloudinary" element={<AdminMediaLibraryPage />} />
+                <Route 
+                    path="banners" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_BANNERS}>
+                            <AdminBannersPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="banners/new" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_BANNERS}>
+                            <AdminBannerFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="banners/edit/:bannerId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_BANNERS}>
+                            <AdminBannerFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="media" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_MEDIA}>
+                            <AdminMediaLibraryPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="cloudinary" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_MEDIA}>
+                            <AdminMediaLibraryPage />
+                        </ProtectedRoute>
+                    } 
+                />
 
-                {/* System Administration */}
-                <Route path="users" element={<AdminUsersPage />} />
-                <Route path="users/new" element={<AdminUserFormPage />} />
-                <Route path="users/edit/:userId" element={<AdminUserFormPage />} />
-                <Route path="roles" element={<AdminRolesPage />} />
-                <Route path="automation" element={<RoutingRulesPage />} />
-                <Route path="forms" element={<AdminFormsPage />} />
-                <Route path="finance" element={<AdminFinancePage />} />
+                {/* 9. System Administration & Governance */}
+                <Route 
+                    path="users" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_USERS}>
+                            <AdminUsersPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="users/new" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_USERS}>
+                            <AdminUserFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="users/edit/:userId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_USERS}>
+                            <AdminUserFormPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="roles" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_ROLES_PERMISSIONS}>
+                            <AdminRolesPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="automation" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_AUTOMATION}>
+                            <RoutingRulesPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="forms" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_FORMS}>
+                            <AdminFormsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="finance" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_FINANCE}>
+                            <AdminFinancePage />
+                        </ProtectedRoute>
+                    } 
+                />
                 
-                {/* Settings */}
-                <Route path="settings" element={<AdminSettingsPage />} />
-                <Route path="external-settings" element={<AdminExternalSettingsPage />} />
+                {/* 10. Settings & Preferences */}
+                <Route 
+                    path="settings" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_SETTINGS}>
+                            <AdminSettingsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="external-settings" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_SETTINGS}>
+                            <AdminExternalSettingsPage />
+                        </ProtectedRoute>
+                    } 
+                />
                 <Route path="profile" element={<AdminProfilePage />} />
                 <Route path="notifications" element={<AllNotificationsPage />} />
             </Routes>

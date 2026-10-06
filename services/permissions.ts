@@ -1,50 +1,31 @@
 import { supabase } from '../lib/supabase';
 import { Role, Permission } from '../types';
-import { rolePermissions as initialRolePermissions } from '../data/permissions';
+import { rolePermissions as defaultRolePermissions } from '../data/permissions';
+import { requireSuperAdmin } from './authGuard';
 
 type PermissionRecord = { role: Role; permissions: Permission[] };
-const ROLES_STORAGE_KEY = 'onlyhelio_role_permissions_override';
 
+/**
+ * Loads authoritative role permissions from Supabase site_content,
+ * falling back to the canonical code-defined matrix.
+ * NEVER reads from or relies on localStorage.
+ */
 export const getRolePermissions = async (): Promise<Map<Role, Permission[]>> => {
     let permissionsArray: PermissionRecord[] = [];
 
-    // 1. Try server persistence API
+    // Authoritative source: Supabase site_content
     try {
-        const res = await fetch('/api/role-permissions');
-        if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-                permissionsArray = data;
-            }
+        const { data, error } = await supabase
+            .from('site_content')
+            .select('content')
+            .eq('key', 'role_permissions')
+            .single();
+
+        if (!error && Array.isArray(data?.content) && data.content.length > 0) {
+            permissionsArray = data.content;
         }
-    } catch (e) {}
-
-    // 2. Try Supabase site_content
-    if (permissionsArray.length === 0) {
-        try {
-            const { data, error } = await supabase
-                .from('site_content')
-                .select('content')
-                .eq('key', 'role_permissions')
-                .single();
-
-            if (!error && Array.isArray(data?.content) && data.content.length > 0) {
-                permissionsArray = data.content;
-            }
-        } catch (e) {}
-    }
-
-    // 3. Try localStorage override
-    if (permissionsArray.length === 0) {
-        try {
-            const stored = localStorage.getItem(ROLES_STORAGE_KEY);
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    permissionsArray = parsed;
-                }
-            }
-        } catch (e) {}
+    } catch (e) {
+        console.warn("Notice: Using canonical code permissions defaults", e);
     }
 
     const normalizeRole = (r: any): Role => {
@@ -57,16 +38,13 @@ export const getRolePermissions = async (): Promise<Map<Role, Permission[]>> => 
         return r as Role;
     };
 
-    // Initialize map with all roles from code defaults
-    const permissionsMap = new Map<Role, Permission[]>();
-    initialRolePermissions.forEach((perms, role) => {
-        permissionsMap.set(role, [...perms]);
-    });
+    // Initialize with canonical code defaults
+    const permissionsMap = new Map<Role, Permission[]>(defaultRolePermissions);
 
-    // Overwrite with persistent data
-    permissionsArray.forEach((p) => {
-        if (p?.role && Array.isArray(p.permissions)) {
-            const canonicalRole = normalizeRole(p.role);
+    // Apply database overrides if present
+    permissionsArray.forEach(p => {
+        const canonicalRole = normalizeRole(p.role);
+        if (canonicalRole && Array.isArray(p.permissions)) {
             permissionsMap.set(canonicalRole, p.permissions);
         }
     });
@@ -74,35 +52,32 @@ export const getRolePermissions = async (): Promise<Map<Role, Permission[]>> => 
     return permissionsMap;
 };
 
+/**
+ * Updates role permissions in Supabase site_content.
+ * STRICTLY guarded by requireSuperAdmin().
+ * NEVER writes to localStorage.
+ */
 export const updateRolePermissions = async (updatedPermissions: Map<Role, Permission[]>): Promise<boolean> => {
+    // Service-Layer Authorization Guard: Super Admin only
+    requireSuperAdmin();
+
     const permissionsArray: PermissionRecord[] = Array.from(updatedPermissions.entries()).map(([role, permissions]) => ({
         role,
         permissions
     }));
 
-    // 1. Save to localStorage
-    try {
-        localStorage.setItem(ROLES_STORAGE_KEY, JSON.stringify(permissionsArray));
-    } catch (e) {}
-
-    // 2. Save to server persistence API
-    try {
-        await fetch('/api/role-permissions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(permissionsArray)
+    // Authoritative database persistence
+    const { error } = await supabase
+        .from('site_content')
+        .upsert({ 
+            key: 'role_permissions', 
+            content: permissionsArray,
+            updated_at: new Date().toISOString()
         });
-    } catch (e) {
-        console.warn('Server API role permissions save warning:', e);
-    }
 
-    // 3. Attempt to save to Supabase site_content
-    try {
-        await supabase
-            .from('site_content')
-            .upsert({ key: 'role_permissions', content: permissionsArray });
-    } catch (e) {
-        console.warn('Supabase site_content role_permissions sync note:', e);
+    if (error) {
+        console.error('Failed to update role permissions in Supabase:', error);
+        throw new Error(`Failed to save role permissions: ${error.message}`);
     }
 
     return true;

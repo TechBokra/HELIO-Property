@@ -33,15 +33,11 @@ const LoginPage: React.FC = () => {
     }, []);
 
     const redirectUserAfterLogin = (user: Partner) => {
-        const cleanEmail = (user.email || '').trim().toLowerCase();
         const role = user.role || '';
         const isAdmin = 
             role === Role.SUPER_ADMIN ||
             role.includes('manager') ||
-            role.includes('admin') ||
-            cleanEmail === 'admin@onlyhelio.com' ||
-            cleanEmail === 'tam.elshafey@gmail.com' ||
-            cleanEmail === 'admin@newheliopolis.com';
+            role.includes('admin');
 
         const isPartner = 
             role === Role.DEVELOPER_PARTNER ||

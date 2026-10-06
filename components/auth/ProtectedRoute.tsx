@@ -3,6 +3,8 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { Permission, Role } from '../../types';
 
+import AccessDenied from './AccessDenied';
+
 interface ProtectedRouteProps {
     children: React.ReactElement;
     permission: Permission;
@@ -21,10 +23,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission })
     }
     
     if (!hasPermission(permission)) {
-        if (currentUser.role === Role.CUSTOMER) {
-            return <Navigate to="/my-dashboard" replace />;
-        }
-        return <Navigate to="/" replace />;
+        return <AccessDenied requiredPermission={permission} userRole={currentUser.role} />;
     }
 
     return children;

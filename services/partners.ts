@@ -31,7 +31,7 @@ export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
         ? JSON.parse(row.contact_methods) 
         : row.contact_methods || { whatsapp: { enabled: false }, phone: { enabled: false }, form: { enabled: true } };
 
-    const resolvedRole = mapPartnerTypeToRole(row.type, row.role, row.email);
+    const resolvedRole = mapPartnerTypeToRole(row.type, row.role);
 
     const ADMIN_AVATAR_CDN = 'https://res.cloudinary.com/dwg0hr34g/image/upload/v1791191962/onlyhelio_partners/eegvag9kenl9efztmbhi.png';
     const resolvedImageUrl = (typeof row.image_url === 'string' && row.image_url.startsWith('data:'))
@@ -148,10 +148,10 @@ export const getPartnerByEmail = async (email: string): Promise<Partner | undefi
 
 // Self-healing function for missing profiles (P0.1 Customer Hardening)
 export const createProfileForExistingUser = async (user: any): Promise<Partner> => {
-    const cleanEmail = (user.email || '').trim().toLowerCase();
-    const isSuperAdmin = cleanEmail === 'admin@onlyhelio.com' || cleanEmail === 'tam.elshafey@gmail.com' || cleanEmail === 'admin@newheliopolis.com';
-    const type: PartnerType = isSuperAdmin ? 'admin' : (user.user_metadata?.type || 'customer');
-    const role: Role = isSuperAdmin ? Role.SUPER_ADMIN : mapPartnerTypeToRole(type, user.user_metadata?.role, cleanEmail);
+    const rawType = user.user_metadata?.type || 'customer';
+    const rawRole = user.user_metadata?.role || 'customer';
+    const type: PartnerType = rawType;
+    const role: Role = mapPartnerTypeToRole(type, rawRole);
 
     const dbPayload = {
         id: user.id,
@@ -159,13 +159,13 @@ export const createProfileForExistingUser = async (user: any): Promise<Partner> 
         type: type,
         role: role,
         status: 'active',
-        subscription_plan: isSuperAdmin ? 'enterprise' : 'basic',
+        subscription_plan: 'basic',
         display_type: 'standard',
-        image_url: user.user_metadata?.avatar_url || (isSuperAdmin ? 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=400&auto=format&fit=crop' : 'https://via.placeholder.com/150'),
-        name_ar: user.user_metadata?.name || (isSuperAdmin ? 'المدير العام' : (user.email?.split('@')[0] || 'عميل')),
-        name_en: user.user_metadata?.name || (isSuperAdmin ? 'Super Admin' : (user.email?.split('@')[0] || 'Customer')),
-        description_ar: isSuperAdmin ? 'حساب إدارة النظام الرئيسي' : 'حساب عميل في منصة أونلي هيليو',
-        description_en: isSuperAdmin ? 'System Super Administrator Account' : 'Customer account on ONLY HELIO platform',
+        image_url: user.user_metadata?.avatar_url || 'https://via.placeholder.com/150',
+        name_ar: user.user_metadata?.name || (user.email?.split('@')[0] || 'عميل'),
+        name_en: user.user_metadata?.name || (user.email?.split('@')[0] || 'Customer'),
+        description_ar: 'حساب مستخدم في منصة أونلي هيليو',
+        description_en: 'User account on ONLY HELIO platform',
         contact_methods: { 
             whatsapp: { enabled: false, number: '' },
             phone: { enabled: false, number: user.user_metadata?.phone || '' },
