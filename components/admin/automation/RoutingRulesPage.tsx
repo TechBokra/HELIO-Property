@@ -143,7 +143,7 @@ const RoutingRulesPage: React.FC = () => {
                                     <div className="flex-grow space-y-2">
                                         <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block">IF ({t_auto.conditions})</span>
                                         <div className="flex flex-wrap gap-2">
-                                            {rule.conditions.map((cond, idx) => (
+                                            {rule.conditions.map((cond: any, idx: number) => (
                                                 <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-mono text-xs">
                                                     <span className="text-amber-600 dark:text-amber-500 mr-1">{cond.field}</span>
                                                     <span className="text-gray-400 mx-1">{cond.operator.replace('_', ' ')}</span>

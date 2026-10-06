@@ -1,7 +1,8 @@
 
 import { supabase, supabasePublic } from '../lib/supabase';
-import type { Project } from '../types';
+import { Permission, type Project } from '../types';
 import { projectsData } from '../data/projects';
+import { requireAnyPermission } from './authGuard';
 
 const FEATURE_TRANSLATIONS: Record<string, { ar: string; en: string }> = {
     'pool': { ar: 'حمام سباحة', en: 'Swimming Pool' },
@@ -177,6 +178,8 @@ export const getProjectsByPartnerId = async (partnerId: string): Promise<Project
 };
 
 export const addProject = async (project: Omit<Project, 'id' | 'createdAt'>): Promise<Project> => {
+    requireAnyPermission([Permission.MANAGE_ALL_PROJECTS, Permission.MANAGE_OWN_PROJECTS]);
+
     const dbPayload = {
         partner_id: project.partnerId,
         name_ar: project.name.ar,
@@ -194,6 +197,8 @@ export const addProject = async (project: Omit<Project, 'id' | 'createdAt'>): Pr
 };
 
 export const updateProject = async (projectId: string, updates: Partial<Project>): Promise<Project | undefined> => {
+    requireAnyPermission([Permission.MANAGE_ALL_PROJECTS, Permission.MANAGE_OWN_PROJECTS]);
+
     const dbUpdates: any = {};
     if (updates.name) {
         dbUpdates.name_ar = updates.name.ar;
@@ -213,6 +218,8 @@ export const updateProject = async (projectId: string, updates: Partial<Project>
 };
 
 export const deleteProject = async (projectId: string): Promise<boolean> => {
+    requireAnyPermission([Permission.MANAGE_ALL_PROJECTS, Permission.MANAGE_OWN_PROJECTS]);
+
     const { error } = await supabase.from('projects').delete().eq('id', projectId);
     if (!error) invalidateProjectsCache();
     return !error;

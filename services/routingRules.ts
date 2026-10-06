@@ -1,7 +1,9 @@
 
 import { supabase } from '../lib/supabase';
+import { Permission } from '../types';
 import type { RoutingRule } from '../data/routingRules';
 import { routingRulesData as fallbackRules } from '../data/routingRules';
+import { requirePermission } from './authGuard';
 
 export const getAllRoutingRules = async (): Promise<RoutingRule[]> => {
     try {
@@ -21,6 +23,7 @@ export const getAllRoutingRules = async (): Promise<RoutingRule[]> => {
 };
 
 export const addRoutingRule = async (rule: Omit<RoutingRule, 'id'>): Promise<RoutingRule> => {
+    requirePermission(Permission.MANAGE_AUTOMATION);
     const rules = await getAllRoutingRules();
     const newRule: RoutingRule = { ...rule, id: `rule-${Date.now()}` };
     const newRules = [...rules, newRule];
@@ -34,6 +37,7 @@ export const addRoutingRule = async (rule: Omit<RoutingRule, 'id'>): Promise<Rou
 };
 
 export const updateRoutingRule = async (id: string, updates: Partial<RoutingRule>): Promise<RoutingRule | null> => {
+    requirePermission(Permission.MANAGE_AUTOMATION);
     const rules = await getAllRoutingRules();
     const index = rules.findIndex(r => r.id === id);
     
@@ -51,6 +55,7 @@ export const updateRoutingRule = async (id: string, updates: Partial<RoutingRule
 };
 
 export const deleteRoutingRule = async (id: string): Promise<boolean> => {
+    requirePermission(Permission.MANAGE_AUTOMATION);
     let rules = await getAllRoutingRules();
     const initialLength = rules.length;
     rules = rules.filter(r => r.id !== id);

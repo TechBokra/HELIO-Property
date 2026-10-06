@@ -1,8 +1,9 @@
 
 import { supabase } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
-import { Role, type Partner, type PartnerStatus, type PartnerRequest, type AdminPartner, type SubscriptionPlan, type PartnerType } from '../types';
+import { Role, Permission, type Partner, type PartnerStatus, type PartnerRequest, type AdminPartner, type SubscriptionPlan, type PartnerType } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
+import { requirePermission, requireAnyPermission } from './authGuard';
 
 // --- HELPER: Isolated Client ---
 // We create a temporary client for registration actions to prevent 
@@ -228,6 +229,7 @@ export const addPartner = async (request: PartnerRequest, password?: string): Pr
 };
 
 export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
+    requirePermission(Permission.MANAGE_USERS);
     const tempSupabase = getTemporaryClient();
 
     const { data: authData, error: authError } = await tempSupabase.auth.signUp({
@@ -280,16 +282,19 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
 };
 
 export const updatePartnerStatus = async (id: string, status: PartnerStatus): Promise<boolean> => {
+    requireAnyPermission([Permission.VERIFY_PARTNERS, Permission.SUSPEND_PARTNERS, Permission.MANAGE_ALL_PARTNERS]);
     const { error } = await supabase.from('partners').update({ status }).eq('id', id);
     if (!error) invalidatePartnersCache();
     return !error;
 };
 
 export const updatePartnerAdmin = async (id: string, updates: any): Promise<boolean> => {
+    requirePermission(Permission.MANAGE_ALL_PARTNERS);
     return updatePartner(id, updates);
 };
 
 export const upgradePartnerPlan = async (id: string, newPlan: SubscriptionPlan): Promise<boolean> => {
+    requireAnyPermission([Permission.MANAGE_PLANS, Permission.MANAGE_ALL_PARTNERS, Permission.MANAGE_OWN_SUBSCRIPTION]);
     const nextYear = new Date();
     nextYear.setFullYear(nextYear.getFullYear() + 1);
     
@@ -303,6 +308,7 @@ export const upgradePartnerPlan = async (id: string, newPlan: SubscriptionPlan):
 };
 
 export const deletePartner = async (userId: string): Promise<boolean> => {
+    requireAnyPermission([Permission.MANAGE_ALL_PARTNERS, Permission.MANAGE_USERS]);
     const { error } = await supabase.from('partners').delete().eq('id', userId);
     if (!error) invalidatePartnersCache();
     return !error;

@@ -1,8 +1,9 @@
 
 import { supabase } from '../lib/supabase';
-import { RequestType, Role } from '../types';
+import { RequestType, Role, Permission } from '../types';
 import type { Request, Lead, LeadMessage, RequestHistoryEntry } from '../types';
 import { addNotification } from './notifications';
+import { requireAnyPermission } from './authGuard';
 import { getPartnerById } from './partners';
 import { addLead } from './leads';
 import { evaluateRoutingRules } from './routingRules';
@@ -283,6 +284,20 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
 };
 
 export const updateRequest = async (id: string, updates: Partial<Request>): Promise<Request | undefined> => {
+    requireAnyPermission([
+        Permission.MANAGE_REQUESTS, 
+        Permission.MANAGE_LEADS, 
+        Permission.ASSIGN_REQUESTS, 
+        Permission.ASSIGN_LEADS, 
+        Permission.MANAGE_PROPERTY_REQUESTS, 
+        Permission.MANAGE_PROPERTY_INQUIRIES, 
+        Permission.MANAGE_CONTACT_REQUESTS, 
+        Permission.MANAGE_PARTNER_REQUESTS, 
+        Permission.MANAGE_PLATFORM_PROPERTY_LEADS, 
+        Permission.MANAGE_PLATFORM_FINISHING_LEADS, 
+        Permission.MANAGE_DECORATIONS_LEADS
+    ]);
+
     const dbUpdates: any = {};
     if (updates.status) dbUpdates.status = updates.status;
     if (updates.assignedTo) dbUpdates.assigned_to = updates.assignedTo;
@@ -306,6 +321,7 @@ export const updateRequest = async (id: string, updates: Partial<Request>): Prom
 };
 
 export const deleteRequest = async (id: string): Promise<boolean> => {
+    requireAnyPermission([Permission.MANAGE_REQUESTS, Permission.MANAGE_LEADS]);
     // Cascade delete handles messages if configured in DB, otherwise we might need manual cleanup
     const { error } = await supabase.from('requests').delete().eq('id', id);
     return !error;

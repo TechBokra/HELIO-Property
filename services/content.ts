@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
-import type { SiteContent } from '../types';
+import { Permission, type SiteContent } from '../types';
 import { siteContentData as fallbackData } from '../data/content';
+import { requirePermission } from './authGuard';
 
 
 // In-memory cache & in-flight promise deduplication
@@ -140,6 +141,7 @@ export const getContent = async (): Promise<SiteContent> => {
 };
 
 export const updateContent = async (updates: Partial<SiteContent>): Promise<SiteContent> => {
+    requirePermission(Permission.MANAGE_SITE_CONTENT);
     const current = await getContent();
     const newContent = { ...current, ...updates };
 

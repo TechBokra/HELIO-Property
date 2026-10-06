@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS public.property_types (
     name_en TEXT NOT NULL,
     name_ar TEXT NOT NULL
 );
+ALTER TABLE public.property_types ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public view property types" ON public.property_types FOR SELECT USING (true);
+CREATE POLICY "Super admins manage property types" ON public.property_types FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND role = 'super_admin')
+);
 
 -- Lookup: Finishing Statuses
 CREATE TABLE IF NOT EXISTS public.finishing_statuses (
@@ -43,6 +48,11 @@ CREATE TABLE IF NOT EXISTS public.finishing_statuses (
     name_ar TEXT NOT NULL,
     applicable_to TEXT[] DEFAULT '{}'
 );
+ALTER TABLE public.finishing_statuses ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public view finishing statuses" ON public.finishing_statuses FOR SELECT USING (true);
+CREATE POLICY "Super admins manage finishing statuses" ON public.finishing_statuses FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND role = 'super_admin')
+);
 
 -- Lookup: Amenities
 CREATE TABLE IF NOT EXISTS public.amenities (
@@ -50,6 +60,11 @@ CREATE TABLE IF NOT EXISTS public.amenities (
     name_en TEXT NOT NULL,
     name_ar TEXT NOT NULL,
     applicable_to TEXT[] DEFAULT '{}'
+);
+ALTER TABLE public.amenities ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public view amenities" ON public.amenities FOR SELECT USING (true);
+CREATE POLICY "Super admins manage amenities" ON public.amenities FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND role = 'super_admin')
 );
 
 -- Main: Partners (Profiles)
@@ -259,6 +274,11 @@ CREATE TABLE IF NOT EXISTS public.site_content (
     key TEXT PRIMARY KEY,
     content JSONB NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.site_content ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public can view site content" ON public.site_content FOR SELECT USING (true);
+CREATE POLICY "Super admins and content managers manage site content" ON public.site_content FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.partners WHERE id = auth.uid() AND (role = 'super_admin' OR role = 'content_manager'))
 );
 
 -- Customer: Favorites (P1)

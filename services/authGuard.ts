@@ -62,3 +62,22 @@ export const requireSuperAdmin = () => {
     }
     return user;
 };
+
+/**
+ * Ensures the authenticated user has at least one of the specified permissions.
+ * Throws AuthorizationError (403) if none match.
+ */
+export const requireAnyPermission = (permissions: Permission[]) => {
+    const user = requireAuth();
+    const { hasPermission } = useAuthStore.getState();
+    const hasAny = permissions.some(p => hasPermission(p));
+    if (!hasAny) {
+        throw new AuthorizationError(
+            `Access Denied (403): Missing one of required permissions [${permissions.join(', ')}] for role '${user.role}'.`,
+            'FORBIDDEN',
+            permissions[0],
+            user.role
+        );
+    }
+    return user;
+};

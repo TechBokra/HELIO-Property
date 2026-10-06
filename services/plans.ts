@@ -1,7 +1,8 @@
 
 import { supabase } from '../lib/supabase';
-import type { SubscriptionPlan, SubscriptionPlanDetails, PlanCategory } from '../types';
+import { Permission, type SubscriptionPlan, type SubscriptionPlanDetails, type PlanCategory } from '../types';
 import { arTranslations, enTranslations } from '../data/translations';
+import { requirePermission } from './authGuard';
 
 // Helper to get fallback plans from local translations if DB is empty
 const getFallbackPlans = () => {
@@ -63,6 +64,7 @@ export const updatePlan = async (
     updates: { ar: Partial<SubscriptionPlanDetails>, en: Partial<SubscriptionPlanDetails> }, 
     subCategory?: 'sale' | 'rent'
 ): Promise<boolean> => {
+    requirePermission(Permission.MANAGE_PLANS);
     const currentPlans = await getPlans();
     
     // Deep clone to avoid mutation issues before saving

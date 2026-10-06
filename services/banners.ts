@@ -1,6 +1,7 @@
 
 import { supabase } from '../lib/supabase';
-import type { Banner } from '../types';
+import { Permission, type Banner } from '../types';
+import { requirePermission } from './authGuard';
 
 // Banners are stored in 'site_content' table under key 'banners'
 // This is a simple key-value storage pattern for lists that don't need heavy relational queries
@@ -52,6 +53,7 @@ export const getAllBanners = async (): Promise<Banner[]> => {
 };
 
 export const addBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> => {
+    requirePermission(Permission.MANAGE_BANNERS);
     const banners = await getAllBanners();
     const newBanner: Banner = {
         ...banner,
@@ -69,6 +71,7 @@ export const addBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> => 
 };
 
 export const updateBanner = async (bannerId: string, updates: Partial<Banner>): Promise<Banner | undefined> => {
+    requirePermission(Permission.MANAGE_BANNERS);
     const banners = await getAllBanners();
     const index = banners.findIndex(b => b.id === bannerId);
     
@@ -86,6 +89,7 @@ export const updateBanner = async (bannerId: string, updates: Partial<Banner>): 
 };
 
 export const deleteBanner = async (bannerId: string): Promise<boolean> => {
+    requirePermission(Permission.MANAGE_BANNERS);
     const banners = await getAllBanners();
     const filteredBanners = banners.filter(b => b.id !== bannerId);
     

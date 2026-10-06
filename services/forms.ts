@@ -1,7 +1,8 @@
 
 import { supabase } from '../lib/supabase';
-import type { FormDefinition } from '../types';
+import { Permission, type FormDefinition } from '../types';
 import { formsData as fallbackForms } from '../data/forms';
+import { requirePermission } from './authGuard';
 
 export const getAllForms = async (): Promise<FormDefinition[]> => {
     try {
@@ -33,6 +34,7 @@ export const getFormBySlug = async (slug: string): Promise<FormDefinition | unde
 };
 
 export const saveForm = async (form: FormDefinition): Promise<FormDefinition> => {
+    requirePermission(Permission.MANAGE_FORMS);
     const forms = await getAllForms();
     const index = forms.findIndex(f => f.id === form.id);
     const now = new Date().toISOString();
@@ -59,6 +61,7 @@ export const saveForm = async (form: FormDefinition): Promise<FormDefinition> =>
 };
 
 export const deleteForm = async (id: string): Promise<boolean> => {
+    requirePermission(Permission.MANAGE_FORMS);
     let forms = await getAllForms();
     const initialLength = forms.length;
     forms = forms.filter(f => f.id !== id);

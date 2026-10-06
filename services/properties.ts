@@ -1,9 +1,10 @@
 import { supabase, supabasePublic } from '../lib/supabase';
 import { getAllPartners, getPartnerById } from './partners'; 
 import { getAllProjects, getProjectById } from './projects';
-import type { Property, PropertyFiltersType, Partner, Project, PropertyHistoryEntry } from '../types';
+import { Permission, type Property, type PropertyFiltersType, type Partner, type Project, type PropertyHistoryEntry } from '../types';
 import { filterProperties } from '../utils/propertyFilters';
 import { propertiesData } from '../data/properties';
+import { requireAnyPermission } from './authGuard';
 
 export const generatePropertyReference = (id: string): string => {
     if (!id) return 'HEL-0001';
@@ -592,6 +593,13 @@ const mapPropertyToDbPayload = (property: Partial<Property>, existingMeta: Recor
  * Creates new property and persists all canonical business state in Supabase
  */
 export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl'>): Promise<Property> => {
+    requireAnyPermission([
+        Permission.MANAGE_ALL_PROPERTIES, 
+        Permission.MANAGE_PLATFORM_PROPERTIES, 
+        Permission.MANAGE_MARKET_PROPERTIES, 
+        Permission.MANAGE_OWN_PROPERTIES
+    ]);
+
     const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
         ? crypto.randomUUID()
         : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -676,6 +684,13 @@ export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' 
  * Updates existing property and records database-backed audit log
  */
 export const updateProperty = async (propertyId: string, updates: Partial<Property>): Promise<Property | undefined> => {
+    requireAnyPermission([
+        Permission.MANAGE_ALL_PROPERTIES, 
+        Permission.MANAGE_PLATFORM_PROPERTIES, 
+        Permission.MANAGE_MARKET_PROPERTIES, 
+        Permission.MANAGE_OWN_PROPERTIES
+    ]);
+
     const now = new Date().toISOString();
     const existing = await getPropertyById(propertyId).catch(() => undefined);
     
@@ -833,6 +848,12 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
  * Deletes property from Supabase
  */
 export const deleteProperty = async (propertyId: string): Promise<boolean> => {
+    requireAnyPermission([
+        Permission.MANAGE_ALL_PROPERTIES, 
+        Permission.ARCHIVE_PROPERTIES, 
+        Permission.MANAGE_OWN_PROPERTIES
+    ]);
+
     const { error } = await supabase.from('properties').delete().eq('id', propertyId);
     if (error) {
         console.error("Error deleting property:", error);
