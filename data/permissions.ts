@@ -162,24 +162,8 @@ export const rolePermissions: Map<Role, Permission[]> = new Map([
 export const mapPartnerTypeToRole = (type?: PartnerType | string, role?: string, email?: string): Role => {
     const cleanRole = (role || '').trim().toLowerCase();
     const cleanType = (type || '').trim().toLowerCase();
-    const cleanEmail = (email || '').trim().toLowerCase();
 
-    // 1. Super Admin email whitelist or admin roles
-    if (
-        cleanEmail === 'admin@onlyhelio.com' ||
-        cleanEmail === 'tam.elshafey@gmail.com' ||
-        cleanEmail === 'admin@newheliopolis.com' ||
-        cleanRole === 'super_admin' ||
-        cleanRole === 'system_admin' ||
-        cleanRole === 'admin' ||
-        cleanRole === 'owner' ||
-        cleanType === 'admin' ||
-        cleanType === 'system'
-    ) {
-        return Role.SUPER_ADMIN;
-    }
-
-    // 2. Direct Role string matching
+    // 1. Direct database role string matching (Primary Authority)
     if (cleanRole) {
         switch (cleanRole) {
             case 'super_admin':

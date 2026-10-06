@@ -55,18 +55,12 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
     const linkGroups = useMemo(() => {
         // Defines the display order of groups in the sidebar
         const groupOrder = [
-            'Management', // Added Management here to show Dashboard, Analytics, etc.
-            'Overview', 
-            'Operations',
-            'Request Triage', 
-            'Real Estate Market',
-            'Platform Operations', 
-            'Customer Relations',
-            'Partner Relations', 
-            'Content Management', 
-            'Content & Listings', 
+            'Control Center',
+            'Operations', 
+            'Services', 
             'Content',
-            'System', 
+            'Commercial',
+            'Administration',
             'Partner'
         ];
         const groups: { [key: string]: typeof visibleNavLinks } = {};
@@ -96,18 +90,12 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
     const partnerName = t.partnerInfo?.[user.id]?.name || user.name;
 
     const GROUP_NAMES_AR: Record<string, string> = {
-        'Management': 'الإدارة والإحصائيات',
-        'Overview': 'نظرة عامة',
-        'Operations': 'العمليات والشركاء',
-        'Request Triage': 'معالجة الطلبات',
-        'Real Estate Market': 'سوق العقارات',
-        'Platform Operations': 'عمليات المنصة',
-        'Customer Relations': 'علاقات العملاء',
-        'Partner Relations': 'علاقات الشركاء',
-        'Content Management': 'إدارة المحتوى',
-        'Content & Listings': 'المحتوى والإعلانات',
-        'Content': 'إدارة المحتوى',
-        'System': 'النظام والإعدادات',
+        'Control Center': 'مركز التحكم',
+        'Operations': 'العمليات الأساسية',
+        'Services': 'الخدمات والتنفيذ',
+        'Content': 'المحتوى والوسائط',
+        'Commercial': 'الذكاء والتقارير',
+        'Administration': 'إدارة النظام والحوكمة',
         'Partner': 'لوحة الشريك'
     };
 
