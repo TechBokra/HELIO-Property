@@ -1,8 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { Lead, Property, Project, Partner, Request } from '../../types';
 import { 
-    BuildingIcon, UsersIcon, ChartBarIcon, CubeIcon, WhatsAppIcon, PhoneIcon, CheckBadgeIcon, ExclamationTriangleIcon, ArrowPathIcon 
+    BuildingIcon, UsersIcon, ChartBarIcon, CubeIcon, WhatsAppIcon, PhoneIcon, CheckBadgeIcon, 
+    ExclamationTriangleIcon, ArrowPathIcon, UserPlusIcon, DocumentCheckIcon, CogIcon, 
+    ListIcon, ShieldCheckIcon, LockClosedIcon, PlusIcon, InboxIcon, SparklesIcon
 } from '../ui/Icons';
 import { isListingActive } from '../../utils/propertyUtils';
 import { getAllPartnersForAdmin } from '../../services/partners';

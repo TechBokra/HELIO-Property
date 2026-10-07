@@ -72,6 +72,8 @@ const AdminExternalSettingsPage = React.lazy(() => import('./settings/AdminExter
 const AdminProfilePage = React.lazy(() => import('./AdminProfilePage'));
 const AllNotificationsPage = React.lazy(() => import('../shared/AllNotificationsPage'));
 const AdminFinancePage = React.lazy(() => import('./finance/AdminFinancePage'));
+const AdminCustomersPage = React.lazy(() => import('./customers/AdminCustomersPage'));
+const AdminAuditLogPage = React.lazy(() => import('./governance/AdminAuditLogPage'));
 
 const AdminRoutes: React.FC = () => {
     return (
@@ -422,6 +424,22 @@ const AdminRoutes: React.FC = () => {
                     element={
                         <ProtectedRoute permission={Permission.VIEW_ROLES_PERMISSIONS}>
                             <AdminRolesPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="audit-log" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_AUDIT_LOG}>
+                            <AdminAuditLogPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="customers" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_CUSTOMERS}>
+                            <AdminCustomersPage />
                         </ProtectedRoute>
                     } 
                 />
