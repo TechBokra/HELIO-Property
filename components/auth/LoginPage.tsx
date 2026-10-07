@@ -306,10 +306,10 @@ const LoginPage: React.FC = () => {
                                     type="button"
                                     onClick={() => handleQuickLogin('admin@onlyhelio.com', 'password')}
                                     disabled={loading}
-                                    className="p-2.5 text-xs font-medium rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors text-right flex items-center justify-between"
+                                    className="p-2.5 text-xs font-semibold rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-950 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors text-right flex items-center justify-between shadow-xs ring-1 ring-amber-400/30"
                                 >
-                                    <span>👑 {isAr ? 'المدير العام' : 'Super Admin'}</span>
-                                    <span className="text-[10px] opacity-75 font-mono">admin</span>
+                                    <span>👑 {isAr ? 'المدير العام (لوحة التحكم)' : 'Super Admin (Dashboard)'}</span>
+                                    <span className="text-[10px] opacity-80 font-mono">admin</span>
                                 </button>
                                 <button
                                     type="button"

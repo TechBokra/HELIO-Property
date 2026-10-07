@@ -152,7 +152,9 @@ export interface Partner {
     customPermissions?: Permission[];
     parentId?: string;
     nameAr?: string;
+    descriptionAr?: string;
     createdAt?: string;
+    isDemo?: boolean;
 }
 
 export interface AdminPartner extends Partner {
