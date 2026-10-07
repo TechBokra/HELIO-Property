@@ -24,6 +24,8 @@ const statusColors: { [key in LeadStatus]: string } = {
     'site-visit': 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
     quoted: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
     'in-progress': 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+    in_progress: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+    won: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
     completed: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
     cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
 };

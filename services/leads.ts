@@ -13,6 +13,7 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
         managerId: payload.managerId,
         propertyId: payload.propertyId,
         propertyTitle: payload.propertyTitle,
+        propertyArea: payload.propertyArea || payload.unitArea,
         tierDetails: payload.tierDetails,
         pricingModel: payload.pricingModel,
         estimatedCost: payload.estimatedCost,

@@ -319,7 +319,7 @@ export interface Request {
     updatedAt: string;
 }
 
-export type LeadStatus = 'new' | 'contacted' | 'site-visit' | 'quoted' | 'in-progress' | 'completed' | 'cancelled';
+export type LeadStatus = 'new' | 'contacted' | 'site-visit' | 'quoted' | 'in-progress' | 'in_progress' | 'won' | 'completed' | 'cancelled';
 
 export type DecorationStage = 
     | 'consultation' 
@@ -415,6 +415,7 @@ export interface Lead {
     managerId?: string;
     propertyId?: string;
     propertyTitle?: string;
+    propertyArea?: number | string;
     serviceType: 'finishing' | 'decorations' | 'property' | 'general' | 'property_search' | string;
     customerName: string;
     customerPhone: string;

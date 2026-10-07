@@ -483,6 +483,14 @@ export const getAdminGroupLabel = (group: AdminNavGroup | string, language: Lang
 };
 
 /**
+ * Compatibility alias for getAdminGroupLabel supporting both (group, isAr: boolean) and (group, language: Language)
+ */
+export const getAdminGroupTitle = (group: AdminNavGroup | string, isArOrLang: boolean | Language = 'ar'): string => {
+    const lang: Language = typeof isArOrLang === 'boolean' ? (isArOrLang ? 'ar' : 'en') : isArOrLang;
+    return getAdminGroupLabel(group, lang);
+};
+
+/**
  * Derives breadcrumbs trail from route pathname and canonical navigation metadata
  */
 export const getAdminBreadcrumbs = (pathname: string, language: Language, t: any): BreadcrumbItem[] => {
