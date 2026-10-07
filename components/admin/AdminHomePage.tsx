@@ -234,7 +234,29 @@ const AdminHomePage: React.FC = () => {
             }
         }
 
-        // E. Commercial: Contact messages
+        // E. Operations: Unassigned platform requests
+        if (canViewRequests && (hasPermission(Permission.ASSIGN_REQUESTS) || hasPermission(Permission.MANAGE_REQUESTS))) {
+            const unassignedOps = (requests || []).filter(
+                r => !r.assignedTo && r.status !== 'approved' && r.status !== 'rejected'
+            );
+            if (unassignedOps.length > 0) {
+                items.push({
+                    id: 'operations-unassigned',
+                    domain: 'requests',
+                    domainLabel: isAr ? 'مركز العمليات' : 'Operations Center',
+                    title: isAr ? 'طلبات غير معينة بحاجة لمسؤول' : 'Unassigned Platform Requests',
+                    count: unassignedOps.length,
+                    explanation: isAr 
+                        ? `${unassignedOps.length} طلب بحاجة لتعيين مسؤول مباشر للمتابعة والفرز`
+                        : `${unassignedOps.length} incoming requests require owner assignment and triage`,
+                    actionLabel: isAr ? 'فرز وتعيين الطلبات' : 'Triage Operations',
+                    actionUrl: '/admin/operations?view=unassigned',
+                    urgency: 'high',
+                });
+            }
+        }
+
+        // F. Commercial: Contact messages
         if (hasPermission(Permission.MANAGE_CONTACT_REQUESTS)) {
             const pendingContacts = (requests || []).filter(
                 r => r.type === RequestType.CONTACT_MESSAGE && r.status === 'pending'
@@ -392,6 +414,14 @@ const AdminHomePage: React.FC = () => {
     // 5. Permission-Filtered Quick Actions
     const quickActions = useMemo(() => {
         const actions = [];
+
+        if (canViewRequests) {
+            actions.push({
+                label: isAr ? 'مركز العمليات الموحد' : 'Operations Center',
+                href: '/admin/operations',
+                icon: ClipboardDocumentListIcon,
+            });
+        }
 
         if (hasPermission(Permission.MANAGE_ALL_PROPERTIES)) {
             actions.push({

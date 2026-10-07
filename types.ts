@@ -338,6 +338,77 @@ export interface LeadMessage {
     timestamp: string;
 }
 
+export enum OperationalStatus {
+    NEW = 'NEW',
+    ASSIGNED = 'ASSIGNED',
+    IN_PROGRESS = 'IN_PROGRESS',
+    WAITING = 'WAITING',
+    RESOLVED = 'RESOLVED',
+    CLOSED = 'CLOSED',
+    REJECTED = 'REJECTED'
+}
+
+export type OperationalDomain = 
+    | 'real_estate' 
+    | 'partners' 
+    | 'finishing' 
+    | 'decorations' 
+    | 'commercial' 
+    | 'customer_care';
+
+export interface UnifiedRequest {
+    id: string;
+    type: RequestType;
+    typeLabel: { en: string; ar: string };
+    domain: OperationalDomain;
+    domainLabel: { en: string; ar: string };
+    createdAt: string;
+    updatedAt: string;
+    ageHours: number;
+    isAged: boolean;
+    requester: {
+        name: string;
+        email?: string;
+        phone?: string;
+        customerId?: string;
+    };
+    context: {
+        propertyId?: string;
+        propertyTitle?: string;
+        projectId?: string;
+        projectTitle?: string;
+        partnerId?: string;
+        partnerName?: string;
+        serviceType?: string;
+        serviceTitle?: string;
+        estimatedCost?: number;
+        source?: string;
+        utmSource?: string;
+        details?: string;
+        images?: string[];
+    };
+    domainStatus: string;
+    operationalStatus: OperationalStatus;
+    priority: 'high' | 'medium' | 'low';
+    assignedTo?: string;
+    assignedToName?: string;
+    lastActivity: string;
+    nextAction: { en: string; ar: string };
+    detailRoute: string;
+    rawPayload: any;
+}
+
+export interface OperationalMetrics {
+    total: number;
+    unassigned: number;
+    newCount: number;
+    inProgress: number;
+    waiting: number;
+    agedRisk: number;
+    highPriority: number;
+    resolvedToday: number;
+}
+
 export interface Lead {
     id: string;
     partnerId: string;
@@ -399,6 +470,7 @@ export interface PartnerRequest {
 export interface OfficialDocument {
     fileName: string;
     fileContent: string;
+    url?: string;
 }
 
 export interface AddPropertyRequest {
@@ -767,9 +839,25 @@ export interface FinishingEstimateBreakdown {
 
 
 export type FormCategory = 'public' | 'lead_gen' | 'partner_app' | 'admin_internal';
-export type FormFieldType = 'text' | 'textarea' | 'number' | 'email' | 'tel' | 'select' | 'checkbox' | 'radio' | 'date' | 'file';
-export type ValidationRuleType = 'none' | 'email' | 'phone_eg' | 'url' | 'number' | 'custom';
+export type FormFieldType = 
+    | 'text' 
+    | 'textarea' 
+    | 'number' 
+    | 'email' 
+    | 'tel' 
+    | 'select' 
+    | 'multi-select' 
+    | 'checkbox' 
+    | 'radio' 
+    | 'date' 
+    | 'file'
+    | 'property_selector'
+    | 'project_selector'
+    | 'partner_selector';
+
+export type ValidationRuleType = 'none' | 'email' | 'phone_eg' | 'url' | 'number' | 'custom' | 'file_constraint';
 export type SubmissionDestination = 'crm_messages' | 'crm_leads' | 'crm_partners' | 'email';
+export type FormVisibility = 'public' | 'customer' | 'partner' | 'admin';
 
 export interface FormFieldDefinition {
     id: string;
@@ -777,14 +865,21 @@ export interface FormFieldDefinition {
     type: FormFieldType;
     label: { ar: string; en: string };
     placeholder?: { ar: string; en: string };
+    helpText?: { ar: string; en: string };
     required: boolean;
     width: 'full' | 'half' | 'third';
+    order?: number;
     options?: string[] | string;
+    visibility?: FormVisibility;
     validation?: {
         type: ValidationRuleType;
         pattern?: string;
         minLength?: number;
         maxLength?: number;
+        min?: number;
+        max?: number;
+        allowedFileTypes?: string[];
+        maxFileSizeBytes?: number;
         errorMessage?: { ar: string; en: string };
     };
 }
@@ -794,13 +889,37 @@ export interface FormDefinition {
     slug: string;
     title: { ar: string; en: string };
     description?: { ar: string; en: string };
+    domain?: OperationalDomain;
     category: FormCategory;
     destination: SubmissionDestination;
+    requestType?: RequestType;
+    version?: number;
+    visibility?: FormVisibility;
     isActive: boolean;
+    routingRuleId?: string;
     fields: FormFieldDefinition[];
     submitButtonLabel?: { ar: string; en: string };
     createdAt: string;
     updatedAt: string;
+}
+
+export interface IntakeSubmissionParams {
+    formSlug?: string;
+    requestType?: RequestType;
+    domain?: OperationalDomain;
+    formData: Record<string, any>;
+    contextData?: Record<string, any>;
+    files?: File[];
+}
+
+export interface IntakeSubmissionResult {
+    success: boolean;
+    requestId: string;
+    requestType: RequestType;
+    domain: OperationalDomain;
+    assignedTo?: string;
+    status: string;
+    message?: { ar: string; en: string };
 }
 
 export interface AIEstimatorItem {

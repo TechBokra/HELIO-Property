@@ -74,6 +74,9 @@ const AllNotificationsPage = React.lazy(() => import('../shared/AllNotifications
 const AdminFinancePage = React.lazy(() => import('./finance/AdminFinancePage'));
 const AdminCustomersPage = React.lazy(() => import('./customers/AdminCustomersPage'));
 const AdminAuditLogPage = React.lazy(() => import('./governance/AdminAuditLogPage'));
+const AdminOperationsCenterPage = React.lazy(() => import('./operations/AdminOperationsCenterPage'));
+const AdminCreateRequestPage = React.lazy(() => import('./requests/AdminCreateRequestPage'));
+const AdminRequestDetailsPage = React.lazy(() => import('./requests/AdminRequestDetailsPage'));
 
 const AdminRoutes: React.FC = () => {
     return (
@@ -81,6 +84,58 @@ const AdminRoutes: React.FC = () => {
             <Routes>
                 {/* 1. Control Center Dashboard */}
                 <Route index element={<AdminHomePage />} />
+
+                {/* Operations Center (Phase 3B Canonical) */}
+                <Route 
+                    path="operations" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_REQUESTS}>
+                            <AdminOperationsCenterPage />
+                        </ProtectedRoute>
+                    } 
+                />
+
+                {/* Legacy requests routes preservation */}
+                <Route 
+                    path="all-requests" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_REQUESTS}>
+                            <AdminOperationsCenterPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="requests" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_REQUESTS}>
+                            <AdminOperationsCenterPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="requests/new" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_REQUESTS}>
+                            <AdminCreateRequestPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="requests/:requestId" 
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_REQUESTS}>
+                            <AdminRequestDetailsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="requests/property-listing-request/:requestId" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_PROPERTY_REQUESTS}>
+                            <AdminPropertyRequestDetailsPage />
+                        </ProtectedRoute>
+                    } 
+                />
 
                 {/* 2. Commercial Intelligence */}
                 <Route 

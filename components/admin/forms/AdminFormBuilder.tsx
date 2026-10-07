@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { useMutation } from '@tanstack/react-query';
-import type { FormDefinition, FormFieldType, ValidationRuleType } from '../../../types';
+import type { FormDefinition, FormFieldType, ValidationRuleType, OperationalDomain } from '../../../types';
+import { RequestType } from '../../../types';
 import { saveForm } from '../../../services/forms';
 import { useToast } from '../../shared/ToastContext';
 import { useLanguage } from '../../shared/LanguageContext';
@@ -19,13 +20,29 @@ interface AdminFormBuilderProps {
     onClose: () => void;
 }
 
-const fieldTypes: FormFieldType[] = ['text', 'textarea', 'number', 'email', 'tel', 'select', 'checkbox', 'radio', 'date', 'file'];
+const fieldTypes: FormFieldType[] = [
+    'text', 
+    'textarea', 
+    'number', 
+    'email', 
+    'tel', 
+    'select', 
+    'multi-select', 
+    'checkbox', 
+    'radio', 
+    'date', 
+    'file',
+    'property_selector',
+    'project_selector',
+    'partner_selector'
+];
 const validationTypes: {value: ValidationRuleType, label: string}[] = [
     { value: 'none', label: 'None (Default)' },
     { value: 'email', label: 'Email Address' },
     { value: 'phone_eg', label: 'Egyptian Phone' },
     { value: 'url', label: 'URL / Link' },
     { value: 'number', label: 'Numbers Only' },
+    { value: 'file_constraint', label: 'File Constraints (<= 5MB)' },
     { value: 'custom', label: 'Custom Regex Pattern' },
 ];
 
@@ -39,8 +56,12 @@ const AdminFormBuilder: React.FC<AdminFormBuilderProps> = ({ formToEdit, onClose
             title: { ar: '', en: '' },
             description: { ar: '', en: '' },
             slug: '',
+            domain: 'commercial',
             category: 'public',
-            destination: 'crm_messages',
+            destination: 'crm_leads',
+            requestType: RequestType.LEAD,
+            version: 1,
+            visibility: 'public',
             isActive: true,
             submitButtonLabel: { ar: 'إرسال', en: 'Submit' },
             fields: []
@@ -119,6 +140,40 @@ const AdminFormBuilder: React.FC<AdminFormBuilderProps> = ({ formToEdit, onClose
                             </div>
                         </div>
                         
+                        <FormField label="Operational Domain" id="domain">
+                            <Select {...register('domain')} className={selectClasses}>
+                                <option value="commercial">Commercial & General</option>
+                                <option value="real_estate">Real Estate & Listings</option>
+                                <option value="finishing">Finishing & Contracting</option>
+                                <option value="decorations">Decorations & Design</option>
+                                <option value="partners">Partner Network</option>
+                                <option value="customer_care">Customer Care & Support</option>
+                            </Select>
+                        </FormField>
+
+                        <FormField label="Request Type Taxonomy" id="requestType">
+                            <Select {...register('requestType')} className={selectClasses}>
+                                <option value={RequestType.LEAD}>LEAD (Commercial / Services)</option>
+                                <option value={RequestType.PROPERTY_LISTING_REQUEST}>PROPERTY_LISTING_REQUEST</option>
+                                <option value={RequestType.PROPERTY_INQUIRY}>PROPERTY_INQUIRY</option>
+                                <option value={RequestType.CONTACT_MESSAGE}>CONTACT_MESSAGE</option>
+                                <option value={RequestType.PARTNER_APPLICATION}>PARTNER_APPLICATION</option>
+                            </Select>
+                        </FormField>
+
+                        <FormField label="Audience Visibility" id="visibility">
+                            <Select {...register('visibility')} className={selectClasses}>
+                                <option value="public">Public (All Visitors)</option>
+                                <option value="customer">Authenticated Customers Only</option>
+                                <option value="partner">Partner Portal Only</option>
+                                <option value="admin">Internal Admin Only</option>
+                            </Select>
+                        </FormField>
+
+                        <FormField label="Form Version" id="version">
+                            <Input type="number" {...register('version', { valueAsNumber: true })} min={1} className="font-mono text-sm" />
+                        </FormField>
+
                         <FormField label="Category" id="category">
                             <Select {...register('category')} className={selectClasses}>
                                 <option value="public">Public Pages</option>

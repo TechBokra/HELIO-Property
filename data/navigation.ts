@@ -95,6 +95,17 @@ export const adminNavLinks: NavLinkItem[] = [
         group: 'control_center',
         permission: Permission.VIEW_ADMIN_DASHBOARD,
     },
+    {
+        id: 'admin_operations',
+        name: t => t.adminDashboard?.nav?.operations || 'مركز العمليات الموحد',
+        labelEn: 'Operations Center',
+        labelAr: 'مركز العمليات الموحد',
+        href: '/admin/operations',
+        icon: ClipboardDocumentListIcon,
+        group: 'control_center',
+        permission: Permission.VIEW_REQUESTS,
+        matchPrefixes: ['/admin/operations', '/admin/requests', '/admin/all-requests'],
+    },
 
     // --- 2. REAL ESTATE ---
     {

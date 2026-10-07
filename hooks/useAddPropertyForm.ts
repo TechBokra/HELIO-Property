@@ -3,6 +3,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { addRequest } from '../services/requests';
+import { submitIntake } from '../services/intake';
 import { RequestType, AddPropertyRequest, FilterOption } from '../types';
 import { useToast } from '../components/shared/ToastContext';
 import { getAllPropertyTypes, getAllFinishingStatuses, getAllAmenities } from '../services/filters';
@@ -66,17 +67,34 @@ export const useAddPropertyForm = () => {
     const watchLongitude = watch("longitude");
     const watchAmenities = watch('amenities');
 
-    // Mutation for submission
+    // Mutation for submission via Canonical Intake Architecture
     const mutation = useMutation({
-        mutationFn: (data: any) => addRequest(RequestType.PROPERTY_LISTING_REQUEST, data),
+        mutationFn: (data: any) => submitIntake({
+            formSlug: 'add-property',
+            requestType: RequestType.PROPERTY_LISTING_REQUEST,
+            domain: 'real_estate',
+            formData: {
+                customerName: data.customerName,
+                customerPhone: data.customerPhone,
+                contactTime: data.contactTime,
+                ...data.propertyDetails,
+                images: data.images,
+            },
+            contextData: {
+                propertyDetails: data.propertyDetails,
+                cooperationType: data.cooperationType,
+                images: data.images,
+            }
+        }),
         onSuccess: () => {
             setFormSubmitted(true);
             queryClient.invalidateQueries({ queryKey: ['allRequests'] });
             queryClient.invalidateQueries({ queryKey: ['propertyRequests'] });
+            queryClient.invalidateQueries({ queryKey: ['unifiedRequests'] });
         },
-        onError: (error) => {
+        onError: (error: any) => {
             console.error("Failed to submit property request:", error);
-            showToast('Submission failed. Please try again.', 'error');
+            showToast(error.message || 'Submission failed. Please try again.', 'error');
         }
     });
 
@@ -256,13 +274,12 @@ export const useAddPropertyForm = () => {
             });
         } else {
             mutation.mutate({
-                requesterInfo: { name: formData.customerName, phone: formData.customerPhone },
-                payload: {
-                    contactTime: formData.contactTime,
-                    cooperationType: cooperationType,
-                    propertyDetails,
-                    images: imageUrls,
-                }
+                customerName: formData.customerName,
+                customerPhone: formData.customerPhone,
+                contactTime: formData.contactTime,
+                cooperationType: cooperationType,
+                propertyDetails,
+                images: imageUrls,
             });
         }
     };

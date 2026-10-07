@@ -12,13 +12,23 @@ export const getAllForms = async (): Promise<FormDefinition[]> => {
             .eq('key', 'forms_config')
             .single();
         
-        if (error || !data) {
-            // If table exists but key is missing, return fallback without warning
+        if (error || !data || !Array.isArray(data.content)) {
             return fallbackForms;
         }
-        return data.content as FormDefinition[];
+
+        const dbForms = data.content as FormDefinition[];
+        const dbSlugs = new Set(dbForms.map(f => f.slug));
+        const merged = [...dbForms];
+
+        fallbackForms.forEach(fallback => {
+            if (!dbSlugs.has(fallback.slug)) {
+                merged.push(fallback);
+            }
+        });
+
+        return merged;
     } catch (e) {
-        console.warn("Error fetching forms form DB, using fallback", e);
+        console.warn("Error fetching forms from DB, using fallback", e);
         return fallbackForms;
     }
 };

@@ -245,7 +245,7 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
     if (dbAssignedTo) {
         try {
             const link = lead.managerId 
-                ? (lead.serviceType === 'finishing' ? '/admin/platform-finishing/requests' : '/admin/platform-decorations/requests')
+                ? `/admin/operations?id=${data.id}`
                 : '/dashboard/leads';
 
             await addNotification({

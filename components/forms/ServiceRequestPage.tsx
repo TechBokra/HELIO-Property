@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { addRequest } from '../../services/requests';
+import { submitIntake } from '../../services/intake';
 import { RequestType } from '../../types';
 import { SiteIdentity } from '../shared/SiteIdentity';
 import { useToast } from '../shared/ToastContext';
@@ -185,44 +186,34 @@ const ServiceRequestPage: React.FC = () => {
                 }
             });
         } else {
-            // Standard Lead Submission with Marketing & Conversion Attribution
-            addRequest(RequestType.LEAD, {
-                requesterInfo: { name: formData.customerName, phone: formData.customerPhone },
-                assignedTo: partnerId,
-                payload: {
-                    customerName: formData.customerName,
-                    customerPhone: formData.customerPhone,
-                    contactTime: formData.contactTime,
+            // Standard Lead Submission via Canonical Intake Pipeline
+            submitIntake({
+                formSlug,
+                requestType: RequestType.LEAD,
+                domain: (effectiveServiceType === 'decorations' ? 'decorations' : 'finishing') as any,
+                formData: {
+                    ...formData,
                     customerNotes: finalNotes,
-                    partnerId: partnerId,
-                    serviceTitle: serviceTitle,
+                },
+                contextData: {
+                    partnerId,
+                    serviceTitle,
                     managerId: managerId || (effectiveServiceType === 'finishing' ? PLATFORM_FINISHING_MANAGER_ID : (effectiveServiceType === 'decorations' ? DECORATION_MANAGER_ID : undefined)),
-                    propertyId: propertyId,
-                    propertyTitle: propertyTitle,
+                    propertyId,
+                    propertyTitle,
                     serviceType: effectiveServiceType,
                     tierDetails: tier,
                     pricingModel: tier?.priceModel,
                     referenceImage: formData.referenceImage,
-                    // Add specific fields to payload top-level for easy access in details view
                     dimensions: formData.dimensions,
                     itemCategory: formData.itemCategory,
-                    // Persisted Attribution Data
-                    source: attribution.source,
-                    utmSource: attribution.utmSource,
-                    utmCampaign: attribution.utmCampaign,
-                    utmMedium: attribution.utmMedium,
-                    utmTerm: attribution.utmTerm,
-                    utmContent: attribution.utmContent,
-                    referrer: attribution.referrer,
-                    landingPage: attribution.landingPage,
-                    pageOrigin: attribution.pageOrigin,
-                    leadQuality: 'new',
+                    ...attribution,
                 }
             }).then(() => {
                  showToast(t_modal.successMessage, 'success');
                  setTimeout(() => navigate(-1), 2000);
-            }).catch(() => {
-                showToast('Submission failed. Please try again.', 'error');
+            }).catch((err: any) => {
+                showToast(err.message || 'Submission failed. Please try again.', 'error');
             });
         }
     };

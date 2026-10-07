@@ -8,7 +8,8 @@ import type { PartnerType, SubscriptionPlan, PlanCategory, OfficialDocument } fr
 import FormField from '../ui/FormField';
 import { CheckCircleIcon, ClipboardDocumentListIcon } from '../ui/Icons';
 import { SiteIdentity } from '../shared/SiteIdentity';
-import { addRequest } from '../../services/requests';
+import { submitIntake } from '../../services/intake';
+import { uploadFile } from '../../services/upload';
 import { RequestType } from '../../types';
 import SubscriptionPlanSelector from '../shared/SubscriptionPlanSelector';
 import { useLanguage } from '../shared/LanguageContext';
@@ -18,15 +19,6 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { commonSchemas } from '../../utils/validation';
-
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
 
 // Validation Schema using centralized utils
 const registerSchema = z.object({
@@ -85,14 +77,14 @@ const RegisterPage: React.FC = () => {
     });
 
     const mutation = useMutation({
-        mutationFn: (data: any) => addRequest(RequestType.PARTNER_APPLICATION, data),
+        mutationFn: (intakeParams: any) => submitIntake(intakeParams),
         onSuccess: () => {
             setFormSubmitted(true);
             window.scrollTo(0, 0);
         },
-        onError: (error) => {
+        onError: (error: any) => {
             console.error("Submission failed:", error);
-            showToast('Submission failed. Please try again.', 'error');
+            showToast(error.message || 'Submission failed. Please try again.', 'error');
         }
     });
 
@@ -113,23 +105,41 @@ const RegisterPage: React.FC = () => {
             return;
         }
         
-        const logoBase64 = await fileToBase64(logoFile);
-        let docsBase64: OfficialDocument[] = [];
+        let logoUrl = '';
+        try {
+            logoUrl = await uploadFile(logoFile);
+        } catch (e: any) {
+            console.error("Logo upload error", e);
+            showToast(e.message || "Failed to upload logo", "error");
+            return;
+        }
+
+        let officialDocs: OfficialDocument[] = [];
         if (docFiles) {
-             const filesArray = Array.from(docFiles);
-             const filePromises = filesArray.map(async (file: File) => ({
-                fileName: file.name,
-                fileContent: await fileToBase64(file)
-            }));
-            docsBase64 = await Promise.all(filePromises);
+            const filesArray = Array.from(docFiles);
+            const uploadPromises = filesArray.map(async (file: File) => {
+                const url = await uploadFile(file);
+                return {
+                    fileName: file.name,
+                    fileContent: url,
+                    url: url,
+                };
+            });
+            try {
+                officialDocs = await Promise.all(uploadPromises);
+            } catch (e: any) {
+                console.error("Doc upload error", e);
+                showToast(e.message || "Failed to upload document", "error");
+                return;
+            }
         }
         
         const finalData = {
             companyType,
             subscriptionPlan: selectedPlan,
             ...data,
-            logo: logoBase64,
-            documents: docsBase64,
+            logo: logoUrl,
+            documents: officialDocs,
             managementContacts: [] 
         };
 
@@ -150,8 +160,28 @@ const RegisterPage: React.FC = () => {
             });
         } else {
             mutation.mutate({
-                requesterInfo: { name: data.contactName, phone: data.contactPhone, email: data.contactEmail },
-                payload: finalData,
+                formSlug: 'partner-application',
+                requestType: RequestType.PARTNER_APPLICATION,
+                domain: 'partners',
+                formData: {
+                    companyName: data.companyName,
+                    companyType,
+                    contactName: data.contactName,
+                    contactPhone: data.contactPhone,
+                    contactEmail: data.contactEmail,
+                    companyAddress: data.companyAddress,
+                    website: data.website,
+                    description: data.description,
+                    subscriptionPlan: selectedPlan,
+                    logo: logoUrl,
+                    documents: officialDocs,
+                },
+                contextData: {
+                    companyType,
+                    subscriptionPlan: selectedPlan,
+                    documents: officialDocs,
+                    logo: logoUrl,
+                }
             });
         }
     };
