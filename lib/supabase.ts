@@ -5,18 +5,26 @@ import { createClient } from '@supabase/supabase-js';
 const FALLBACK_URL = 'https://xyyvgpchkznznwbxbgrp.supabase.co';
 const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM';
 
-// الحصول على المتغيرات من البيئة (Vercel) أو استخدام الاحتياطية
-const getEnvVar = (key: string, fallback: string) => {
-    try {
-        // محاولة الحصول من import.meta (Vite) أو process.env (Node/Vercel)
-        return (import.meta as any).env?.[key] || (process.env as any)?.[key] || fallback;
-    } catch {
-        return fallback;
-    }
+// Statically extractable by Vite bundler during `vite build` on Vercel / Cloud Run
+const getEnvVar = (envValue: string | undefined, fallback: string) => {
+    return envValue && envValue.trim().length > 0 ? envValue : fallback;
 };
 
-const supabaseUrl = getEnvVar('VITE_SUPABASE_URL', FALLBACK_URL);
-const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY', FALLBACK_KEY);
+// Check if admin explicitly saved custom supabase connection in settings
+let localSettingsUrl: string | undefined;
+let localSettingsKey: string | undefined;
+try {
+    const rawContent = localStorage.getItem('onlyhelio_site_content');
+    if (rawContent) {
+        const parsed = JSON.parse(rawContent);
+        localSettingsUrl = parsed?.integrationConfiguration?.supabase?.url;
+        localSettingsKey = parsed?.integrationConfiguration?.supabase?.anonKey;
+    }
+} catch {}
+
+const envMeta = (import.meta as any)?.env;
+const supabaseUrl = localSettingsUrl || getEnvVar(envMeta?.VITE_SUPABASE_URL, FALLBACK_URL);
+const supabaseAnonKey = localSettingsKey || getEnvVar(envMeta?.VITE_SUPABASE_ANON_KEY, FALLBACK_KEY);
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {

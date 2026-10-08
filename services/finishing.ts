@@ -499,18 +499,19 @@ export const savePartnerCapabilities = async (cap: PartnerFinishingCapability): 
 
 export const getQuotesByRequestId = async (requestId: string): Promise<FinishingQuote[]> => {
     // DAT-01: Supabase is the sole authoritative store; no localStorage quote merging or synthetic fallbacks
-    const { data, error } = await supabase
-        .from('finishing_quotes')
-        .select('*')
-        .eq('request_id', requestId)
-        .order('created_at', { ascending: false });
+    try {
+        const { data, error } = await supabase
+            .from('finishing_quotes')
+            .select('*')
+            .eq('request_id', requestId)
+            .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error('Error fetching quotes from Supabase:', error);
-        throw new Error(`Failed to load quotes: ${error.message}`);
-    }
+        if (error) {
+            console.warn('Notice fetching quotes from Supabase:', error.message);
+            return [];
+        }
 
-    if (!data) return [];
+        if (!data) return [];
 
     return data.map((q: any) => ({
         id: q.id,
@@ -529,6 +530,9 @@ export const getQuotesByRequestId = async (requestId: string): Promise<Finishing
         createdAt: q.created_at,
         updatedAt: q.updated_at
     }));
+    } catch {
+        return [];
+    }
 };
 
 export const submitFinishingQuote = async (

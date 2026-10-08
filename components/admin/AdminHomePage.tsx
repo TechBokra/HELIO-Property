@@ -133,7 +133,13 @@ const AdminHomePage: React.FC = () => {
     });
 
     const isGlobalLoading = loadingProperties || loadingPartners || loadingProjects || loadingLeads || loadingRequests;
-    const hasAnyError = errorProperties || errorPartners || errorProjects || errorLeads || errorRequests;
+    const hasAnyError = Boolean(
+        (errorProperties && (!properties || properties.length === 0)) ||
+        (errorPartners && (!partners || partners.length === 0)) ||
+        (errorProjects && (!projects || projects.length === 0)) ||
+        (errorLeads && (!leads || leads.length === 0)) ||
+        (errorRequests && (!requests || requests.length === 0))
+    );
 
     const refetchAll = () => {
         if (canViewProperties) refetchProperties();
@@ -172,7 +178,7 @@ const AdminHomePage: React.FC = () => {
         // B. Real Estate: Listing Requests
         if (hasPermission(Permission.MANAGE_PROPERTY_REQUESTS)) {
             const pendingPropRequests = (requests || []).filter(
-                r => r.type === RequestType.PROPERTY_LISTING_REQUEST && r.status === 'pending'
+                r => r.type === RequestType.PROPERTY_LISTING_REQUEST && (r.status === 'pending' || r.status === 'new')
             );
             if (pendingPropRequests.length > 0) {
                 items.push({
@@ -259,7 +265,7 @@ const AdminHomePage: React.FC = () => {
         // F. Commercial: Contact messages
         if (hasPermission(Permission.MANAGE_CONTACT_REQUESTS)) {
             const pendingContacts = (requests || []).filter(
-                r => r.type === RequestType.CONTACT_MESSAGE && r.status === 'pending'
+                r => r.type === RequestType.CONTACT_MESSAGE && (r.status === 'pending' || r.status === 'new')
             );
             if (pendingContacts.length > 0) {
                 items.push({
