@@ -43,7 +43,7 @@ export const AdminFinishingQuotesPage: React.FC = () => {
 
     const stats = useMemo(() => {
         const total = finishingLeads.length;
-        const awarded = finishingLeads.filter(l => l.status === 'won' || l.status === 'in_progress').length;
+        const awarded = finishingLeads.filter(l => l.status === 'completed' || l.status === 'in-progress' || (l.status as any) === 'won' || (l.status as any) === 'in_progress').length;
         const pending = finishingLeads.filter(l => l.status === 'new' || l.status === 'contacted').length;
         return { total, awarded, pending };
     }, [finishingLeads]);

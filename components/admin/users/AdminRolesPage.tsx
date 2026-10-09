@@ -94,6 +94,7 @@ const PERMISSION_LABELS: Record<Permission, PermissionMeta> = {
     // USERS & GOVERNANCE
     [Permission.VIEW_USERS]: { ar: 'عرض قائمة المستخدمين والإداريين', en: 'View Users', category: 'system' },
     [Permission.MANAGE_USERS]: { ar: 'إدارة المستخدمين وحسابات الإدارة', en: 'Manage Users', category: 'system' },
+    [Permission.MANAGE_USER_CREDENTIALS]: { ar: 'إدارة بيانات الاعتماد وكلمات المرور', en: 'Manage User Credentials & Passwords', category: 'system' },
     [Permission.VIEW_ROLES_PERMISSIONS]: { ar: 'عرض جدول الأدوار والصلاحيات', en: 'View Roles & Permissions', category: 'system' },
     [Permission.MANAGE_ROLES_PERMISSIONS]: { ar: 'إدارة الأدوار والصلاحيات', en: 'Manage Roles & Permissions', category: 'system' },
     [Permission.VIEW_AUDIT_LOG]: { ar: 'عرض سجل التدقيق والعمليات', en: 'View Audit Log', category: 'system' },

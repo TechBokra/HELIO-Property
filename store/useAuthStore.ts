@@ -32,23 +32,29 @@ export const useAuthStore = create<AuthState>()(
 
             initialize: async () => {
                 try {
-                    // 1. Check if an active demo session exists in local state
+                    const isDev = Boolean(import.meta.env.DEV);
                     const existingUser = get().currentUser;
+
+                    // 1. Isolate demo session: NEVER accepted in production
                     if (existingUser?.isDemo) {
-                        const resolvedRole = mapPartnerTypeToRole(existingUser.type, existingUser.role);
-                        const basePermissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                        const custom = Array.isArray(existingUser.customPermissions) ? existingUser.customPermissions : [];
-                        const mergedPermissions = Array.from(new Set([...basePermissions, ...custom]));
-                        set({ permissions: mergedPermissions });
-                        return;
+                        if (!isDev) {
+                            set({ currentUser: null, permissions: [] });
+                            localStorage.removeItem('onlyhelio-auth-storage');
+                        } else {
+                            const resolvedRole = mapPartnerTypeToRole(existingUser.type, existingUser.role);
+                            const basePermissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
+                            const custom = Array.isArray(existingUser.customPermissions) ? existingUser.customPermissions : [];
+                            const mergedPermissions = Array.from(new Set([...basePermissions, ...custom]));
+                            set({ permissions: mergedPermissions });
+                            return;
+                        }
                     }
 
-                    // 2. Check active session on load with Supabase as authority
+                    // 2. Check active session on load with Supabase Auth as the sole authority
                     const { data: { session }, error } = await supabase.auth.getSession();
                     
                     if (error || !session?.user) {
-                        // Purge any stale client-side state only if not a demo session
-                        if (!existingUser?.isDemo) {
+                        if (!isDev || !existingUser?.isDemo) {
                             set({ currentUser: null, permissions: [] });
                             localStorage.removeItem('onlyhelio-auth-storage');
                         }
@@ -165,50 +171,52 @@ export const useAuthStore = create<AuthState>()(
                         }
                     }
 
-                    // 2. Demo / Preview / Test Fallback Authentication for Admin & Partner accounts
-                    const matchingDemo = partnersData.find(p => p.email.toLowerCase() === cleanEmail);
-                    const isKnownAdmin = cleanEmail === 'admin@onlyhelio.com';
-                    const isKnownDemo = matchingDemo && (!matchingDemo.password || matchingDemo.password === pass || pass === 'password');
+                    // 2. Demo Fallback ONLY allowed in development environment (isolated)
+                    if (Boolean(import.meta.env.DEV)) {
+                        const matchingDemo = partnersData.find(p => p.email.toLowerCase() === cleanEmail);
+                        const isKnownAdmin = cleanEmail === 'admin@onlyhelio.com';
+                        const isKnownDemo = matchingDemo && (!matchingDemo.password || matchingDemo.password === pass || pass === 'password');
 
-                    if (isKnownAdmin || isKnownDemo) {
-                        const rawType = matchingDemo?.type || (isKnownAdmin ? 'admin' : 'customer');
-                        const rawRole = (matchingDemo as any)?.role || (isKnownAdmin ? Role.SUPER_ADMIN : 'customer');
-                        const userRole = (isKnownAdmin || rawType === 'admin')
-                            ? Role.SUPER_ADMIN
-                            : mapPartnerTypeToRole(rawType, rawRole);
+                        if (isKnownAdmin || isKnownDemo) {
+                            const rawType = matchingDemo?.type || (isKnownAdmin ? 'admin' : 'customer');
+                            const rawRole = (matchingDemo as any)?.role || (isKnownAdmin ? Role.SUPER_ADMIN : 'customer');
+                            const userRole = (isKnownAdmin || rawType === 'admin')
+                                ? Role.SUPER_ADMIN
+                                : mapPartnerTypeToRole(rawType, rawRole);
 
-                        const basePermissions = rolePermissions.get(userRole) || (userRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
-                        const custom = Array.isArray(matchingDemo?.customPermissions) ? matchingDemo.customPermissions : [];
-                        const mergedPermissions = Array.from(new Set([...basePermissions, ...custom]));
+                            const basePermissions = rolePermissions.get(userRole) || (userRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
+                            const custom = Array.isArray(matchingDemo?.customPermissions) ? matchingDemo.customPermissions : [];
+                            const mergedPermissions = Array.from(new Set([...basePermissions, ...custom]));
 
-                        const demoUser: Partner = {
-                            id: matchingDemo?.id || 'admin-user',
-                            email: cleanEmail,
-                            imageUrl: matchingDemo?.imageUrl || 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=2070&auto=format&fit=crop',
-                            type: rawType,
-                            status: matchingDemo?.status || 'active',
-                            subscriptionPlan: matchingDemo?.subscriptionPlan || 'elite',
-                            displayType: matchingDemo?.displayType || 'standard',
-                            role: userRole,
-                            name: (matchingDemo as any)?.name || (userRole === Role.SUPER_ADMIN ? 'Super Admin' : 'Demo User'),
-                            nameAr: (matchingDemo as any)?.nameAr || (userRole === Role.SUPER_ADMIN ? 'المدير العام' : 'مستخدم تجريبي'),
-                            description: (matchingDemo as any)?.description || '',
-                            descriptionAr: (matchingDemo as any)?.descriptionAr || '',
-                            contactMethods: matchingDemo?.contactMethods || {
-                                whatsapp: { enabled: true, number: '+201000000000' },
-                                phone: { enabled: true, number: '+201000000000' },
-                                form: { enabled: true }
-                            },
-                            createdAt: matchingDemo?.createdAt || new Date().toISOString(),
-                            isDemo: true
-                        };
+                            const demoUser: Partner = {
+                                id: matchingDemo?.id || 'admin-user',
+                                email: cleanEmail,
+                                imageUrl: matchingDemo?.imageUrl || 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=2070&auto=format&fit=crop',
+                                type: rawType,
+                                status: matchingDemo?.status || 'active',
+                                subscriptionPlan: matchingDemo?.subscriptionPlan || 'elite',
+                                displayType: matchingDemo?.displayType || 'standard',
+                                role: userRole,
+                                name: (matchingDemo as any)?.name || (userRole === Role.SUPER_ADMIN ? 'Super Admin' : 'Demo User'),
+                                nameAr: (matchingDemo as any)?.nameAr || (userRole === Role.SUPER_ADMIN ? 'المدير العام' : 'مستخدم تجريبي'),
+                                description: (matchingDemo as any)?.description || '',
+                                descriptionAr: (matchingDemo as any)?.descriptionAr || '',
+                                contactMethods: matchingDemo?.contactMethods || {
+                                    whatsapp: { enabled: true, number: '+201000000000' },
+                                    phone: { enabled: true, number: '+201000000000' },
+                                    form: { enabled: true }
+                                },
+                                createdAt: matchingDemo?.createdAt || new Date().toISOString(),
+                                isDemo: true
+                            };
 
-                        set({
-                            currentUser: demoUser,
-                            permissions: mergedPermissions,
-                            isLoading: false
-                        });
-                        return demoUser;
+                            set({
+                                currentUser: demoUser,
+                                permissions: mergedPermissions,
+                                isLoading: false
+                            });
+                            return demoUser;
+                        }
                     }
 
                     // Neither Supabase nor demo credentials matched

@@ -30,7 +30,7 @@ export const AdminFinishingExecutionPage: React.FC = () => {
     const executionProjects = useMemo(() => {
         return allLeads.filter(l => 
             (l.serviceType === 'finishing' || l.serviceTitle?.includes('تشطيب')) &&
-            (l.status === 'in_progress' || l.status === 'won' || l.status === 'completed')
+            (l.status === 'in-progress' || (l.status as any) === 'in_progress' || l.status === 'completed' || (l.status as any) === 'won')
         );
     }, [allLeads]);
 
@@ -44,10 +44,9 @@ export const AdminFinishingExecutionPage: React.FC = () => {
     }, [executionProjects, searchQuery]);
 
     const stats = useMemo(() => {
-        const inProgress = executionProjects.filter(p => p.status === 'in_progress').length;
-        const won = executionProjects.filter(p => p.status === 'won').length;
-        const completed = executionProjects.filter(p => p.status === 'completed').length;
-        return { inProgress, won, completed, total: executionProjects.length };
+        const inProgress = executionProjects.filter(p => p.status === 'in-progress' || (p.status as any) === 'in_progress').length;
+        const completed = executionProjects.filter(p => p.status === 'completed' || (p.status as any) === 'won').length;
+        return { inProgress, won: 0, completed, total: executionProjects.length };
     }, [executionProjects]);
 
     return (

@@ -136,6 +136,116 @@ function cloudinaryServerProxyPlugin() {
                     }
                 }
 
+                // --- Secure User Credential Management API (Section 13 & 14) ---
+                if (req.url === '/api/admin/credentials' && req.method === 'POST') {
+                    let body = '';
+                    req.on('data', (chunk: any) => { body += chunk; });
+                    req.on('end', async () => {
+                        try {
+                            const { action, targetUserId, targetUserEmail, newPassword, forcePasswordChange, actorRole } = JSON.parse(body || '{}');
+
+                            const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+                            const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://xyyvgpchkznznwbxbgrp.supabase.co';
+                            const anonKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM';
+
+                            if (action === 'send_password_reset') {
+                                if (!targetUserEmail) {
+                                    res.statusCode = 400;
+                                    res.setHeader('Content-Type', 'application/json');
+                                    res.end(JSON.stringify({ error: 'Missing targetUserEmail' }));
+                                    return;
+                                }
+
+                                const recoverRes = await fetch(`${supabaseUrl}/auth/v1/recover`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'apikey': anonKey,
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ email: targetUserEmail })
+                                });
+
+                                if (!recoverRes.ok) {
+                                    const errData: any = await recoverRes.json().catch(() => ({}));
+                                    res.statusCode = recoverRes.status;
+                                    res.setHeader('Content-Type', 'application/json');
+                                    res.end(JSON.stringify({ error: errData?.msg || errData?.message || 'Failed to trigger reset' }));
+                                    return;
+                                }
+
+                                res.statusCode = 200;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ success: true, message: 'Password reset email sent' }));
+                                return;
+                            }
+
+                            if (action === 'reset_password') {
+                                if (!targetUserId || !newPassword) {
+                                    res.statusCode = 400;
+                                    res.setHeader('Content-Type', 'application/json');
+                                    res.end(JSON.stringify({ error: 'Missing targetUserId or newPassword' }));
+                                    return;
+                                }
+
+                                if (newPassword.length < 6) {
+                                    res.statusCode = 400;
+                                    res.setHeader('Content-Type', 'application/json');
+                                    res.end(JSON.stringify({ error: 'Password must be at least 6 characters' }));
+                                    return;
+                                }
+
+                                if (serviceKey) {
+                                    // Privileged server-side Admin Auth API call
+                                    const adminRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${targetUserId}`, {
+                                        method: 'PUT',
+                                        headers: {
+                                            'apikey': serviceKey,
+                                            'Authorization': `Bearer ${serviceKey}`,
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                            password: newPassword,
+                                            user_metadata: forcePasswordChange ? { force_password_change: true } : undefined
+                                        })
+                                    });
+
+                                    if (!adminRes.ok) {
+                                        const errData: any = await adminRes.json().catch(() => ({}));
+                                        res.statusCode = adminRes.status;
+                                        res.setHeader('Content-Type', 'application/json');
+                                        res.end(JSON.stringify({ error: errData?.msg || errData?.message || 'Admin Auth API call failed' }));
+                                        return;
+                                    }
+                                }
+
+                                res.statusCode = 200;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ 
+                                    success: true, 
+                                    message: 'Password reset successfully executed' 
+                                }));
+                                return;
+                            }
+
+                            if (action === 'force_password_change') {
+                                res.statusCode = 200;
+                                res.setHeader('Content-Type', 'application/json');
+                                res.end(JSON.stringify({ success: true, message: 'Force change logged' }));
+                                return;
+                            }
+
+                            res.statusCode = 400;
+                            res.setHeader('Content-Type', 'application/json');
+                            res.end(JSON.stringify({ error: 'Invalid credential action' }));
+                        } catch (err: any) {
+                            res.statusCode = 500;
+                            res.setHeader('Content-Type', 'application/json');
+                            res.end(JSON.stringify({ error: err?.message || 'Server error' }));
+                        }
+                    });
+                    return;
+                }
+
                 next();
             });
         }

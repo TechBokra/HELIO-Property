@@ -1,22 +1,30 @@
 import { supabase } from '../lib/supabase';
-import type { Lead, LeadMessage } from '../types';
+import type { Lead, LeadMessage, LeadStatus } from '../types';
 import { addNotification } from './notifications';
 import { getAttribution } from '../utils/attribution';
 import { evaluateRoutingRules } from './routingRules';
-import { leadsData as initialLeads } from '../data/leads';
+import { resolveEligibleManager } from './requests';
 
-let cachedLeads: Lead[] = [...initialLeads];
+const normalizeLeadStatus = (rawStatus: any): LeadStatus => {
+    if (rawStatus === 'in_progress') return 'in-progress';
+    if (rawStatus === 'won') return 'completed';
+    return (rawStatus || 'new') as LeadStatus;
+};
 
 const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
     const payload = row.payload || {};
+    const rawArea = payload.propertyArea ?? payload.unitArea;
+    const normalizedArea = (rawArea !== undefined && rawArea !== null && rawArea !== '') 
+        ? (typeof rawArea === 'number' ? rawArea : (!isNaN(Number(rawArea)) ? Number(rawArea) : rawArea))
+        : undefined;
+
     return {
         id: row.id,
-        // The listing partner who owns the property or lead
         partnerId: payload.partnerId || row.assigned_to,
         managerId: payload.managerId,
         propertyId: payload.propertyId,
         propertyTitle: payload.propertyTitle,
-        propertyArea: payload.propertyArea || payload.unitArea,
+        propertyArea: normalizedArea,
         tierDetails: payload.tierDetails,
         pricingModel: payload.pricingModel,
         estimatedCost: payload.estimatedCost,
@@ -26,7 +34,7 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
         contactTime: payload.contactTime,
         serviceTitle: payload.serviceTitle || 'Inquiry',
         customerNotes: payload.customerNotes,
-        status: row.status,
+        status: normalizeLeadStatus(row.status || payload.status),
         designStage: payload.designStage,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -39,11 +47,9 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
             content: msg.content,
             timestamp: msg.created_at
         })),
-        // Extra payload fields
         referenceImage: payload.referenceImage,
         itemCategory: payload.itemCategory,
         dimensions: payload.dimensions,
-        // Lead Marketing & Conversion Attribution
         source: payload.source || 'inquiry_form',
         utmSource: payload.utmSource || payload.utm_source,
         utmCampaign: payload.utmCampaign || payload.utm_campaign,
@@ -58,46 +64,39 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
 };
 
 export const getAllLeads = async (): Promise<Lead[]> => {
-    try {
-        const { data: leadsData, error: leadsError } = await supabase
-            .from('requests')
-            .select('*')
-            .eq('type', 'LEAD')
-            .order('created_at', { ascending: false });
+    const { data: leadsData, error: leadsError } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('type', 'LEAD')
+        .order('created_at', { ascending: false });
 
-        if (leadsError) {
-            console.warn('Notice fetching leads from Supabase, returning local state:', leadsError.message);
-            return cachedLeads;
-        }
-
-        if (!leadsData || leadsData.length === 0) {
-            return cachedLeads;
-        }
-
-        const leadIds = leadsData.map(l => l.id);
-        let messagesData: any[] = [];
-        if (leadIds.length > 0) {
-            const { data: msgs, error: msgsError } = await supabase
-                .from('request_messages')
-                .select('*')
-                .in('request_id', leadIds)
-                .order('created_at', { ascending: true });
-            
-            if (!msgsError && msgs) {
-                messagesData = msgs;
-            }
-        }
-
-        const mapped = leadsData.map(lead => {
-            const msgs = messagesData.filter(m => m.request_id === lead.id);
-            return mapLeadFromDb(lead, msgs);
-        });
-        cachedLeads = mapped;
-        return mapped;
-    } catch (err) {
-        console.warn('Exception in getAllLeads, returning local state:', err);
-        return cachedLeads;
+    if (leadsError) {
+        console.error('Authoritative Supabase error querying leads:', leadsError.message);
+        throw leadsError;
     }
+
+    if (!leadsData || leadsData.length === 0) {
+        return [];
+    }
+
+    const leadIds = leadsData.map(l => l.id);
+    let messagesData: any[] = [];
+    if (leadIds.length > 0) {
+        const { data: msgs, error: msgsError } = await supabase
+            .from('request_messages')
+            .select('*')
+            .in('request_id', leadIds)
+            .order('created_at', { ascending: true });
+        
+        if (!msgsError && msgs) {
+            messagesData = msgs;
+        }
+    }
+
+    return leadsData.map(lead => {
+        const msgs = messagesData.filter(m => m.request_id === lead.id);
+        return mapLeadFromDb(lead, msgs);
+    });
 };
 
 const isValidUUID = (id?: string): boolean => {
@@ -106,49 +105,44 @@ const isValidUUID = (id?: string): boolean => {
 };
 
 export const getLeadsByPartnerId = async (partnerId: string): Promise<Lead[]> => {
-    try {
-        const isUuid = isValidUUID(partnerId);
-        let query = supabase.from('requests').select('*').eq('type', 'LEAD');
-        
-        if (isUuid) {
-            query = query.or(`assigned_to.eq.${partnerId},payload->>partnerId.eq.${partnerId}`);
-        } else {
-            query = query.filter('payload->>partnerId', 'eq', partnerId);
-        }
+    if (!partnerId) return [];
 
-        const { data: leadsData, error } = await query.order('created_at', { ascending: false });
-        if (error || !leadsData || leadsData.length === 0) {
-            return cachedLeads.filter(l => l.partnerId === partnerId || l.assignedTo === partnerId);
-        }
-
-        return leadsData.map(lead => mapLeadFromDb(lead, []));
-    } catch {
-        return cachedLeads.filter(l => l.partnerId === partnerId || l.assignedTo === partnerId);
+    const isUuid = isValidUUID(partnerId);
+    let query = supabase.from('requests').select('*').eq('type', 'LEAD');
+    
+    if (isUuid) {
+        query = query.or(`assigned_to.eq.${partnerId},payload->>partnerId.eq.${partnerId}`);
+    } else {
+        query = query.filter('payload->>partnerId', 'eq', partnerId);
     }
+
+    const { data: leadsData, error } = await query.order('created_at', { ascending: false });
+    if (error) {
+        console.error('Authoritative error querying leads by partnerId:', error.message);
+        throw error;
+    }
+
+    return (leadsData || []).map(lead => mapLeadFromDb(lead, []));
 };
 
 export const getLeadById = async (leadId: string): Promise<Lead | undefined> => {
-    try {
-        const { data: leadData, error } = await supabase
-            .from('requests')
-            .select('*')
-            .eq('id', leadId)
-            .single();
+    const { data: leadData, error } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('id', leadId)
+        .maybeSingle();
 
-        if (error || !leadData) {
-            return cachedLeads.find(l => l.id === leadId);
-        }
-
-        const { data: messagesData } = await supabase
-            .from('request_messages')
-            .select('*')
-            .eq('request_id', leadId)
-            .order('created_at', { ascending: true });
-
-        return mapLeadFromDb(leadData, messagesData || []);
-    } catch {
-        return cachedLeads.find(l => l.id === leadId);
+    if (error || !leadData) {
+        return undefined;
     }
+
+    const { data: messages } = await supabase
+        .from('request_messages')
+        .select('*')
+        .eq('request_id', leadId)
+        .order('created_at', { ascending: true });
+
+    return mapLeadFromDb(leadData, messages || []);
 };
 
 export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt' | 'updatedAt' | 'messages'>): Promise<Lead> => {
@@ -201,21 +195,15 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
         }
     }
 
-    // Default manager fallbacks if still unassigned
-    const PLATFORM_FINISHING_MANAGER = '3e554896-eee8-4545-9c7f-0a79a4c1a9f1';
-    const DECORATION_MANAGER = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
+    // Dynamic database-backed manager resolution (Section 9)
     if (!routedPartner || !isValidUUID(routedPartner)) {
-        if (leadData.serviceType === 'finishing') {
-            routedPartner = PLATFORM_FINISHING_MANAGER;
-        } else if (leadData.serviceType === 'decorations' || leadData.serviceType === 'decoration') {
-            routedPartner = DECORATION_MANAGER;
-        }
+        routedPartner = await resolveEligibleManager(leadData.serviceType || 'general') || undefined;
     }
 
     const dbAssignedTo = isValidUUID(routedPartner) ? routedPartner : null;
     payloadObj.partnerId = routedPartner;
 
-    // P0.3: Derive authoritative authenticated customer identity
+    // Derive authoritative authenticated customer identity
     const { data: { session } } = await supabase.auth.getSession();
     const authUser = session?.user;
     const customerId = authUser?.id || (leadData.customerId && isValidUUID(leadData.customerId) ? leadData.customerId : null);
@@ -228,7 +216,12 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
         customerId: customerId || undefined
     };
 
+    const leadId = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+        ? crypto.randomUUID() 
+        : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
+
     const dbPayload: any = {
+        id: leadId,
         type: 'LEAD',
         status: 'new',
         customer_id: customerId,
@@ -241,53 +234,39 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
         updated_at: new Date().toISOString()
     };
 
-    // Attempt Supabase insert with graceful fallback if .select() is restricted by RLS
-    let createdRow: any = null;
-    try {
-        const { data, error } = await supabase
-            .from('requests')
-            .insert(dbPayload)
-            .select()
-            .single();
+    // Authoritative Database Insert
+    const { error: insertError } = await supabase
+        .from('requests')
+        .insert(dbPayload);
 
-        if (error) {
-            // If .select() was rejected by RLS (e.g. code 42501 for unauthenticated public clients), retry insert without select
-            await supabase.from('requests').insert(dbPayload);
-        } else {
-            createdRow = data;
-        }
-    } catch (e) {
-        console.warn('Notice during lead insert into Supabase, saving locally:', e);
+    if (insertError) {
+        console.error('Authoritative error during lead insert into Supabase:', insertError);
+        throw new Error(`Failed to create lead in database: ${insertError.message}`);
     }
 
-    const generatedId = createdRow?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `lead-${Date.now()}`);
-    const lead: Lead = createdRow 
-        ? mapLeadFromDb(createdRow, [])
-        : {
-            id: generatedId,
-            partnerId: dbAssignedTo || routedPartner || '',
-            managerId: leadData.managerId,
-            propertyId: leadData.propertyId,
-            propertyTitle: leadData.propertyTitle,
-            propertyArea: (leadData as any).propertyArea,
-            tierDetails: (leadData as any).tierDetails,
-            pricingModel: (leadData as any).pricingModel,
-            estimatedCost: (leadData as any).estimatedCost,
-            serviceType: leadData.serviceType || 'general',
-            customerName: leadData.customerName,
-            customerPhone: leadData.customerPhone,
-            customerEmail: authoritativeEmail || undefined,
-            contactTime: leadData.contactTime,
-            serviceTitle: leadData.serviceTitle || 'Inquiry',
-            customerNotes: leadData.customerNotes,
-            status: 'new',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            assignedTo: dbAssignedTo || undefined,
-            messages: []
-        };
-
-    cachedLeads = [lead, ...cachedLeads];
+    const lead: Lead = {
+        id: leadId,
+        partnerId: dbAssignedTo || routedPartner || '',
+        managerId: leadData.managerId,
+        propertyId: leadData.propertyId,
+        propertyTitle: leadData.propertyTitle,
+        propertyArea: (leadData as any).propertyArea ?? (leadData as any).unitArea,
+        tierDetails: (leadData as any).tierDetails,
+        pricingModel: (leadData as any).pricingModel,
+        estimatedCost: (leadData as any).estimatedCost,
+        serviceType: leadData.serviceType || 'general',
+        customerName: leadData.customerName,
+        customerPhone: leadData.customerPhone,
+        customerEmail: authoritativeEmail || undefined,
+        contactTime: leadData.contactTime,
+        serviceTitle: leadData.serviceTitle || 'Inquiry',
+        customerNotes: leadData.customerNotes,
+        status: 'new',
+        createdAt: dbPayload.created_at,
+        updatedAt: dbPayload.updated_at,
+        assignedTo: dbAssignedTo || undefined,
+        messages: []
+    };
 
     // Notification (only if assigned partner is a valid DB partner UUID)
     if (dbAssignedTo) {

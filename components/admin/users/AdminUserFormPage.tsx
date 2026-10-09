@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,7 +10,10 @@ import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
 import { Select } from '../../ui/Select';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
-import { ArrowLeftIcon, ShieldCheckIcon } from '../../ui/Icons';
+import { ArrowLeftIcon, ShieldCheckIcon, KeyIcon } from '../../ui/Icons';
+import { useAuth } from '../../auth/AuthContext';
+import { Permission } from '../../../types';
+import { PasswordManagementModal } from './PasswordManagementModal';
 
 interface UserFormData {
     nameAr: string;
@@ -25,9 +28,13 @@ const AdminUserFormPage: React.FC = () => {
     const { userId } = useParams();
     const isEdit = !!userId;
     const navigate = useNavigate();
-    const { t } = useLanguage();
+    const { language, t } = useLanguage();
+    const isAr = language === 'ar';
     const t_admin = t.adminDashboard;
     const { showToast } = useToast();
+    const { hasPermission } = useAuth();
+    const canManageCredentials = hasPermission(Permission.MANAGE_USER_CREDENTIALS) || hasPermission(Permission.MANAGE_USERS);
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
     const queryClient = useQueryClient();
     
     const { data: userToEdit, isLoading } = useQuery({
@@ -160,6 +167,35 @@ const AdminUserFormPage: React.FC = () => {
                             </div>
                         </div>
 
+                        {isEdit && canManageCredentials && userToEdit && (
+                            <div className="p-4 bg-amber-50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-800/50 flex flex-wrap items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-lg text-amber-600">
+                                        <KeyIcon className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-900 dark:text-white">
+                                            {isAr ? 'إدارة كلمة المرور وبيانات الاعتماد' : 'Password & Credential Management'}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            {isAr 
+                                                ? 'إعادة تعيين كلمة المرور أو إرسال رابط استعادة أو فرض التغيير بصورة آمنة'
+                                                : 'Securely reset password, dispatch reset link, or enforce next-login change'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    className="border-amber-400 text-amber-700 dark:text-amber-300 hover:bg-amber-100/50 text-xs flex items-center gap-2"
+                                    onClick={() => setIsPasswordModalOpen(true)}
+                                >
+                                    <KeyIcon className="w-4 h-4" />
+                                    {isAr ? 'إدارة كلمة المرور' : 'Manage Password'}
+                                </Button>
+                            </div>
+                        )}
+
                         <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700 gap-3">
                             <Button variant="secondary" onClick={() => navigate('/admin/users')} type="button">{t.adminShared.cancel}</Button>
                             <Button type="submit" isLoading={isSubmitting}>{t.adminShared.save}</Button>
@@ -167,6 +203,14 @@ const AdminUserFormPage: React.FC = () => {
                     </form>
                 </CardContent>
             </Card>
+
+            {isEdit && userToEdit && isPasswordModalOpen && (
+                <PasswordManagementModal
+                    isOpen={isPasswordModalOpen}
+                    onClose={() => setIsPasswordModalOpen(false)}
+                    user={userToEdit as AdminPartner}
+                />
+            )}
         </div>
     );
 };

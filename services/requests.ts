@@ -1,18 +1,20 @@
 
 import { supabase } from '../lib/supabase';
 import { RequestType, Role, Permission, OperationalStatus } from '../types';
-import type { Request, Lead, LeadMessage, RequestHistoryEntry, UnifiedRequest, OperationalDomain, OperationalMetrics } from '../types';
+import type { Request, RequestStatus, Lead, LeadMessage, RequestHistoryEntry, UnifiedRequest, OperationalDomain, OperationalMetrics, Partner } from '../types';
 import { addNotification } from './notifications';
 import { requireAnyPermission } from './authGuard';
-import { getPartnerById, getAllPartnersForAdmin } from './partners';
+import { getPartnerById, getAllPartnersForAdmin, mapPartnerFromDb } from './partners';
 import { addLead } from './leads';
 import { evaluateRoutingRules } from './routingRules';
-import { requestsData as initialRequests } from '../data/requests';
 
-let cachedRequests: Request[] = [...initialRequests];
+export const isValidUUID = (id?: string): boolean => {
+    if (!id) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+};
 
 // Helper to map DB row to Request object
-const mapRequestFromDb = (row: any): Request => ({
+export const mapRequestFromDb = (row: any): Request => ({
     id: row.id,
     type: row.type as RequestType,
     status: row.status,
@@ -31,28 +33,17 @@ const mapRequestFromDb = (row: any): Request => ({
 });
 
 export const getAllRequests = async (): Promise<Request[]> => {
-    try {
-        const { data, error } = await supabase
-            .from('requests')
-            .select('*')
-            .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+        .from('requests')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-        if (error) {
-            console.warn('Notice querying requests from Supabase, returning local state:', error.message);
-            return cachedRequests;
-        }
-
-        if (!data || data.length === 0) {
-            return cachedRequests;
-        }
-
-        const mapped = data.map(mapRequestFromDb);
-        cachedRequests = mapped;
-        return mapped;
-    } catch (err) {
-        console.warn('Exception in getAllRequests, returning local state:', err);
-        return cachedRequests;
+    if (error) {
+        console.error('Authoritative Supabase error querying requests:', error.message);
+        throw error;
     }
+
+    return (data || []).map(mapRequestFromDb);
 };
 
 export const getMyCustomerRequests = async (customerEmail: string): Promise<Request[]> => {
@@ -75,28 +66,35 @@ export const getMyCustomerRequests = async (customerEmail: string): Promise<Requ
     const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
-        console.warn('Notice querying customer requests, returning matching local cache:', error.message);
-        return cachedRequests.filter(r => r.requesterInfo?.email === userEmail || r.customerId === currentUserId);
+        console.error('Error querying customer requests:', error.message);
+        throw error;
     }
 
     return (data || []).map(mapRequestFromDb);
 };
 
+/**
+ * Partner Lead Isolation: strictly scoped to the requested partner
+ */
 export const getPartnerLeads = async (partnerId: string): Promise<Request[]> => {
-    try {
-        const { data, error } = await supabase
-            .from('requests')
-            .select('*')
-            .order('created_at', { ascending: false });
+    if (!partnerId) return [];
 
-        if (error || !data || data.length === 0) {
-            return cachedRequests;
-        }
+    const isUuid = isValidUUID(partnerId);
+    let query = supabase.from('requests').select('*');
 
-        return data.map(mapRequestFromDb);
-    } catch {
-        return cachedRequests;
+    if (isUuid) {
+        query = query.or(`assigned_to.eq.${partnerId},payload->>partnerId.eq.${partnerId}`);
+    } else {
+        query = query.filter('payload->>partnerId', 'eq', partnerId);
     }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) {
+        console.error('Error fetching partner leads for partner:', partnerId, error.message);
+        throw error;
+    }
+
+    return (data || []).map(mapRequestFromDb);
 };
 
 export const getRequestHistory = async (requestId: string): Promise<RequestHistoryEntry[]> => {
@@ -138,11 +136,11 @@ export const getRequestById = async (id: string): Promise<Request | undefined> =
             .single();
 
         if (error || !data) {
-            return cachedRequests.find(r => r.id === id);
+            return undefined;
         }
         return mapRequestFromDb(data);
     } catch {
-        return cachedRequests.find(r => r.id === id);
+        return undefined;
     }
 };
 
@@ -262,58 +260,55 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
         }
     }
 
-    // Fallback switch if no rule matched
+    // Dynamic database-backed manager resolution (No static hardcoded UUIDs)
     if (!dbPayload.assigned_to) {
-        switch(type) {
-            case RequestType.PARTNER_APPLICATION:
-                dbPayload.assigned_to = 'd31a10be-aa1a-4039-96e3-ced2fc763f2f'; // partner_relations_manager
-                break;
-            case RequestType.PROPERTY_LISTING_REQUEST:
-                dbPayload.assigned_to = '0a497a3e-c563-4996-af33-cb7bdb435632'; // listings_manager
-                break;
-            case RequestType.PROPERTY_INQUIRY:
-            case RequestType.CONTACT_MESSAGE:
-            default:
-                dbPayload.assigned_to = '45b6ecf3-7e58-4a1a-993f-9b1e75cfd5bf'; // customer_relations_manager
-                break;
-        }
+        dbPayload.assigned_to = await resolveEligibleManager(type);
     }
 
-    let createdReqRow: any = null;
+    // Authoritative Database Insert with pre-generated UUID
+    const requestId = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+        ? crypto.randomUUID() 
+        : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
+
+    const insertPayload = {
+        id: requestId,
+        ...dbPayload
+    };
+
+    const { error: insertError } = await supabase
+        .from('requests')
+        .insert(insertPayload);
+
+    if (insertError) {
+        console.error('Authoritative error during request insert into Supabase:', insertError);
+        throw new Error(`Failed to create request in database: ${insertError.message}`);
+    }
+
+    const request: Request = {
+        id: requestId,
+        type,
+        status: 'new',
+        customerId: customerId,
+        assignedTo: dbPayload.assigned_to,
+        createdAt: dbPayload.created_at,
+        updatedAt: dbPayload.updated_at,
+        requesterInfo: enrichedRequesterInfo,
+        payload: enrichedPayload,
+        assignedToName: dbPayload.assigned_to
+    };
+
+    // Initial Tracking Note
     try {
-        const { data: newReq, error } = await supabase
-            .from('requests')
-            .insert(dbPayload)
-            .select()
-            .single();
-
-        if (error) {
-            // If .select() fails due to RLS, retry insert without select
-            await supabase.from('requests').insert(dbPayload);
-        } else {
-            createdReqRow = newReq;
-        }
+        await supabase.from('request_messages').insert({
+            request_id: requestId,
+            sender: 'system',
+            type: 'note',
+            content: `[INTAKE] New ${type} received from ${data.requesterInfo.name}. Assigned to: ${dbPayload.assigned_to || 'Unassigned'}.`,
+            created_at: new Date().toISOString()
+        });
     } catch (e) {
-        console.warn('Notice during request insert into Supabase, saving locally:', e);
+        console.warn('Non-blocking tracking message notice:', e);
     }
-    
-    const generatedReqId = createdReqRow?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}`);
-    const request: Request = createdReqRow 
-        ? mapRequestFromDb(createdReqRow)
-        : {
-            id: generatedReqId,
-            type,
-            status: 'new',
-            customerId: customerId,
-            assignedTo: dbPayload.assigned_to,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            requesterInfo: enrichedRequesterInfo,
-            payload: enrichedPayload,
-            assignedToName: dbPayload.assigned_to
-        };
-
-    cachedRequests = [request, ...cachedRequests];
 
     // Notification Logic (Canonical Operations Center destination)
     if (request.assignedTo) {
@@ -325,7 +320,7 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
                 en: `New ${type.toLowerCase().replace(/_/g, ' ')} from "${data.requesterInfo.name}".`,
             },
             link: link,
-        });
+        }).catch(() => {});
     }
 
     return request;
@@ -393,12 +388,22 @@ export const addMessageToLead = async (requestId: string, messageData: Omit<Lead
     return getRequestById(requestId);
 };
 
-export const getRequestMessages = async (requestId: string): Promise<LeadMessage[]> => {
-    const { data, error } = await supabase
+export const getRequestMessages = async (requestId: string, viewerRole?: string): Promise<LeadMessage[]> => {
+    let query = supabase
         .from('request_messages')
         .select('*')
-        .eq('request_id', requestId)
-        .order('created_at', { ascending: true });
+        .eq('request_id', requestId);
+
+    // Section 8: Internal operational notes are strictly isolated to internal staff
+    const isInternalStaff = viewerRole === Role.SUPER_ADMIN || 
+        String(viewerRole || '').toLowerCase().includes('manager') || 
+        String(viewerRole || '').toLowerCase() === 'admin';
+
+    if (!isInternalStaff) {
+        query = query.eq('type', 'message');
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: true });
 
     if (error) {
         console.error('Error fetching request messages:', error);
@@ -607,6 +612,135 @@ export interface UnifiedRequestsResponse {
     metrics: OperationalMetrics;
 }
 
+/**
+ * Dynamically resolves an active eligible manager from the database
+ * Removes reliance on static hardcoded manager UUIDs
+ */
+export const resolveEligibleManager = async (domainOrType: string): Promise<string | null> => {
+    try {
+        let targetRole = 'super_admin';
+        const d = String(domainOrType || '').toLowerCase();
+        if (d === 'finishing' || d.includes('finishing')) {
+            targetRole = 'platform_finishing_manager';
+        } else if (d === 'decorations' || d.includes('decor')) {
+            targetRole = 'decoration_manager';
+        } else if (d === 'real_estate' || d.includes('property') || d.includes('listing')) {
+            targetRole = 'listings_manager';
+        } else if (d === 'partners' || d.includes('partner')) {
+            targetRole = 'partner_relations_manager';
+        } else if (d === 'customer_care' || d.includes('contact') || d.includes('inquiry')) {
+            targetRole = 'customer_relations_manager';
+        }
+
+        const { data: managers, error } = await supabase
+            .from('partners')
+            .select('id, role, type, status')
+            .eq('status', 'active')
+            .ilike('role', `%${targetRole}%`)
+            .limit(1);
+
+        if (!error && managers && managers.length > 0) {
+            return managers[0].id;
+        }
+
+        // Fallback: query active super_admin from database
+        const { data: admins } = await supabase
+            .from('partners')
+            .select('id')
+            .eq('status', 'active')
+            .ilike('role', '%super_admin%')
+            .limit(1);
+
+        if (admins && admins.length > 0) {
+            return admins[0].id;
+        }
+
+        return null;
+    } catch (e) {
+        console.warn('Notice resolving eligible manager from database:', e);
+        return null;
+    }
+};
+
+/**
+ * Section 7: Enforce Assignee Eligibility Validation at Service Boundary
+ */
+export const validateAssigneeEligibility = async (
+    assigneeId: string,
+    req: Request | UnifiedRequest
+): Promise<{ eligible: boolean; reason?: string; assignee?: any }> => {
+    if (!assigneeId) {
+        return { eligible: false, reason: 'Assignee ID is required' };
+    }
+
+    const { data: partner, error } = await supabase
+        .from('partners')
+        .select('*')
+        .eq('id', assigneeId)
+        .maybeSingle();
+
+    if (error || !partner) {
+        return { eligible: false, reason: 'Assignee not found in authoritative records' };
+    }
+
+    if (partner.status !== 'active') {
+        return { eligible: false, reason: 'Assignee account is not active' };
+    }
+
+    const role = String(partner.role || '').toLowerCase();
+    const type = String(partner.type || '').toLowerCase();
+
+    // Super Admin can be assigned any request
+    if (role === 'super_admin' || role === 'admin' || type === 'admin') {
+        return { eligible: true, assignee: partner };
+    }
+
+    const reqType = req.type;
+    const reqPayload = ('rawPayload' in req ? req.rawPayload : req.payload) || {};
+    const serviceType = String(reqPayload.serviceType || ('context' in req ? req.context?.serviceType : '') || '').toLowerCase();
+
+    if (reqType === RequestType.PARTNER_APPLICATION) {
+        if (role.includes('partner_relations')) {
+            return { eligible: true, assignee: partner };
+        }
+        return { eligible: false, reason: 'Assignee is not eligible for partner applications' };
+    }
+
+    if (reqType === RequestType.PROPERTY_LISTING_REQUEST || reqType === RequestType.PROPERTY_INQUIRY) {
+        if (role.includes('listings') || role.includes('real_estate') || type === 'developer' || type === 'agency') {
+            return { eligible: true, assignee: partner };
+        }
+        return { eligible: false, reason: 'Assignee is not eligible for real estate domain' };
+    }
+
+    if (serviceType === 'finishing' || reqPayload.category === 'turnkey') {
+        if (role.includes('finishing') || type === 'finishing') {
+            return { eligible: true, assignee: partner };
+        }
+        return { eligible: false, reason: 'Assignee is not eligible for finishing domain' };
+    }
+
+    if (serviceType === 'decorations' || serviceType === 'decoration') {
+        if (role.includes('decoration') || type === 'decoration') {
+            return { eligible: true, assignee: partner };
+        }
+        return { eligible: false, reason: 'Assignee is not eligible for decorations domain' };
+    }
+
+    if (reqType === RequestType.CONTACT_MESSAGE) {
+        if (role.includes('customer_relations') || role.includes('service')) {
+            return { eligible: true, assignee: partner };
+        }
+        return { eligible: false, reason: 'Assignee is not eligible for customer care domain' };
+    }
+
+    if (role.includes('manager')) {
+        return { eligible: true, assignee: partner };
+    }
+
+    return { eligible: false, reason: 'Assignee role does not match request domain' };
+};
+
 export const getUnifiedRequestById = async (id: string): Promise<UnifiedRequest | null> => {
     const [raw, partners] = await Promise.all([
         getRequestById(id),
@@ -620,148 +754,156 @@ export const getUnifiedRequestById = async (id: string): Promise<UnifiedRequest 
     return mapRequestToUnified(raw, managersMap);
 };
 
+/**
+ * Section 4: Operations Center — True Server-Side Data Handling
+ * Server-backed pagination, filtering, search, sorting, and metrics calculation
+ */
 export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Promise<UnifiedRequestsResponse> => {
-    // 1. Fetch raw requests and managers
-    const [rawRequests, partners] = await Promise.all([
-        getAllRequests(),
-        getAllPartnersForAdmin().catch(() => [])
-    ]);
-
+    // 1. Fetch active partners for label hydration
+    const partners = await getAllPartnersForAdmin().catch(() => []);
     const managersMap = new Map<string, string>();
     (partners || []).forEach(p => {
         managersMap.set(p.id, p.name || p.email);
     });
 
-    // 2. Map all to UnifiedRequest model
-    const allUnified = (rawRequests || []).map(r => mapRequestToUnified(r, managersMap));
+    // 2. Build authoritative server-side Supabase query
+    let query = supabase.from('requests').select('*', { count: 'exact' });
 
-    // 3. Compute operational triage metrics
-    const metrics: OperationalMetrics = {
-        total: allUnified.length,
-        unassigned: allUnified.filter(r => !r.assignedTo).length,
-        newCount: allUnified.filter(r => r.operationalStatus === OperationalStatus.NEW).length,
-        inProgress: allUnified.filter(r => r.operationalStatus === OperationalStatus.IN_PROGRESS).length,
-        waiting: allUnified.filter(r => r.operationalStatus === OperationalStatus.WAITING).length,
-        agedRisk: allUnified.filter(r => r.isAged).length,
-        highPriority: allUnified.filter(r => r.priority === 'high' && r.operationalStatus !== OperationalStatus.CLOSED && r.operationalStatus !== OperationalStatus.RESOLVED).length,
-        resolvedToday: allUnified.filter(r => {
-            if (r.operationalStatus !== OperationalStatus.RESOLVED && r.operationalStatus !== OperationalStatus.CLOSED) return false;
-            const updatedDate = new Date(r.updatedAt);
-            const now = new Date();
-            return updatedDate.toDateString() === now.toDateString();
-        }).length
-    };
+    // Server-side Domain / Type filter
+    if (filter.type && filter.type !== 'all') {
+        query = query.eq('type', filter.type);
+    } else if (filter.domain && filter.domain !== 'all') {
+        switch (filter.domain) {
+            case 'partners':
+                query = query.eq('type', RequestType.PARTNER_APPLICATION);
+                break;
+            case 'real_estate':
+                query = query.in('type', [RequestType.PROPERTY_LISTING_REQUEST, RequestType.PROPERTY_INQUIRY]);
+                break;
+            case 'customer_care':
+                query = query.eq('type', RequestType.CONTACT_MESSAGE);
+                break;
+            case 'finishing':
+                query = query.eq('type', RequestType.LEAD).filter('payload->>serviceType', 'eq', 'finishing');
+                break;
+            case 'decorations':
+                query = query.eq('type', RequestType.LEAD).filter('payload->>serviceType', 'eq', 'decorations');
+                break;
+            case 'commercial':
+                query = query.eq('type', RequestType.LEAD);
+                break;
+        }
+    }
 
-    // 4. Apply Filters
-    let filtered = allUnified;
+    // Server-side Operational Status filter
+    if (filter.operationalStatus && filter.operationalStatus !== 'all') {
+        query = query.or(`payload->>operationalStatus.eq.${filter.operationalStatus},status.eq.${filter.operationalStatus.toLowerCase()}`);
+    }
 
-    // Triage View filter
+    // Server-side Assignee filter
+    if (filter.assignedTo) {
+        if (filter.assignedTo === 'unassigned') {
+            query = query.is('assigned_to', null);
+        } else if (filter.assignedTo !== 'all') {
+            query = query.eq('assigned_to', filter.assignedTo);
+        }
+    }
+
+    // Server-side Triage View filter
     if (filter.triageView && filter.triageView !== 'all') {
         switch (filter.triageView) {
             case 'unassigned':
-                filtered = filtered.filter(r => !r.assignedTo);
+                query = query.is('assigned_to', null);
                 break;
             case 'new':
-                filtered = filtered.filter(r => r.operationalStatus === OperationalStatus.NEW);
-                break;
-            case 'aged':
-                filtered = filtered.filter(r => r.isAged);
+                query = query.or('payload->>operationalStatus.eq.NEW,status.eq.new');
                 break;
             case 'waiting':
-                filtered = filtered.filter(r => r.operationalStatus === OperationalStatus.WAITING);
-                break;
-            case 'high_priority':
-                filtered = filtered.filter(r => r.priority === 'high' && r.operationalStatus !== OperationalStatus.CLOSED && r.operationalStatus !== OperationalStatus.RESOLVED);
-                break;
-            case 'recently_updated':
-                const past24Hours = Date.now() - 24 * 60 * 60 * 1000;
-                filtered = filtered.filter(r => new Date(r.updatedAt).getTime() > past24Hours);
+                query = query.or('payload->>operationalStatus.eq.WAITING,status.eq.waiting,status.eq.quoted');
                 break;
             case 'resolved':
-                filtered = filtered.filter(r => r.operationalStatus === OperationalStatus.RESOLVED || r.operationalStatus === OperationalStatus.CLOSED);
+                query = query.or('payload->>operationalStatus.eq.RESOLVED,status.eq.completed,status.eq.approved');
+                break;
+            case 'high_priority':
+                query = query.or('payload->>priority.eq.high');
                 break;
         }
     }
 
-    // Domain filter
-    if (filter.domain && filter.domain !== 'all') {
-        filtered = filtered.filter(r => r.domain === filter.domain);
-    }
-
-    // Type filter
-    if (filter.type && filter.type !== 'all') {
-        filtered = filtered.filter(r => r.type === filter.type);
-    }
-
-    // Operational Status filter
-    if (filter.operationalStatus && filter.operationalStatus !== 'all') {
-        filtered = filtered.filter(r => r.operationalStatus === filter.operationalStatus);
-    }
-
-    // Priority filter
-    if (filter.priority && filter.priority !== 'all') {
-        filtered = filtered.filter(r => r.priority === filter.priority);
-    }
-
-    // Date range filter
-    if (filter.dateRange && filter.dateRange !== 'all') {
-        const now = Date.now();
-        const oneDay = 24 * 60 * 60 * 1000;
-        switch (filter.dateRange) {
-            case 'today':
-                filtered = filtered.filter(r => (now - new Date(r.createdAt).getTime()) <= oneDay);
-                break;
-            case 'last7days':
-                filtered = filtered.filter(r => (now - new Date(r.createdAt).getTime()) <= 7 * oneDay);
-                break;
-            case 'last30days':
-                filtered = filtered.filter(r => (now - new Date(r.createdAt).getTime()) <= 30 * oneDay);
-                break;
-            case 'older':
-                filtered = filtered.filter(r => (now - new Date(r.createdAt).getTime()) > 30 * oneDay);
-                break;
-        }
-    }
-
-    // Assignee filter
-    if (filter.assignedTo) {
-        if (filter.assignedTo === 'unassigned') {
-            filtered = filtered.filter(r => !r.assignedTo);
-        } else if (filter.assignedTo !== 'all') {
-            filtered = filtered.filter(r => r.assignedTo === filter.assignedTo);
-        }
-    }
-
-    // Search term filter
+    // Server-side Search Term filter
     if (filter.searchTerm && filter.searchTerm.trim()) {
-        const term = filter.searchTerm.trim().toLowerCase();
-        filtered = filtered.filter(r => 
-            r.id.toLowerCase().includes(term) ||
-            r.requester.name.toLowerCase().includes(term) ||
-            (r.requester.phone && r.requester.phone.includes(term)) ||
-            (r.requester.email && r.requester.email.toLowerCase().includes(term)) ||
-            (r.context.serviceTitle && r.context.serviceTitle.toLowerCase().includes(term)) ||
-            (r.context.propertyTitle && r.context.propertyTitle.toLowerCase().includes(term)) ||
-            (r.context.details && r.context.details.toLowerCase().includes(term))
-        );
+        const term = filter.searchTerm.trim();
+        query = query.or(`requester_name.ilike.%${term}%,requester_phone.ilike.%${term}%,requester_email.ilike.%${term}%`);
     }
 
-    // Pagination
-    const totalCount = filtered.length;
-    const page = filter.page || 1;
-    const pageSize = filter.pageSize || 15;
-    const startIndex = (page - 1) * pageSize;
-    const paginatedRequests = filtered.slice(startIndex, startIndex + pageSize);
+    // Server-side Priority filter
+    if (filter.priority && filter.priority !== 'all') {
+        query = query.filter('payload->>priority', 'eq', filter.priority);
+    }
+
+    // Server-side Sorting
+    query = query.order('created_at', { ascending: false });
+
+    // Server-side Pagination
+    const page = Math.max(1, filter.page || 1);
+    const pageSize = Math.max(1, filter.pageSize || 15);
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    query = query.range(from, to);
+
+    const { data: rawRows, count, error } = await query;
+    if (error) {
+        console.error('Error fetching unified requests from Supabase:', error.message);
+        throw error;
+    }
+
+    const mappedRequests = (rawRows || []).map(r => mapRequestToUnified(mapRequestFromDb(r), managersMap));
+
+    // Calculate metrics via lightweight targeted counts
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+
+    const [
+        totalRes,
+        unassignedRes,
+        newRes,
+        inProgressRes,
+        waitingRes,
+        agedRes,
+        highPriorityRes,
+        resolvedTodayRes
+    ] = await Promise.all([
+        supabase.from('requests').select('*', { count: 'exact', head: true }),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).is('assigned_to', null),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.NEW,status.eq.new'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.IN_PROGRESS,status.eq.in-progress,status.eq.contacted'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.WAITING,status.eq.waiting,status.eq.quoted'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).lt('created_at', twoDaysAgo).not('status', 'in', '(completed,approved,closed,rejected)'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>priority.eq.high'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', todayMidnight).or('status.eq.completed,status.eq.approved,payload->>operationalStatus.eq.RESOLVED')
+    ]);
+
+    const metrics: OperationalMetrics = {
+        total: totalRes.count || 0,
+        unassigned: unassignedRes.count || 0,
+        newCount: newRes.count || 0,
+        inProgress: inProgressRes.count || 0,
+        waiting: waitingRes.count || 0,
+        agedRisk: agedRes.count || 0,
+        highPriority: highPriorityRes.count || 0,
+        resolvedToday: resolvedTodayRes.count || 0
+    };
 
     return {
-        requests: paginatedRequests,
-        totalCount,
-        metrics,
+        requests: mappedRequests,
+        totalCount: count ?? (rawRows?.length || 0),
+        metrics
     };
 };
 
 /**
- * Assign a request to an owner and record audit event
+ * Section 7: Assign request enforcing Actor Authorization + Assignee Eligibility
  */
 export const assignRequest = async (requestId: string, assigneeId: string, noteText?: string): Promise<Request> => {
     requireAnyPermission([
@@ -774,29 +916,43 @@ export const assignRequest = async (requestId: string, assigneeId: string, noteT
     const req = await getRequestById(requestId);
     if (!req) throw new Error('Request not found');
 
-    const previousAssignee = req.assignedTo;
-    const newStatus = (req.status === 'new' || req.status === 'pending') ? 'assigned' : req.status;
+    // Validate assignee eligibility
+    const eligibility = await validateAssigneeEligibility(assigneeId, req);
+    if (!eligibility.eligible) {
+        throw new Error(eligibility.reason || 'Assignee is not eligible for this request');
+    }
 
-    // 1. Update in Supabase
+    const previousAssignee = req.assignedTo;
+    const { data: { session } } = await supabase.auth.getSession();
+    const actorId = session?.user?.id || 'admin';
+
+    // Update in Supabase
     const updated = await updateRequest(requestId, {
         assignedTo: assigneeId,
-        status: newStatus as any,
+        payload: {
+            ...(req.payload || {}),
+            operationalStatus: OperationalStatus.ASSIGNED,
+            operationalStatusUpdatedAt: new Date().toISOString()
+        }
     });
 
     if (!updated) throw new Error('Failed to update assignment in database');
 
-    // 2. Insert audit note in request_messages
+    // Insert audit note in request_messages
     try {
-        await addMessageToLead(requestId, {
+        await supabase.from('request_messages').insert({
+            request_id: requestId,
             sender: 'admin',
+            sender_id: actorId,
             type: 'note',
-            content: `[ASSIGNMENT] Reassigned ownership from ${previousAssignee || 'Unassigned'} to ${assigneeId}${noteText ? '. Note: ' + noteText : ''}`
+            content: `[ASSIGNMENT] Reassigned ownership from ${previousAssignee || 'Unassigned'} to ${assigneeId}${noteText ? '. Note: ' + noteText : ''}`,
+            created_at: new Date().toISOString()
         });
     } catch (e) {
         console.warn('Could not insert assignment message into request_messages:', e);
     }
 
-    // 3. Send notification to assignee
+    // Send notification to assignee
     try {
         await addNotification({
             userId: assigneeId,
@@ -827,18 +983,28 @@ export const unassignRequest = async (requestId: string, noteText?: string): Pro
     if (!req) throw new Error('Request not found');
 
     const previousAssignee = req.assignedTo;
+    const { data: { session } } = await supabase.auth.getSession();
+    const actorId = session?.user?.id || 'admin';
+
     const updated = await updateRequest(requestId, {
         assignedTo: null as any,
-        status: 'pending' as any
+        payload: {
+            ...(req.payload || {}),
+            operationalStatus: OperationalStatus.NEW,
+            operationalStatusUpdatedAt: new Date().toISOString()
+        }
     });
 
     if (!updated) throw new Error('Failed to clear assignment in database');
 
     try {
-        await addMessageToLead(requestId, {
+        await supabase.from('request_messages').insert({
+            request_id: requestId,
             sender: 'admin',
+            sender_id: actorId,
             type: 'note',
-            content: `[ASSIGNMENT] Cleared assignment (previously assigned to ${previousAssignee || 'none'})${noteText ? '. Reason: ' + noteText : ''}`
+            content: `[ASSIGNMENT] Cleared assignment (previously assigned to ${previousAssignee || 'none'})${noteText ? '. Reason: ' + noteText : ''}`,
+            created_at: new Date().toISOString()
         });
     } catch (e) {
         console.warn('Could not log unassignment event:', e);
@@ -848,12 +1014,13 @@ export const unassignRequest = async (requestId: string, noteText?: string): Pro
 };
 
 /**
- * Update operational status with canonical lifecycle validation
+ * Section 6: Operational Status != Domain Status
+ * Maintain transparent separation without blindly overwriting domain status
  */
 export const updateRequestOperationalStatus = async (
     requestId: string, 
     newOperationalStatus: OperationalStatus, 
-    domainStatus?: string, 
+    explicitDomainStatus?: string, 
     noteText?: string
 ): Promise<Request> => {
     requireAnyPermission([
@@ -869,49 +1036,39 @@ export const updateRequestOperationalStatus = async (
     const req = await getRequestById(requestId);
     if (!req) throw new Error('Request not found');
 
-    // Determine domain status string
-    let resolvedDomainStatus = domainStatus;
-    if (!resolvedDomainStatus) {
-        switch (newOperationalStatus) {
-            case OperationalStatus.NEW:
-                resolvedDomainStatus = 'new';
-                break;
-            case OperationalStatus.ASSIGNED:
-                resolvedDomainStatus = 'assigned';
-                break;
-            case OperationalStatus.IN_PROGRESS:
-                resolvedDomainStatus = 'in-progress';
-                break;
-            case OperationalStatus.WAITING:
-                resolvedDomainStatus = 'quoted';
-                break;
-            case OperationalStatus.RESOLVED:
-                resolvedDomainStatus = req.type === RequestType.PARTNER_APPLICATION ? 'approved' : 'completed';
-                break;
-            case OperationalStatus.CLOSED:
-                resolvedDomainStatus = 'closed';
-                break;
-            case OperationalStatus.REJECTED:
-                resolvedDomainStatus = 'rejected';
-                break;
-        }
+    const previousOperational = req.payload?.operationalStatus || mapDomainStatusToOperational(req.status, req.assignedTo);
+    const { data: { session } } = await supabase.auth.getSession();
+    const actorId = session?.user?.id || 'admin';
+
+    // Store operational status strictly in payload
+    const updatedPayload = { 
+        ...(req.payload || {}), 
+        operationalStatus: newOperationalStatus,
+        operationalStatusUpdatedAt: new Date().toISOString()
+    };
+
+    const updateFields: Partial<Request> = {
+        payload: updatedPayload
+    };
+
+    // Only update domain status if explicitly specified and valid for this domain
+    if (explicitDomainStatus && explicitDomainStatus.trim().length > 0) {
+        updateFields.status = explicitDomainStatus as RequestStatus;
+        updatedPayload.status = explicitDomainStatus;
     }
 
-    // Update in Supabase
-    const payload = { ...(req.payload || {}), status: resolvedDomainStatus };
-    const updated = await updateRequest(requestId, {
-        status: resolvedDomainStatus as any,
-        payload
-    });
-
+    const updated = await updateRequest(requestId, updateFields);
     if (!updated) throw new Error('Failed to update status in database');
 
-    // Insert note
+    // Record audit event in request_messages
     try {
-        await addMessageToLead(requestId, {
+        await supabase.from('request_messages').insert({
+            request_id: requestId,
             sender: 'admin',
+            sender_id: actorId,
             type: 'note',
-            content: `[STATUS] Operational status updated to ${newOperationalStatus} (${resolvedDomainStatus})${noteText ? '. Note: ' + noteText : ''}`
+            content: `[STATUS] Operational status changed from ${previousOperational} to ${newOperationalStatus}${explicitDomainStatus ? ' (Domain Status: ' + explicitDomainStatus + ')' : ''}${noteText ? '. Note: ' + noteText : ''}`,
+            created_at: new Date().toISOString()
         });
     } catch (e) {
         console.warn('Could not log status update event:', e);
@@ -921,7 +1078,7 @@ export const updateRequestOperationalStatus = async (
 };
 
 /**
- * Add an internal note to a request
+ * Section 8: Internal operational note visible ONLY to authorized internal staff
  */
 export const addRequestInternalNote = async (
     requestId: string, 
@@ -939,19 +1096,34 @@ export const addRequestInternalNote = async (
         Permission.MANAGE_CONTACT_REQUESTS
     ]);
 
-    const message = {
-        sender: (senderRole === Role.SUPER_ADMIN || senderRole?.includes('_manager') ? 'admin' : 'partner') as any,
-        senderId: senderId || 'admin',
-        type: 'note' as const,
-        content
-    };
+    const { data, error } = await supabase
+        .from('request_messages')
+        .insert({
+            request_id: requestId,
+            sender: (senderRole === Role.SUPER_ADMIN || String(senderRole).includes('_manager') ? 'admin' : 'partner'),
+            sender_id: senderId || null,
+            type: 'note',
+            content,
+            created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-    await addMessageToLead(requestId, message);
+    if (error) {
+        console.error('Failed to create internal note in Supabase:', error.message);
+        throw error;
+    }
+
+    // Update request updated_at timestamp
+    await updateRequest(requestId, { updatedAt: new Date().toISOString() });
 
     return {
-        id: `note-${Date.now()}`,
-        ...message,
-        timestamp: new Date().toISOString()
+        id: data.id,
+        sender: data.sender,
+        senderId: data.sender_id,
+        type: 'note',
+        content: data.content,
+        timestamp: data.created_at
     };
 };
 

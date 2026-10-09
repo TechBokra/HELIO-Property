@@ -14,14 +14,20 @@ import { Button } from '../../ui/Button';
 import ConfirmationModal from '../../shared/ConfirmationModal';
 import { ResponsiveList } from '../../shared/ResponsiveList';
 import { Card, CardContent } from '../../ui/Card';
-import { UserPlusIcon, UsersIcon, BuildingIcon } from '../../ui/Icons';
+import { UserPlusIcon, UsersIcon, BuildingIcon, KeyIcon } from '../../ui/Icons';
+import { useAuth } from '../../auth/AuthContext';
+import { Permission } from '../../../types';
+import { PasswordManagementModal } from './PasswordManagementModal';
 
 const AdminUsersPage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_admin = t.adminDashboard;
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { hasPermission } = useAuth();
+    const canManageCredentials = hasPermission(Permission.MANAGE_USER_CREDENTIALS) || hasPermission(Permission.MANAGE_USERS);
     const [userToDelete, setUserToDelete] = useState<string | null>(null);
+    const [userForCredentials, setUserForCredentials] = useState<AdminPartner | null>(null);
     const [activeTab, setActiveTab] = useState<'internal' | 'partner'>('internal');
 
     const { data: partners, isLoading } = useQuery({
@@ -142,6 +148,15 @@ const AdminUsersPage: React.FC = () => {
                                 <Button variant="link" onClick={() => handleEditClick(user)}>
                                     {t_admin.userManagement.editUser}
                                 </Button>
+                                {canManageCredentials && (
+                                    <Button 
+                                        variant="link" 
+                                        className="text-amber-600 hover:text-amber-700" 
+                                        onClick={() => setUserForCredentials(user)}
+                                    >
+                                        {language === 'ar' ? 'كلمة المرور' : 'Password'}
+                                    </Button>
+                                )}
                                 <Button variant="link" className="text-red-500" onClick={() => setUserToDelete(user.id)}>{t.adminShared.delete}</Button>
                             </TableCell>
                         </TableRow>
@@ -168,6 +183,14 @@ const AdminUsersPage: React.FC = () => {
                  <Button variant="ghost" className="flex-1 rounded-none rounded-bl-lg" onClick={() => handleEditClick(user)}>
                      {t_admin.userManagement.editUser}
                  </Button>
+                 {canManageCredentials && (
+                     <>
+                         <div className="w-px bg-gray-200 dark:bg-gray-700"></div>
+                         <Button variant="ghost" className="flex-1 rounded-none text-amber-600 hover:bg-amber-50" onClick={() => setUserForCredentials(user)}>
+                             {language === 'ar' ? 'كلمة المرور' : 'Password'}
+                         </Button>
+                     </>
+                 )}
                  <div className="w-px bg-gray-200 dark:bg-gray-700"></div>
                  <Button variant="ghost" className="flex-1 rounded-none rounded-br-lg text-red-500 hover:bg-red-50" onClick={() => setUserToDelete(user.id)}>{t.adminShared.delete}</Button>
             </div>
@@ -272,6 +295,14 @@ const AdminUsersPage: React.FC = () => {
             <div className="mt-4">
                 <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
             </div>
+
+            {userForCredentials && (
+                <PasswordManagementModal
+                    isOpen={!!userForCredentials}
+                    onClose={() => setUserForCredentials(null)}
+                    user={userForCredentials}
+                />
+            )}
         </div>
     );
 };

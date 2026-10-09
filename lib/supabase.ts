@@ -1,30 +1,31 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// القيم الاحتياطية للمعاينة المحلية - تم تحديثها للمشروع الجديد
+// Authoritative Supabase project credentials
 const FALLBACK_URL = 'https://xyyvgpchkznznwbxbgrp.supabase.co';
 const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM';
 
-// Statically extractable by Vite bundler during `vite build` on Vercel / Cloud Run
-const getEnvVar = (envValue: string | undefined, fallback: string) => {
-    return envValue && envValue.trim().length > 0 ? envValue : fallback;
+// Safely read environment variables across Vite browser build and Node.js
+const getEnv = (key: string): string | undefined => {
+    try {
+        if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+            return import.meta.env[key];
+        }
+    } catch {}
+    try {
+        if (typeof process !== 'undefined' && process.env && process.env[key]) {
+            return process.env[key];
+        }
+    } catch {}
+    return undefined;
 };
 
-// Check if admin explicitly saved custom supabase connection in settings
-let localSettingsUrl: string | undefined;
-let localSettingsKey: string | undefined;
-try {
-    const rawContent = localStorage.getItem('onlyhelio_site_content');
-    if (rawContent) {
-        const parsed = JSON.parse(rawContent);
-        localSettingsUrl = parsed?.integrationConfiguration?.supabase?.url;
-        localSettingsKey = parsed?.integrationConfiguration?.supabase?.anonKey;
-    }
-} catch {}
+const envUrl = getEnv('VITE_SUPABASE_URL');
+const envKey = getEnv('VITE_SUPABASE_ANON_KEY');
 
-const envMeta = (import.meta as any)?.env;
-const supabaseUrl = localSettingsUrl || getEnvVar(envMeta?.VITE_SUPABASE_URL, FALLBACK_URL);
-const supabaseAnonKey = localSettingsKey || getEnvVar(envMeta?.VITE_SUPABASE_ANON_KEY, FALLBACK_KEY);
+// Production MUST NOT depend on localStorage for Supabase credentials or security decisions
+const supabaseUrl = (envUrl && envUrl.trim().length > 0) ? envUrl : FALLBACK_URL;
+const supabaseAnonKey = (envKey && envKey.trim().length > 0) ? envKey : FALLBACK_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {

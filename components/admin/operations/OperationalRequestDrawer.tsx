@@ -74,8 +74,8 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
         isLoading: loadingMessages, 
         refetch: refetchMessages 
     } = useQuery({
-        queryKey: ['requestMessages', request?.id],
-        queryFn: () => request ? getRequestMessages(request.id) : Promise.resolve([]),
+        queryKey: ['requestMessages', request?.id, currentUser?.role],
+        queryFn: () => request ? getRequestMessages(request.id, currentUser?.role) : Promise.resolve([]),
         enabled: !!request && isOpen,
     });
 

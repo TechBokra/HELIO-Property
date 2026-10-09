@@ -12,6 +12,7 @@ import { evaluateRoutingRules } from './routingRules';
 import { addNotification } from './notifications';
 import { uploadFile } from './upload';
 import { getAttribution } from '../utils/attribution';
+import { resolveEligibleManager } from './requests';
 
 export class IntakeValidationError extends Error {
     public errors: Record<string, { ar: string; en: string }>;
@@ -340,7 +341,7 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
         }
     }
 
-    // 8. Dynamic Automated Routing & Assignee Resolution
+    // 8. Dynamic Automated Routing & Assignee Resolution (Section 9: No hardcoded UUIDs)
     let assignedTo = contextData.assignedTo || contextData.partnerId;
 
     if (!assignedTo) {
@@ -355,30 +356,18 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
         });
     }
 
-    // Fallback switch per domain
+    // Dynamic resolution from authoritative database
     if (!assignedTo) {
-        switch (requestType) {
-            case RequestType.PARTNER_APPLICATION:
-                assignedTo = 'd31a10be-aa1a-4039-96e3-ced2fc763f2f'; // partner_relations_manager
-                break;
-            case RequestType.PROPERTY_LISTING_REQUEST:
-                assignedTo = '0a497a3e-c563-4996-af33-cb7bdb435632'; // listings_manager
-                break;
-            case RequestType.LEAD:
-                if (domain === 'finishing') assignedTo = '3e554896-eee8-4545-9c7f-0a79a4c1a9f1';
-                else if (domain === 'decorations') assignedTo = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
-                else assignedTo = '45b6ecf3-7e58-4a1a-993f-9b1e75cfd5bf';
-                break;
-            case RequestType.PROPERTY_INQUIRY:
-            case RequestType.CONTACT_MESSAGE:
-            default:
-                assignedTo = '45b6ecf3-7e58-4a1a-993f-9b1e75cfd5bf'; // customer_relations_manager
-                break;
-        }
+        assignedTo = await resolveEligibleManager(domain || requestType);
     }
 
     // 9. Canonical Database Insertion (requests table)
+    const requestId = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+        ? crypto.randomUUID() 
+        : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
+
     const dbPayload = {
+        id: requestId,
         type: requestType,
         status: 'new',
         customer_id: customerId,
@@ -391,11 +380,9 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
         updated_at: new Date().toISOString()
     };
 
-    const { data: newReq, error: insertError } = await supabase
+    const { error: insertError } = await supabase
         .from('requests')
-        .insert(dbPayload)
-        .select()
-        .single();
+        .insert(dbPayload);
 
     if (insertError) {
         console.error('Error inserting intake request:', insertError);
@@ -407,7 +394,7 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
         await supabase
             .from('request_messages')
             .insert({
-                request_id: newReq.id,
+                request_id: requestId,
                 sender: 'system',
                 sender_id: 'intake_engine',
                 type: 'note',
@@ -427,7 +414,7 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
                     ar: `طلب جديد وارد (${requestType}) من "${requesterName}".`,
                     en: `New incoming intake (${requestType}) from "${requesterName}".`,
                 },
-                link: `/admin/operations?id=${newReq.id}`,
+                link: `/admin/operations?id=${requestId}`,
             });
         } catch (e) {
             console.warn('Could not send intake assignment notification:', e);
@@ -436,7 +423,7 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
 
     return {
         success: true,
-        requestId: newReq.id,
+        requestId: requestId,
         requestType,
         domain,
         assignedTo,

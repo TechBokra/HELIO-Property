@@ -4,6 +4,7 @@ import { useLanguage } from '../../shared/LanguageContext';
 import { getAllRequests } from '../../../services/requests';
 import { getAllProperties } from '../../../services/properties';
 import { getAllPartnersForAdmin } from '../../../services/partners';
+import { getCredentialAuditLogs } from '../../../services/credentials';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 import { Input } from '../../ui/Input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/Table';
@@ -12,7 +13,7 @@ import { Link } from 'react-router-dom';
 
 interface AuditEntry {
     id: string;
-    domain: 'properties' | 'partners' | 'requests' | 'system';
+    domain: 'properties' | 'partners' | 'requests' | 'system' | 'credentials';
     action: string;
     actor: string;
     entityName: string;
@@ -27,7 +28,7 @@ const AdminAuditLogPage: React.FC = () => {
     const { language } = useLanguage();
     const isAr = language === 'ar';
     const [searchTerm, setSearchTerm] = useState('');
-    const [domainFilter, setDomainFilter] = useState<'all' | 'properties' | 'partners' | 'requests'>('all');
+    const [domainFilter, setDomainFilter] = useState<'all' | 'properties' | 'partners' | 'requests' | 'credentials'>('all');
 
     // 1. Fetch live operational entities
     const { 
@@ -51,7 +52,13 @@ const AdminAuditLogPage: React.FC = () => {
         refetch: refetchPartners 
     } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
 
-    const isLoading = loadingRequests || loadingProperties || loadingPartners;
+    const {
+        data: credentialLogs,
+        isLoading: loadingCredentials,
+        refetch: refetchCredentials
+    } = useQuery({ queryKey: ['allCredentialAudit'], queryFn: () => getCredentialAuditLogs() });
+
+    const isLoading = loadingRequests || loadingProperties || loadingPartners || loadingCredentials;
     const isError = errorRequests || errorProperties || errorPartners;
 
     // 2. Synthesize unified operational audit trails
@@ -113,8 +120,23 @@ const AdminAuditLogPage: React.FC = () => {
             });
         });
 
+        // Credential Management audit entries (Section 16: Zero secrets stored)
+        (credentialLogs || []).forEach(cred => {
+            logs.push({
+                id: `cred-log-${cred.id}`,
+                domain: 'credentials',
+                action: cred.action,
+                actor: cred.actorName || cred.actorId,
+                entityName: cred.targetUserEmail,
+                entityLink: `/admin/users`,
+                newValue: cred.success ? 'Success' : 'Failed',
+                timestamp: cred.timestamp,
+                details: cred.details || 'User credential management operation',
+            });
+        });
+
         return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }, [requests, properties, partners, isAr, language]);
+    }, [requests, properties, partners, credentialLogs, isAr, language]);
 
     // 3. Filter logs
     const filteredLogs = useMemo(() => {
@@ -134,6 +156,7 @@ const AdminAuditLogPage: React.FC = () => {
         refetchRequests();
         refetchProperties();
         refetchPartners();
+        refetchCredentials();
     };
 
     return (
@@ -179,6 +202,7 @@ const AdminAuditLogPage: React.FC = () => {
                         { key: 'properties', label: isAr ? 'العقارات' : 'Properties' },
                         { key: 'partners', label: isAr ? 'الشركاء' : 'Partners' },
                         { key: 'requests', label: isAr ? 'الطلبات' : 'Requests' },
+                        { key: 'credentials', label: isAr ? 'الأمان والاعتماد' : 'Credentials' },
                     ].map(tab => (
                         <button
                             key={tab.key}

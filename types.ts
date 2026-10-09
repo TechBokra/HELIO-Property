@@ -98,6 +98,7 @@ export enum Permission {
     // USERS & GOVERNANCE
     VIEW_USERS = 'view_users',
     MANAGE_USERS = 'manage_users',
+    MANAGE_USER_CREDENTIALS = 'manage_user_credentials',
     VIEW_ROLES_PERMISSIONS = 'view_roles_permissions',
     MANAGE_ROLES_PERMISSIONS = 'manage_roles_permissions',
     VIEW_AUDIT_LOG = 'view_audit_log',
@@ -321,7 +322,7 @@ export interface Request {
     updatedAt: string;
 }
 
-export type LeadStatus = 'new' | 'contacted' | 'site-visit' | 'quoted' | 'in-progress' | 'in_progress' | 'won' | 'completed' | 'cancelled';
+export type LeadStatus = 'new' | 'contacted' | 'site-visit' | 'quoted' | 'in-progress' | 'completed' | 'cancelled';
 
 export type DecorationStage = 
     | 'consultation' 

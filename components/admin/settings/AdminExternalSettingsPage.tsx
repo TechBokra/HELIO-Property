@@ -165,10 +165,20 @@ const AdminExternalSettingsPage: React.FC = () => {
                                         <label className="block text-sm font-medium mb-1">{t_page.supabase.anonKey}</label>
                                         <Input type="password" {...register('supabase.anonKey')} placeholder="public-anon-key" className="font-mono" />
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1 text-red-600 dark:text-red-400">{t_page.supabase.serviceRoleKey}</label>
-                                        <Input type="password" {...register('supabase.serviceRoleKey')} placeholder="secret-service-role-key" className="font-mono border-red-200 focus:ring-red-500" />
-                                        <p className="text-xs text-red-500 mt-1">Keep this key secret. It has full access to your database.</p>
+                                    <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800/50">
+                                        <div className="flex items-start gap-2">
+                                            <span className="text-amber-600 font-bold text-sm">🔒</span>
+                                            <div>
+                                                <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                                                    {language === 'ar' ? 'أمان مفتاح الخدمة (Service Role Key)' : 'Service Role Key Security'}
+                                                </p>
+                                                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                                                    {language === 'ar' 
+                                                        ? 'وفقاً لمتطلبات الأمان الصارمة، يُحظر إدخال مفتاح الخدمة في المتصفح. يتم ضبطه حصرياً عبر متغيرات بيئة الخادم (SUPABASE_SERVICE_ROLE_KEY).'
+                                                        : 'Per strict security policy, Service Role Key is never handled in browser forms. It is configured exclusively in server environment variables (SUPABASE_SERVICE_ROLE_KEY).'}
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

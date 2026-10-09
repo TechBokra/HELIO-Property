@@ -287,10 +287,7 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
     if (updates.email) dbUpdates.email = updates.email;
     if (updates.type) dbUpdates.type = updates.type;
 
-    if (updates.password) {
-        const { error: authError } = await supabase.auth.updateUser({ password: updates.password });
-        if (authError) console.warn("Password update failed (likely permission issue):", authError.message);
-    }
+    // Password management is handled strictly via dedicated credentials service and server-side APIs (Section 14)
 
     const { error } = await supabase.from('partners').update(dbUpdates).eq('id', id);
     if (!error) invalidatePartnersCache();
