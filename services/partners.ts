@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { Role, Permission, type Partner, type PartnerStatus, type PartnerRequest, type AdminPartner, type SubscriptionPlan, type PartnerType } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
-import { partnersData } from '../data/partners';
 import { requirePermission, requireAnyPermission } from './authGuard';
 
 // --- HELPER: Isolated Client ---
@@ -80,8 +79,6 @@ export const getAllPartners = async (): Promise<Partner[]> => {
         return inFlightPartnersPromise;
     }
 
-    const fallbackPartners = partnersData.map(mapPartnerFromDb);
-
     inFlightPartnersPromise = (async (): Promise<Partner[]> => {
         try {
             const { data, error } = await supabase
@@ -90,20 +87,14 @@ export const getAllPartners = async (): Promise<Partner[]> => {
                 .order('created_at', { ascending: false });
 
             if (error) {
-                console.warn('Notice fetching partners from Supabase, using fallback:', error.message);
-                return cachedPartners ? cachedPartners.data : fallbackPartners;
-            }
-
-            if (!data || data.length === 0) {
-                return cachedPartners ? cachedPartners.data : fallbackPartners;
+                console.error('Authoritative error fetching partners from Supabase:', error.message);
+                if (cachedPartners) return cachedPartners.data;
+                throw error;
             }
 
             const mapped = (data || []).map(mapPartnerFromDb);
             cachedPartners = { data: mapped, timestamp: Date.now() };
             return mapped;
-        } catch (err) {
-            console.warn('Exception in getAllPartners, using fallback:', err);
-            return cachedPartners ? cachedPartners.data : fallbackPartners;
         } finally {
             inFlightPartnersPromise = null;
         }
@@ -123,19 +114,17 @@ export const getPartnerById = async (id: string): Promise<Partner | undefined> =
             .from('partners')
             .select('*')
             .eq('id', id)
-            .single();
+            .maybeSingle();
 
         if (error) {
-            const rawFallback = partnersData.find(p => p.id === id);
-            return rawFallback ? mapPartnerFromDb(rawFallback) : undefined;
+            console.error('Error fetching partner by ID from Supabase:', error.message);
+            return undefined;
         }
 
         if (data) return mapPartnerFromDb(data);
-        const rawFallback = partnersData.find(p => p.id === id);
-        return rawFallback ? mapPartnerFromDb(rawFallback) : undefined;
+        return undefined;
     } catch {
-        const rawFallback = partnersData.find(p => p.id === id);
-        return rawFallback ? mapPartnerFromDb(rawFallback) : undefined;
+        return undefined;
     }
 };
 
@@ -146,20 +135,17 @@ export const getPartnerByEmail = async (email: string): Promise<Partner | undefi
             .from('partners')
             .select('*')
             .eq('email', cleanEmail)
-            .single();
+            .maybeSingle();
 
         if (error) {
-            const rawFallback = partnersData.find(p => p.email?.trim().toLowerCase() === cleanEmail);
-            return rawFallback ? mapPartnerFromDb(rawFallback) : undefined;
+            console.error('Error fetching partner by email from Supabase:', error.message);
+            return undefined;
         }
 
         if (data) return mapPartnerFromDb(data);
-        const rawFallback = partnersData.find(p => p.email?.trim().toLowerCase() === cleanEmail);
-        return rawFallback ? mapPartnerFromDb(rawFallback) : undefined;
+        return undefined;
     } catch {
-        const cleanEmail = email.trim().toLowerCase();
-        const rawFallback = partnersData.find(p => p.email?.trim().toLowerCase() === cleanEmail);
-        return rawFallback ? mapPartnerFromDb(rawFallback) : undefined;
+        return undefined;
     }
 };
 

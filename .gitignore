@@ -122,7 +122,5 @@ dist
 # Vite
 dist
 dist-ssr
+dist-node
 *.local
-
-# Deprecated API folder (Moved to services)
-api/

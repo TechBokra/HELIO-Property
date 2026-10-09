@@ -12,7 +12,7 @@ import { Select } from '../../ui/Select';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 import { ArrowLeftIcon, ShieldCheckIcon, KeyIcon } from '../../ui/Icons';
 import { useAuth } from '../../auth/AuthContext';
-import { Permission } from '../../../types';
+import { Permission, Role } from '../../../types';
 import { PasswordManagementModal } from './PasswordManagementModal';
 
 interface UserFormData {
@@ -32,7 +32,7 @@ const AdminUserFormPage: React.FC = () => {
     const isAr = language === 'ar';
     const t_admin = t.adminDashboard;
     const { showToast } = useToast();
-    const { hasPermission } = useAuth();
+    const { hasPermission, currentUser } = useAuth();
     const canManageCredentials = hasPermission(Permission.MANAGE_USER_CREDENTIALS) || hasPermission(Permission.MANAGE_USERS);
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
     const queryClient = useQueryClient();
@@ -42,6 +42,10 @@ const AdminUserFormPage: React.FC = () => {
         queryFn: () => getPartnerById(userId!),
         enabled: isEdit
     });
+
+    const isTargetSuperAdmin = (userToEdit as any)?.role === Role.SUPER_ADMIN || (userToEdit as any)?.type === 'admin' || (userToEdit as any)?.type === 'super_admin';
+    const isActorSuperAdmin = currentUser?.role === Role.SUPER_ADMIN;
+    const cannotModifyTarget = isEdit && isTargetSuperAdmin && !isActorSuperAdmin;
 
     const { register, handleSubmit, reset, formState: { errors } } = useForm<UserFormData>();
 
@@ -92,6 +96,16 @@ const AdminUserFormPage: React.FC = () => {
     });
 
     const onSubmit = (data: UserFormData) => {
+        if (cannotModifyTarget) {
+            showToast(isAr ? 'لا تملك صلاحية تعديل حساب المدير العام' : 'Privilege escalation rejected: Cannot edit Super Admin accounts', 'error');
+            return;
+        }
+
+        if (['super_admin', 'admin', 'system_admin'].includes(data.type) && !isActorSuperAdmin) {
+            showToast(isAr ? 'لا يمكنك تعيين صلاحيات إدارية عليا' : 'Cannot assign Super Admin or System Admin roles', 'error');
+            return;
+        }
+
         if (isEdit && userId) {
             updateMutation.mutate({ userId: userId, updates: data });
         } else {
@@ -100,7 +114,15 @@ const AdminUserFormPage: React.FC = () => {
     };
     
     const isSubmitting = addMutation.isPending || updateMutation.isPending;
-    const partnerTypes = Object.entries(t_admin.partnerTypes).filter(([key]) => !['developer', 'agency', 'finishing'].includes(key));
+    const partnerTypes = Object.entries(t_admin.partnerTypes).filter(([key]) => {
+        if (['developer', 'agency', 'finishing', 'customer', 'developer_partner', 'finishing_partner', 'agency_partner'].includes(key)) {
+            return false;
+        }
+        if (['super_admin', 'admin', 'system_admin'].includes(key) && !isActorSuperAdmin) {
+            return false;
+        }
+        return true;
+    });
 
     if (isEdit && isLoading) return <div>Loading user...</div>;
 
@@ -115,6 +137,19 @@ const AdminUserFormPage: React.FC = () => {
                     {isEdit ? t_admin.userManagement.editUser : t_admin.userManagement.addUser}
                 </h1>
             </div>
+
+            {cannotModifyTarget && (
+                <div className="mb-6 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl text-red-800 dark:text-red-300 text-sm">
+                    <p className="font-bold">
+                        {isAr ? 'حماية الحسابات الإدارية العليا' : 'Privilege Escalation Protection'}
+                    </p>
+                    <p className="mt-1 text-xs">
+                        {isAr 
+                            ? 'هذا المستخدم يمتلك صلاحية المدير العام (Super Admin). لا يمكن تعديل بياناته إلا بواسطة مدير عام آخر.'
+                            : 'This user holds Super Admin privileges. Only a Super Admin can modify this account.'}
+                    </p>
+                </div>
+            )}
 
             <Card>
                 <CardHeader className="border-b border-gray-100 dark:border-gray-700 pb-4 mb-4">
@@ -198,7 +233,7 @@ const AdminUserFormPage: React.FC = () => {
 
                         <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700 gap-3">
                             <Button variant="secondary" onClick={() => navigate('/admin/users')} type="button">{t.adminShared.cancel}</Button>
-                            <Button type="submit" isLoading={isSubmitting}>{t.adminShared.save}</Button>
+                            <Button type="submit" isLoading={isSubmitting} disabled={cannotModifyTarget}>{t.adminShared.save}</Button>
                         </div>
                     </form>
                 </CardContent>
