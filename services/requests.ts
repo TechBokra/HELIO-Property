@@ -440,6 +440,29 @@ export const mapDomainStatusToOperational = (status?: string, assignedTo?: strin
     return assignedTo ? OperationalStatus.ASSIGNED : OperationalStatus.NEW;
 };
 
+export const deriveRequestPriority = (
+    req: { type?: string; assignedTo?: string | null; createdAt?: string; status?: string },
+    payload: any = {}
+): 'high' | 'medium' | 'low' => {
+    const domainStatus = String(payload.status || req.status || 'new');
+    const operationalStatus = mapDomainStatusToOperational(domainStatus, req.assignedTo || undefined);
+    const isClosedOrResolved = [OperationalStatus.RESOLVED, OperationalStatus.CLOSED, OperationalStatus.REJECTED].includes(operationalStatus);
+    if (isClosedOrResolved) return 'low';
+
+    const createdDate = new Date(req.createdAt || Date.now());
+    const ageHours = Math.max(0, Math.round((Date.now() - createdDate.getTime()) / (1000 * 60 * 60)));
+    const isAged = ageHours > 48;
+
+    if (payload.priority === 'high') return 'high';
+    if (!req.assignedTo && ageHours > 24) return 'high';
+    if (isAged) return 'high';
+    if (req.type === RequestType.PARTNER_APPLICATION) return 'high';
+    if (payload.estimatedCost && Number(payload.estimatedCost) > 1000000) return 'high';
+
+    if (payload.priority === 'low') return 'low';
+    return 'medium';
+};
+
 export const mapRequestToUnified = (req: Request, partnersMap?: Map<string, string>): UnifiedRequest => {
     const payload = req.payload || {};
     const createdDate = new Date(req.createdAt || Date.now());
@@ -497,14 +520,8 @@ export const mapRequestToUnified = (req: Request, partnersMap?: Map<string, stri
     const operationalStatus = mapDomainStatusToOperational(domainStatus, req.assignedTo);
     const isClosedOrResolved = [OperationalStatus.RESOLVED, OperationalStatus.CLOSED, OperationalStatus.REJECTED].includes(operationalStatus);
     const isAged = ageHours > 48 && !isClosedOrResolved;
-
-    // Priority derivation
-    let priority: 'high' | 'medium' | 'low' = 'medium';
-    if (!req.assignedTo && ageHours > 24) priority = 'high';
-    if (isAged) priority = 'high';
-    if (req.type === RequestType.PARTNER_APPLICATION) priority = 'high';
-    if (payload.estimatedCost && Number(payload.estimatedCost) > 1000000) priority = 'high';
-    if (isClosedOrResolved) priority = 'low';
+    // Priority derivation using authoritative logic (P1.5)
+    const priority = deriveRequestPriority(req, payload);
 
     // Next action recommendation
     let nextAction = { en: 'Initial client contact', ar: 'التواصل الأولي مع العميل' };
@@ -790,14 +807,63 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
                 query = query.eq('type', RequestType.LEAD).filter('payload->>serviceType', 'eq', 'decorations');
                 break;
             case 'commercial':
-                query = query.eq('type', RequestType.LEAD);
+                // Exclude finishing and decorations leads (P1.3)
+                query = query.eq('type', RequestType.LEAD).not('payload->>serviceType', 'in', '(finishing,decorations)');
                 break;
         }
     }
 
-    // Server-side Operational Status filter
+    // Server-side Date Range filter (P1.1)
+    if (filter.dateRange && filter.dateRange !== 'all') {
+        const now = new Date();
+        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        switch (filter.dateRange) {
+            case 'today':
+                query = query.gte('created_at', todayMidnight);
+                break;
+            case 'last7days':
+                query = query.gte('created_at', sevenDaysAgo);
+                break;
+            case 'last30days':
+                query = query.gte('created_at', thirtyDaysAgo);
+                break;
+            case 'older':
+                query = query.lt('created_at', thirtyDaysAgo);
+                break;
+        }
+    }
+
+    // Server-side Operational Status filter aligned with canonical mapping (P1.4)
     if (filter.operationalStatus && filter.operationalStatus !== 'all') {
-        query = query.or(`payload->>operationalStatus.eq.${filter.operationalStatus},status.eq.${filter.operationalStatus.toLowerCase()}`);
+        switch (filter.operationalStatus) {
+            case OperationalStatus.RESOLVED:
+                query = query.or('payload->>operationalStatus.eq.RESOLVED,status.in.(completed,approved,verified,won,resolved)');
+                break;
+            case OperationalStatus.CLOSED:
+                query = query.or('payload->>operationalStatus.eq.CLOSED,status.in.(closed,lost)');
+                break;
+            case OperationalStatus.REJECTED:
+                query = query.or('payload->>operationalStatus.eq.REJECTED,status.in.(rejected,cancelled,declined)');
+                break;
+            case OperationalStatus.WAITING:
+                query = query.or('payload->>operationalStatus.eq.WAITING,status.in.(quoted,waiting,viewing)');
+                break;
+            case OperationalStatus.IN_PROGRESS:
+                query = query.or('payload->>operationalStatus.eq.IN_PROGRESS,status.in.(contacted,site-visit,in-progress,qualified)');
+                break;
+            case OperationalStatus.NEW:
+                query = query.or('payload->>operationalStatus.eq.NEW,and(status.in.(new,pending),assigned_to.is.null)');
+                break;
+            case OperationalStatus.ASSIGNED:
+                query = query.or('payload->>operationalStatus.eq.ASSIGNED,status.eq.assigned,and(status.in.(new,pending),assigned_to.not.is.null)');
+                break;
+            default:
+                query = query.or(`payload->>operationalStatus.eq.${filter.operationalStatus},status.eq.${String(filter.operationalStatus).toLowerCase()}`);
+                break;
+        }
     }
 
     // Server-side Assignee filter
@@ -809,24 +875,39 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
         }
     }
 
-    // Server-side Triage View filter
+    // Server-side Triage View filter covering all advertised views (P1.2)
     if (filter.triageView && filter.triageView !== 'all') {
         switch (filter.triageView) {
             case 'unassigned':
                 query = query.is('assigned_to', null);
                 break;
             case 'new':
-                query = query.or('payload->>operationalStatus.eq.NEW,status.eq.new');
+                query = query.or('payload->>operationalStatus.eq.NEW,and(status.in.(new,pending),assigned_to.is.null)');
                 break;
             case 'waiting':
-                query = query.or('payload->>operationalStatus.eq.WAITING,status.eq.waiting,status.eq.quoted');
+                query = query.or('payload->>operationalStatus.eq.WAITING,status.in.(quoted,waiting,viewing)');
                 break;
             case 'resolved':
-                query = query.or('payload->>operationalStatus.eq.RESOLVED,status.eq.completed,status.eq.approved');
+                query = query.or('payload->>operationalStatus.eq.RESOLVED,status.in.(completed,approved,verified,won,resolved)');
                 break;
-            case 'high_priority':
-                query = query.or('payload->>priority.eq.high');
+            case 'high_priority': {
+                const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+                query = query.or(
+                    `payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo}`
+                ).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)');
                 break;
+            }
+            case 'aged': {
+                const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+                query = query.lt('created_at', twoDaysAgo).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)');
+                break;
+            }
+            case 'recently_updated': {
+                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                query = query.gte('updated_at', twentyFourHoursAgo);
+                break;
+            }
         }
     }
 
@@ -836,9 +917,19 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
         query = query.or(`requester_name.ilike.%${term}%,requester_phone.ilike.%${term}%,requester_email.ilike.%${term}%`);
     }
 
-    // Server-side Priority filter
+    // Server-side Priority filter aligned with authoritative derivation (P1.5)
     if (filter.priority && filter.priority !== 'all') {
-        query = query.filter('payload->>priority', 'eq', filter.priority);
+        if (filter.priority === 'high') {
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+            query = query.or(
+                `payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo}`
+            ).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)');
+        } else if (filter.priority === 'low') {
+            query = query.or('payload->>priority.eq.low,status.in.(completed,approved,verified,won,closed,lost,rejected,cancelled,declined)');
+        } else if (filter.priority === 'medium') {
+            query = query.or('payload->>priority.eq.medium,and(payload->>priority.is.null,type.neq.PARTNER_APPLICATION,status.not.in.(completed,approved,verified,won,closed,lost,rejected,cancelled,declined))');
+        }
     }
 
     // Server-side Sorting
@@ -859,9 +950,10 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
 
     const mappedRequests = (rawRows || []).map(r => mapRequestToUnified(mapRequestFromDb(r), managersMap));
 
-    // Calculate metrics via lightweight targeted counts
+    // Calculate metrics via lightweight targeted counts aligned with canonical mappings
     const now = new Date();
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
 
     const [
@@ -876,12 +968,12 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
     ] = await Promise.all([
         supabase.from('requests').select('*', { count: 'exact', head: true }),
         supabase.from('requests').select('*', { count: 'exact', head: true }).is('assigned_to', null),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.NEW,status.eq.new'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.IN_PROGRESS,status.eq.in-progress,status.eq.contacted'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.WAITING,status.eq.waiting,status.eq.quoted'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).lt('created_at', twoDaysAgo).not('status', 'in', '(completed,approved,closed,rejected)'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>priority.eq.high'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', todayMidnight).or('status.eq.completed,status.eq.approved,payload->>operationalStatus.eq.RESOLVED')
+        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.NEW,and(status.in.(new,pending),assigned_to.is.null)'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.IN_PROGRESS,status.in.(contacted,site-visit,in-progress,qualified)'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.WAITING,status.in.(quoted,waiting,viewing)'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).lt('created_at', twoDaysAgo).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).or(`payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo}`).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)'),
+        supabase.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', todayMidnight).or('status.in.(completed,approved,verified,won,resolved),payload->>operationalStatus.eq.RESOLVED')
     ]);
 
     const metrics: OperationalMetrics = {

@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { mapPartnerTypeToRole } from '../data/permissions';
+import { Role } from '../types';
 
 export interface CredentialsRequestBody {
     action: 'send_password_reset' | 'reset_password';
@@ -32,7 +34,16 @@ export async function handleAdminCredentialsRequest(
     const supabaseAnonKey = env.supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM';
     const serviceRoleKey = env.supabaseServiceKey || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    // 1. Require valid Authorization Bearer token
+    // 1. Require valid privileged server configuration (P0.2)
+    // Never substitute anonymous client for privileged administrative operations or audit logging
+    if (!serviceRoleKey) {
+        return {
+            status: 500,
+            body: { error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for administrative credential operations' }
+        };
+    }
+
+    // 2. Require valid Authorization Bearer token
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return {
             status: 401,
@@ -53,7 +64,7 @@ export async function handleAdminCredentialsRequest(
         auth: { persistSession: false, autoRefreshToken: false }
     });
 
-    // 2. Authoritative token verification via Supabase Auth
+    // Authoritative token verification via Supabase Auth
     const { data: authUserData, error: tokenError } = await authVerifyClient.auth.getUser(token);
     if (tokenError || !authUserData?.user) {
         return {
@@ -65,20 +76,21 @@ export async function handleAdminCredentialsRequest(
     const actorUser = authUserData.user;
     const actorId = actorUser.id;
 
-    // Use privileged client for database and admin auth operations
-    const serverClient = serviceRoleKey
-        ? createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
-        : authVerifyClient;
+    // Privileged server client using verified service role key (P0.2)
+    const serverClient = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { persistSession: false, autoRefreshToken: false }
+    });
 
-    // Helper to log append-only audit events to public.credential_audit_log
+    // Helper to log append-only audit events to public.credential_audit_log (P0.1)
+    // Every insert result is checked; never silences audit failures
     const logAudit = async (
         action: 'PASSWORD_RESET_INITIATED' | 'PASSWORD_RESET_COMPLETED' | 'PASSWORD_RESET_EMAIL_SENT',
         targetUserId: string | null,
         success: boolean,
         details: string
-    ) => {
+    ): Promise<{ error?: string }> => {
         try {
-            await serverClient
+            const { error: insertError } = await serverClient
                 .from('credential_audit_log')
                 .insert({
                     actor_user_id: actorId,
@@ -88,8 +100,15 @@ export async function handleAdminCredentialsRequest(
                     details: details.substring(0, 500),
                     created_at: new Date().toISOString()
                 });
+            if (insertError) {
+                console.error('Failed to write to credential_audit_log:', insertError.message);
+                return { error: insertError.message };
+            }
+            return {};
         } catch (e: any) {
-            console.error('Failed to write to credential_audit_log:', e?.message);
+            const msg = e?.message || 'Exception during audit log insertion';
+            console.error('Exception writing to credential_audit_log:', msg);
+            return { error: msg };
         }
     };
 
@@ -115,8 +134,8 @@ export async function handleAdminCredentialsRequest(
         };
     }
 
-    // 5. Verify actor permissions
-    const isSuperAdmin = actorProfile.role === 'super_admin' || actorProfile.type === 'admin';
+    // 5. Authoritative Super Admin definition via application role model (P0.3)
+    const isSuperAdmin = mapPartnerTypeToRole(actorProfile.type, actorProfile.role) === Role.SUPER_ADMIN;
     const customPerms: string[] = Array.isArray(actorProfile.custom_permissions) ? actorProfile.custom_permissions : [];
     const hasCredentialPermission = isSuperAdmin || customPerms.includes('manage_user_credentials');
 
@@ -158,9 +177,9 @@ export async function handleAdminCredentialsRequest(
 
         const { data: targetProfile } = await targetQuery.maybeSingle();
 
-        // Privilege Escalation Prevention
+        // Privilege Escalation Prevention (P0.3)
         if (targetProfile) {
-            const targetIsSuperAdmin = targetProfile.role === 'super_admin' || targetProfile.type === 'admin';
+            const targetIsSuperAdmin = mapPartnerTypeToRole(targetProfile.type, targetProfile.role) === Role.SUPER_ADMIN;
             if (targetIsSuperAdmin && !isSuperAdmin) {
                 await logAudit(
                     'PASSWORD_RESET_EMAIL_SENT',
@@ -194,12 +213,19 @@ export async function handleAdminCredentialsRequest(
                 };
             }
 
-            await logAudit(
+            const emailAudit = await logAudit(
                 'PASSWORD_RESET_EMAIL_SENT',
                 targetProfile?.id || null,
                 true,
                 'Password reset email triggered successfully'
             );
+
+            if (emailAudit.error) {
+                return {
+                    status: 500,
+                    body: { error: `Password reset email dispatched but audit recording failed: ${emailAudit.error}` }
+                };
+            }
 
             return {
                 status: 200,
@@ -258,8 +284,8 @@ export async function handleAdminCredentialsRequest(
             };
         }
 
-        // Privilege Escalation Prevention (Section 5)
-        const targetIsSuperAdmin = targetProfile.role === 'super_admin' || targetProfile.type === 'admin';
+        // Privilege Escalation Prevention (P0.3)
+        const targetIsSuperAdmin = mapPartnerTypeToRole(targetProfile.type, targetProfile.role) === Role.SUPER_ADMIN;
         if (targetIsSuperAdmin && !isSuperAdmin) {
             await logAudit(
                 'PASSWORD_RESET_COMPLETED',
@@ -273,25 +299,17 @@ export async function handleAdminCredentialsRequest(
             };
         }
 
-        // Audit Initiation
-        await logAudit(
+        // Audit Initiation (P0.1)
+        const initAudit = await logAudit(
             'PASSWORD_RESET_INITIATED',
             targetUserId,
             true,
             'Administrative password reset initiated'
         );
-
-        // Require serviceRoleKey for privileged Supabase Admin Auth updateUserById
-        if (!serviceRoleKey) {
-            await logAudit(
-                'PASSWORD_RESET_COMPLETED',
-                targetUserId,
-                false,
-                'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not configured'
-            );
+        if (initAudit.error) {
             return {
                 status: 500,
-                body: { error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for administrative reset' }
+                body: { error: `Failed to record required audit initiation log: ${initAudit.error}. Reset aborted.` }
             };
         }
 
@@ -319,12 +337,18 @@ export async function handleAdminCredentialsRequest(
                 };
             }
 
-            await logAudit(
+            const completeAudit = await logAudit(
                 'PASSWORD_RESET_COMPLETED',
                 targetUserId,
                 true,
                 'Password reset executed successfully by administrator'
             );
+            if (completeAudit.error) {
+                return {
+                    status: 500,
+                    body: { error: `Password was updated but audit completion recording failed: ${completeAudit.error}` }
+                };
+            }
 
             return {
                 status: 200,

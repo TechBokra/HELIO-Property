@@ -10,5 +10,5 @@
     "lib": ["ES2023"],
     "outDir": "./dist-node"
   },
-  "include": ["vite.config.ts", "server/**/*.ts"]
+  "include": ["vite.config.ts", "server/**/*.ts", "data/permissions.ts", "types.ts"]
 }
