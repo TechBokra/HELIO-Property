@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, supabasePublic } from '../lib/supabase';
 import type { DecorationCategory } from '../types';
 
 // Helper to map DB row to DecorationCategory
@@ -10,7 +10,7 @@ const mapCategoryFromDb = (row: any): DecorationCategory => ({
 
 export const getDecorationCategories = async (): Promise<DecorationCategory[]> => {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabasePublic
             .from('decoration_categories')
             .select('*')
             .order('created_at', { ascending: true });

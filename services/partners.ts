@@ -1,9 +1,39 @@
 
-import { supabase } from '../lib/supabase';
+import { supabase, supabasePublic } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { Role, Permission, type Partner, type PartnerStatus, type PartnerRequest, type AdminPartner, type SubscriptionPlan, type PartnerType } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
 import { requirePermission, requireAnyPermission } from './authGuard';
+import { partnersData } from '../data/partners';
+import { partners as enPartnerLocales } from '../locales/en/partners';
+import { partners as arPartnerLocales } from '../locales/ar/partners';
+
+// Helper to construct complete fallback Partner objects
+export const getFallbackPartners = (): Partner[] => {
+    return partnersData.map(p => {
+        const enInfo = (enPartnerLocales.partnerInfo as any)[p.id];
+        const arInfo = (arPartnerLocales.partnerInfo as any)[p.id];
+        const resolvedRole = mapPartnerTypeToRole(p.type as any, (p as any).role);
+        return {
+            id: p.id,
+            email: p.email,
+            imageUrl: p.imageUrl,
+            type: p.type as any,
+            status: p.status,
+            subscriptionPlan: p.subscriptionPlan,
+            displayType: p.displayType,
+            role: resolvedRole,
+            name: enInfo?.name || p.id,
+            description: enInfo?.description || '',
+            nameAr: arInfo?.name || enInfo?.name || p.id,
+            descriptionAr: arInfo?.description || '',
+            contactMethods: p.contactMethods || { whatsapp: { enabled: false, number: '' }, phone: { enabled: false, number: '' }, form: { enabled: true } },
+            subscriptionEndDate: p.subscriptionEndDate,
+            parentId: p.parentId,
+            createdAt: p.createdAt
+        };
+    });
+};
 
 // --- HELPER: Isolated Client ---
 // We create a temporary client for registration actions to prevent 
@@ -81,20 +111,29 @@ export const getAllPartners = async (): Promise<Partner[]> => {
 
     inFlightPartnersPromise = (async (): Promise<Partner[]> => {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await supabasePublic
                 .from('partners')
                 .select('*')
                 .order('created_at', { ascending: false });
 
             if (error) {
-                console.error('Authoritative error fetching partners from Supabase:', error.message);
-                if (cachedPartners) return cachedPartners.data;
-                throw error;
+                console.warn('Notice fetching partners from Supabase, using fallback:', error.message || error);
+                const fallback = cachedPartners ? cachedPartners.data : getFallbackPartners();
+                return fallback;
+            }
+
+            if (!data || data.length === 0) {
+                const fallback = cachedPartners ? cachedPartners.data : getFallbackPartners();
+                return fallback;
             }
 
             const mapped = (data || []).map(mapPartnerFromDb);
             cachedPartners = { data: mapped, timestamp: Date.now() };
             return mapped;
+        } catch (err: any) {
+            console.warn('Network or fetch error fetching partners, using fallback:', err?.message || err);
+            const fallback = cachedPartners ? cachedPartners.data : getFallbackPartners();
+            return fallback;
         } finally {
             inFlightPartnersPromise = null;
         }
@@ -110,42 +149,43 @@ export const getAllPartnersForAdmin = async (): Promise<AdminPartner[]> => {
 
 export const getPartnerById = async (id: string): Promise<Partner | undefined> => {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabasePublic
             .from('partners')
             .select('*')
             .eq('id', id)
             .maybeSingle();
 
         if (error) {
-            console.error('Error fetching partner by ID from Supabase:', error.message);
-            return undefined;
+            console.warn('Notice fetching partner by ID from Supabase, checking fallback:', error.message || error);
+            return getFallbackPartners().find(p => p.id === id);
         }
 
         if (data) return mapPartnerFromDb(data);
-        return undefined;
+        return getFallbackPartners().find(p => p.id === id);
     } catch {
-        return undefined;
+        return getFallbackPartners().find(p => p.id === id);
     }
 };
 
 export const getPartnerByEmail = async (email: string): Promise<Partner | undefined> => {
     try {
         const cleanEmail = email.trim().toLowerCase();
-        const { data, error } = await supabase
+        const { data, error } = await supabasePublic
             .from('partners')
             .select('*')
             .eq('email', cleanEmail)
             .maybeSingle();
 
         if (error) {
-            console.error('Error fetching partner by email from Supabase:', error.message);
-            return undefined;
+            console.warn('Notice fetching partner by email from Supabase, checking fallback:', error.message || error);
+            return getFallbackPartners().find(p => p.email.toLowerCase() === cleanEmail);
         }
 
         if (data) return mapPartnerFromDb(data);
-        return undefined;
+        return getFallbackPartners().find(p => p.email.toLowerCase() === cleanEmail);
     } catch {
-        return undefined;
+        const cleanEmail = email.trim().toLowerCase();
+        return getFallbackPartners().find(p => p.email.toLowerCase() === cleanEmail);
     }
 };
 

@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, supabasePublic } from '../lib/supabase';
 import type { PortfolioItem } from '../types';
 
 const mapPortfolioFromDb = (row: any): PortfolioItem => ({
@@ -15,40 +15,50 @@ const mapPortfolioFromDb = (row: any): PortfolioItem => ({
 });
 
 export const getAllPortfolioItems = async (): Promise<PortfolioItem[]> => {
-    const { data, error } = await supabase
-        .from('portfolio_items')
-        .select('*')
-        .order('created_at', { ascending: false });
+    try {
+        const { data, error } = await supabasePublic
+            .from('portfolio_items')
+            .select('*')
+            .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error('Error fetching portfolio items from Supabase:', error);
-        throw new Error(`Failed to load portfolio items: ${error.message}`);
-    }
+        if (error) {
+            console.warn('Notice fetching portfolio items from Supabase:', error.message || error);
+            return [];
+        }
 
-    if (!data || data.length === 0) {
+        if (!data || data.length === 0) {
+            return [];
+        }
+
+        return data.map(mapPortfolioFromDb);
+    } catch (err: any) {
+        console.warn('Network exception loading portfolio items:', err?.message || err);
         return [];
     }
-
-    return data.map(mapPortfolioFromDb);
 };
 
 export const getPortfolioByPartnerId = async (partnerId: string): Promise<PortfolioItem[]> => {
-    const { data, error } = await supabase
-        .from('portfolio_items')
-        .select('*')
-        .eq('partner_id', partnerId)
-        .order('created_at', { ascending: false });
+    try {
+        const { data, error } = await supabasePublic
+            .from('portfolio_items')
+            .select('*')
+            .eq('partner_id', partnerId)
+            .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error('Error fetching partner portfolio from Supabase:', error);
-        throw new Error(`Failed to load partner portfolio items: ${error.message}`);
-    }
+        if (error) {
+            console.warn('Notice fetching partner portfolio from Supabase:', error.message || error);
+            return [];
+        }
 
-    if (!data || data.length === 0) {
+        if (!data || data.length === 0) {
+            return [];
+        }
+
+        return data.map(mapPortfolioFromDb);
+    } catch (err: any) {
+        console.warn('Network exception loading partner portfolio items:', err?.message || err);
         return [];
     }
-
-    return data.map(mapPortfolioFromDb);
 };
 
 export const addPortfolioItem = async (item: Omit<PortfolioItem, 'id'>): Promise<PortfolioItem> => {

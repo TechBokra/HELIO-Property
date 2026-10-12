@@ -205,6 +205,26 @@ async function runTests() {
         assert.strictEqual(canPartnerReassign, false, 'Partner cannot reassign request to a different partner');
     });
 
+    console.log('\n--- Suite 4: P0 Resilient Partner Query & Network Error Fallback ---');
+
+    await test('P0.5: getAllPartners returns valid partner entities without throwing on network failure', async () => {
+        const { getAllPartners, getPartnerById, getFallbackPartners } = await import('../services/partners');
+        const fallbackList = getFallbackPartners();
+        assert.ok(fallbackList.length > 0, 'Fallback partners list must not be empty');
+
+        const partners = await getAllPartners();
+        assert.ok(Array.isArray(partners), 'Partners must be an array');
+        assert.ok(partners.length > 0, 'Partners must not be empty even during network disruptions');
+
+        const firstPartner = partners[0];
+        assert.ok(firstPartner.id, 'Partner must have an id');
+        assert.ok(firstPartner.email, 'Partner must have an email');
+
+        const partnerById = await getPartnerById(firstPartner.id);
+        assert.ok(partnerById, 'Partner must be retrievable by ID');
+        assert.strictEqual(partnerById?.id, firstPartner.id);
+    });
+
     console.log('\n======================================================');
     console.log(`Results: ${passedCount} passed, ${failedCount} failed`);
     console.log('======================================================\n');
