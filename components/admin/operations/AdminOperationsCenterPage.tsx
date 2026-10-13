@@ -41,6 +41,7 @@ const AdminOperationsCenterPage: React.FC = () => {
     const initialType = (searchParams.get('type') as RequestType) || 'all';
     const initialStatus = (searchParams.get('status') as OperationalStatus) || 'all';
     const initialPriority = (searchParams.get('priority') as 'all' | 'high' | 'medium' | 'low') || 'all';
+    const initialDateRange = (searchParams.get('dateRange') as 'all' | 'today' | 'last7days' | 'last30days' | 'older') || 'all';
     const initialAssignee = searchParams.get('assignedTo') || 'all';
     const initialSearch = searchParams.get('search') || '';
     const initialSelectedId = searchParams.get('id') || searchParams.get('highlight') || null;
@@ -50,6 +51,7 @@ const AdminOperationsCenterPage: React.FC = () => {
     const [requestType, setRequestType] = useState<RequestType | 'all'>(initialType);
     const [operationalStatus, setOperationalStatus] = useState<OperationalStatus | 'all'>(initialStatus);
     const [priority, setPriority] = useState<'all' | 'high' | 'medium' | 'low'>(initialPriority);
+    const [dateRange, setDateRange] = useState<'all' | 'today' | 'last7days' | 'last30days' | 'older'>(initialDateRange);
     const [assignedTo, setAssignedTo] = useState<string>(initialAssignee);
     const [searchTerm, setSearchTerm] = useState<string>(initialSearch);
     const [currentPage, setCurrentPage] = useState<number>(1);
@@ -81,12 +83,13 @@ const AdminOperationsCenterPage: React.FC = () => {
         refetch,
         isFetching
     } = useQuery({
-        queryKey: ['unifiedRequests', domain, requestType, operationalStatus, priority, assignedTo, triageView, searchTerm, currentPage],
+        queryKey: ['unifiedRequests', domain, requestType, operationalStatus, priority, dateRange, assignedTo, triageView, searchTerm, currentPage],
         queryFn: () => getUnifiedRequests({
             domain,
             type: requestType,
             operationalStatus,
             priority,
+            dateRange,
             assignedTo,
             triageView: triageView as any,
             searchTerm,
@@ -145,6 +148,7 @@ const AdminOperationsCenterPage: React.FC = () => {
         setRequestType('all');
         setOperationalStatus('all');
         setPriority('all');
+        setDateRange('all');
         setAssignedTo('all');
         setSearchTerm('');
         setTriageView('all');
@@ -249,6 +253,16 @@ const AdminOperationsCenterPage: React.FC = () => {
                 onOperationalStatusChange={s => { setOperationalStatus(s); setCurrentPage(1); }}
                 priority={priority}
                 onPriorityChange={p => { setPriority(p); setCurrentPage(1); }}
+                dateRange={dateRange}
+                onDateRangeChange={r => { 
+                    setDateRange(r); 
+                    setCurrentPage(1); 
+                    setSearchParams(prev => {
+                        if (r === 'all') prev.delete('dateRange');
+                        else prev.set('dateRange', r);
+                        return prev;
+                    }, { replace: true });
+                }}
                 assignedTo={assignedTo}
                 onAssignedToChange={a => { setAssignedTo(a); setCurrentPage(1); }}
                 searchTerm={searchTerm}

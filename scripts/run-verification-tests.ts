@@ -556,6 +556,542 @@ async function runTests() {
         }
     });
 
+    console.log('\n--- Suite 6: Phase 2B Operations Center Date Range Filter Tests ---');
+
+    await test('P2B.1: Default date-range behavior (omitted or "all") applies no created_at filter and returns all requests', async () => {
+        const { supabase, supabasePublic } = await import('../lib/supabase');
+        const { getUnifiedRequests } = await import('../services/requests');
+
+        const now = Date.now();
+        const testRecords = [
+            {
+                id: 'req-today-1',
+                type: RequestType.LEAD,
+                status: 'new',
+                customer_id: 'cust-1',
+                assigned_to: null,
+                created_at: new Date(now - 2 * 3600 * 1000).toISOString(),
+                updated_at: new Date(now - 2 * 3600 * 1000).toISOString(),
+                requester_name: 'Karim',
+                requester_phone: '0100000001',
+                requester_email: 'karim@example.com',
+                payload: { serviceType: 'finishing' }
+            },
+            {
+                id: 'req-3days-1',
+                type: RequestType.LEAD,
+                status: 'in-progress',
+                customer_id: 'cust-2',
+                assigned_to: 'mgr-1',
+                created_at: new Date(now - 3 * 24 * 3600 * 1000).toISOString(),
+                updated_at: new Date(now - 3 * 24 * 3600 * 1000).toISOString(),
+                requester_name: 'Nadia',
+                requester_phone: '0100000002',
+                requester_email: 'nadia@example.com',
+                payload: { serviceType: 'decorations' }
+            },
+            {
+                id: 'req-15days-1',
+                type: RequestType.PROPERTY_LISTING_REQUEST,
+                status: 'new',
+                customer_id: 'cust-3',
+                assigned_to: null,
+                created_at: new Date(now - 15 * 24 * 3600 * 1000).toISOString(),
+                updated_at: new Date(now - 15 * 24 * 3600 * 1000).toISOString(),
+                requester_name: 'Tamer',
+                requester_phone: '0100000003',
+                requester_email: 'tamer@example.com',
+                payload: {}
+            },
+            {
+                id: 'req-45days-1',
+                type: RequestType.PARTNER_APPLICATION,
+                status: 'pending',
+                customer_id: 'cust-4',
+                assigned_to: null,
+                created_at: new Date(now - 45 * 24 * 3600 * 1000).toISOString(),
+                updated_at: new Date(now - 45 * 24 * 3600 * 1000).toISOString(),
+                requester_name: 'Omar',
+                requester_phone: '0100000004',
+                requester_email: 'omar@example.com',
+                payload: {}
+            }
+        ];
+
+        const originalFrom = (supabase as any).from;
+        const originalPublicFrom = (supabasePublic as any).from;
+        const loggedMainCalls: { method: string; col?: string; val?: any }[] = [];
+
+        try {
+            (supabasePublic as any).from = (table: string) => {
+                if (table === 'partners') {
+                    const pBuilder: any = {
+                        select: () => pBuilder,
+                        order: () => Promise.resolve({ data: [], error: null })
+                    };
+                    return pBuilder;
+                }
+                return originalPublicFrom.call(supabasePublic, table);
+            };
+
+            (supabase as any).from = (table: string) => {
+                if (table === 'requests') {
+                    let rows = [...testRecords];
+                    let isHead = false;
+                    const builder: any = {
+                        select: (_cols: any, opts: any) => {
+                            if (opts?.head) isHead = true;
+                            if (!isHead) loggedMainCalls.push({ method: 'select', val: opts });
+                            return builder;
+                        },
+                        eq: (col: string, val: any) => { if (!isHead) loggedMainCalls.push({ method: 'eq', col, val }); rows = rows.filter(r => r[col] === val); return builder; },
+                        in: (col: string, vals: any[]) => { if (!isHead) loggedMainCalls.push({ method: 'in', col, val: vals }); rows = rows.filter(r => vals.includes(r[col])); return builder; },
+                        not: (col: string, _op: string, _val: any) => { if (!isHead) loggedMainCalls.push({ method: 'not', col }); return builder; },
+                        filter: (col: string, _op: string, _val: any) => { if (!isHead) loggedMainCalls.push({ method: 'filter', col }); return builder; },
+                        gte: (col: string, val: any) => { if (!isHead) loggedMainCalls.push({ method: 'gte', col, val }); rows = rows.filter(r => r[col] >= val); return builder; },
+                        lt: (col: string, val: any) => { if (!isHead) loggedMainCalls.push({ method: 'lt', col, val }); rows = rows.filter(r => r[col] < val); return builder; },
+                        is: (col: string, val: any) => { if (!isHead) loggedMainCalls.push({ method: 'is', col, val }); rows = rows.filter(r => r[col] === val); return builder; },
+                        or: (expr: string) => { if (!isHead) loggedMainCalls.push({ method: 'or', val: expr }); return builder; },
+                        order: (col: string, opts: any) => { if (!isHead) loggedMainCalls.push({ method: 'order', col, val: opts }); return builder; },
+                        range: (from: number, to: number) => { if (!isHead) loggedMainCalls.push({ method: 'range', val: { from, to } }); rows = rows.slice(from, to + 1); return builder; },
+                        then: (resolve: any, reject: any) => {
+                            return Promise.resolve({
+                                data: isHead ? null : rows,
+                                count: rows.length,
+                                error: null
+                            }).then(resolve, reject);
+                        }
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            // Test 1: dateRange omitted
+            loggedMainCalls.length = 0;
+            const resDefault = await getUnifiedRequests({});
+            assert.ok(resDefault.requests.length === 4, 'Omitted dateRange must return all requests across all dates');
+            assert.strictEqual(resDefault.totalCount, 4);
+            const dateRangeCallsDefault = loggedMainCalls.filter(c => (c.method === 'gte' || c.method === 'lt') && c.col === 'created_at');
+            assert.strictEqual(dateRangeCallsDefault.length, 0, 'Omitted dateRange must NOT attach created_at bounds to main query');
+
+            // Test 2: dateRange explicitly 'all'
+            loggedMainCalls.length = 0;
+            const resAll = await getUnifiedRequests({ dateRange: 'all' });
+            assert.ok(resAll.requests.length === 4, 'Explicit "all" must return all requests');
+            assert.strictEqual(resAll.totalCount, 4);
+            const dateRangeCallsAll = loggedMainCalls.filter(c => (c.method === 'gte' || c.method === 'lt') && c.col === 'created_at');
+            assert.strictEqual(dateRangeCallsAll.length, 0, 'Explicit "all" must NOT attach created_at bounds to main query');
+        } finally {
+            (supabase as any).from = originalFrom;
+            (supabasePublic as any).from = originalPublicFrom;
+        }
+    });
+
+    await test('P2B.2: Selecting different date ranges changes service query parameters with correct operators and semantics', async () => {
+        const { supabase, supabasePublic } = await import('../lib/supabase');
+        const { getUnifiedRequests } = await import('../services/requests');
+
+        const originalFrom = (supabase as any).from;
+        const originalPublicFrom = (supabasePublic as any).from;
+        const capturedCalls: { range: string; method: string; col?: string; val?: any }[] = [];
+
+        try {
+            (supabasePublic as any).from = (table: string) => {
+                if (table === 'partners') {
+                    const pBuilder: any = { select: () => pBuilder, order: () => Promise.resolve({ data: [], error: null }) };
+                    return pBuilder;
+                }
+                return originalPublicFrom.call(supabasePublic, table);
+            };
+
+            (supabase as any).from = (table: string) => {
+                if (table === 'requests') {
+                    let isHead = false;
+                    const builder: any = {
+                        select: (_cols: any, opts: any) => { if (opts?.head) isHead = true; return builder; },
+                        eq: () => builder,
+                        in: () => builder,
+                        not: () => builder,
+                        filter: () => builder,
+                        gte: (col: string, val: any) => {
+                            if (!isHead) capturedCalls.push({ range: currentRange, method: 'gte', col, val });
+                            return builder;
+                        },
+                        lt: (col: string, val: any) => {
+                            if (!isHead) capturedCalls.push({ range: currentRange, method: 'lt', col, val });
+                            return builder;
+                        },
+                        is: () => builder,
+                        or: () => builder,
+                        order: () => builder,
+                        range: () => builder,
+                        then: (resolve: any, reject: any) => {
+                            return Promise.resolve({ data: [], count: 0, error: null }).then(resolve, reject);
+                        }
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            let currentRange = 'today';
+            await getUnifiedRequests({ dateRange: 'today' });
+            const todayFilter = capturedCalls.find(c => c.range === 'today' && c.col === 'created_at');
+            assert.ok(todayFilter, 'today filter must query created_at');
+            assert.strictEqual(todayFilter!.method, 'gte');
+            const now = new Date();
+            const expectedToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+            assert.strictEqual(todayFilter!.val, expectedToday, 'today filter must start at today midnight');
+
+            currentRange = 'last7days';
+            await getUnifiedRequests({ dateRange: 'last7days' });
+            const last7Filter = capturedCalls.find(c => c.range === 'last7days' && c.col === 'created_at');
+            assert.ok(last7Filter, 'last7days filter must query created_at');
+            assert.strictEqual(last7Filter!.method, 'gte');
+
+            currentRange = 'last30days';
+            await getUnifiedRequests({ dateRange: 'last30days' });
+            const last30Filter = capturedCalls.find(c => c.range === 'last30days' && c.col === 'created_at');
+            assert.ok(last30Filter, 'last30days filter must query created_at');
+            assert.strictEqual(last30Filter!.method, 'gte');
+
+            currentRange = 'older';
+            await getUnifiedRequests({ dateRange: 'older' });
+            const olderFilter = capturedCalls.find(c => c.range === 'older' && c.col === 'created_at');
+            assert.ok(olderFilter, 'older filter must query created_at');
+            assert.strictEqual(olderFilter!.method, 'lt', 'older filter must use lt operator');
+        } finally {
+            (supabase as any).from = originalFrom;
+            (supabasePublic as any).from = originalPublicFrom;
+        }
+    });
+
+    await test('P2B.3: Changing date range refreshes displayed results and counts consistently', async () => {
+        const { supabase, supabasePublic } = await import('../lib/supabase');
+        const { getUnifiedRequests } = await import('../services/requests');
+
+        const now = Date.now();
+        const testRecords = [
+            {
+                id: 'req-today',
+                type: RequestType.LEAD,
+                status: 'new',
+                created_at: new Date(now - 2 * 3600 * 1000).toISOString(),
+                updated_at: new Date(now - 2 * 3600 * 1000).toISOString(),
+                requester_name: 'Sameh',
+                payload: {}
+            },
+            {
+                id: 'req-5days',
+                type: RequestType.LEAD,
+                status: 'in-progress',
+                created_at: new Date(now - 5 * 24 * 3600 * 1000).toISOString(),
+                updated_at: new Date(now - 5 * 24 * 3600 * 1000).toISOString(),
+                requester_name: 'Layla',
+                payload: {}
+            },
+            {
+                id: 'req-20days',
+                type: RequestType.PROPERTY_LISTING_REQUEST,
+                status: 'new',
+                created_at: new Date(now - 20 * 24 * 3600 * 1000).toISOString(),
+                updated_at: new Date(now - 20 * 24 * 3600 * 1000).toISOString(),
+                requester_name: 'Hazem',
+                payload: {}
+            },
+            {
+                id: 'req-40days',
+                type: RequestType.PARTNER_APPLICATION,
+                status: 'completed',
+                created_at: new Date(now - 40 * 24 * 3600 * 1000).toISOString(),
+                updated_at: new Date(now - 40 * 24 * 3600 * 1000).toISOString(),
+                requester_name: 'Mona',
+                payload: {}
+            }
+        ];
+
+        const originalFrom = (supabase as any).from;
+        const originalPublicFrom = (supabasePublic as any).from;
+
+        try {
+            (supabasePublic as any).from = (table: string) => {
+                if (table === 'partners') {
+                    const pBuilder: any = { select: () => pBuilder, order: () => Promise.resolve({ data: [], error: null }) };
+                    return pBuilder;
+                }
+                return originalPublicFrom.call(supabasePublic, table);
+            };
+
+            (supabase as any).from = (table: string) => {
+                if (table === 'requests') {
+                    let rows = [...testRecords];
+                    let isHead = false;
+                    const builder: any = {
+                        select: (_cols: any, opts: any) => { if (opts?.head) isHead = true; return builder; },
+                        eq: (col: string, val: any) => { rows = rows.filter(r => r[col] === val); return builder; },
+                        in: (col: string, vals: any[]) => { rows = rows.filter(r => vals.includes(r[col])); return builder; },
+                        not: () => builder,
+                        filter: () => builder,
+                        gte: (col: string, val: any) => { rows = rows.filter(r => r[col] >= val); return builder; },
+                        lt: (col: string, val: any) => { rows = rows.filter(r => r[col] < val); return builder; },
+                        is: (col: string, val: any) => { rows = rows.filter(r => r[col] === val); return builder; },
+                        or: () => builder,
+                        order: () => builder,
+                        range: (from: number, to: number) => { rows = rows.slice(from, to + 1); return builder; },
+                        then: (resolve: any, reject: any) => {
+                            return Promise.resolve({
+                                data: isHead ? null : rows,
+                                count: rows.length,
+                                error: null
+                            }).then(resolve, reject);
+                        }
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            // Today: only req-today
+            const todayRes = await getUnifiedRequests({ dateRange: 'today' });
+            assert.strictEqual(todayRes.requests.length, 1);
+            assert.strictEqual(todayRes.requests[0].id, 'req-today');
+            assert.strictEqual(todayRes.totalCount, 1);
+
+            // Last 7 days: req-today and req-5days
+            const last7Res = await getUnifiedRequests({ dateRange: 'last7days' });
+            assert.strictEqual(last7Res.requests.length, 2);
+            assert.ok(last7Res.requests.some(r => r.id === 'req-today'));
+            assert.ok(last7Res.requests.some(r => r.id === 'req-5days'));
+            assert.strictEqual(last7Res.totalCount, 2);
+
+            // Last 30 days: req-today, req-5days, req-20days
+            const last30Res = await getUnifiedRequests({ dateRange: 'last30days' });
+            assert.strictEqual(last30Res.requests.length, 3);
+            assert.ok(!last30Res.requests.some(r => r.id === 'req-40days'));
+            assert.strictEqual(last30Res.totalCount, 3);
+
+            // Older: req-40days
+            const olderRes = await getUnifiedRequests({ dateRange: 'older' });
+            assert.strictEqual(olderRes.requests.length, 1);
+            assert.strictEqual(olderRes.requests[0].id, 'req-40days');
+            assert.strictEqual(olderRes.totalCount, 1);
+        } finally {
+            (supabase as any).from = originalFrom;
+            (supabasePublic as any).from = originalPublicFrom;
+        }
+    });
+
+    await test('P2B.4: Date range filter composes seamlessly with existing triage and domain filters', async () => {
+        const { supabase, supabasePublic } = await import('../lib/supabase');
+        const { getUnifiedRequests } = await import('../services/requests');
+
+        const now = Date.now();
+        const testRecords = [
+            {
+                id: 'req-finishing-recent',
+                type: RequestType.LEAD,
+                status: 'new',
+                assigned_to: null,
+                created_at: new Date(now - 3 * 24 * 3600 * 1000).toISOString(),
+                payload: { serviceType: 'finishing' }
+            },
+            {
+                id: 'req-finishing-old',
+                type: RequestType.LEAD,
+                status: 'new',
+                assigned_to: null,
+                created_at: new Date(now - 40 * 24 * 3600 * 1000).toISOString(),
+                payload: { serviceType: 'finishing' }
+            },
+            {
+                id: 'req-decor-recent',
+                type: RequestType.LEAD,
+                status: 'in-progress',
+                assigned_to: 'mgr-1',
+                created_at: new Date(now - 4 * 24 * 3600 * 1000).toISOString(),
+                payload: { serviceType: 'decorations' }
+            }
+        ];
+
+        const originalFrom = (supabase as any).from;
+        const originalPublicFrom = (supabasePublic as any).from;
+        const appliedFilters: string[] = [];
+
+        try {
+            (supabasePublic as any).from = (table: string) => {
+                if (table === 'partners') {
+                    const pBuilder: any = { select: () => pBuilder, order: () => Promise.resolve({ data: [], error: null }) };
+                    return pBuilder;
+                }
+                return originalPublicFrom.call(supabasePublic, table);
+            };
+
+            (supabase as any).from = (table: string) => {
+                if (table === 'requests') {
+                    let rows = [...testRecords];
+                    let isHead = false;
+                    const builder: any = {
+                        select: (_cols: any, opts: any) => { if (opts?.head) isHead = true; return builder; },
+                        eq: (col: string, val: any) => {
+                            if (!isHead) appliedFilters.push(`eq:${col}=${val}`);
+                            rows = rows.filter(r => r[col] === val);
+                            return builder;
+                        },
+                        filter: (col: string, op: string, val: any) => {
+                            if (!isHead) appliedFilters.push(`filter:${col}:${op}:${val}`);
+                            if (col === 'payload->>serviceType') {
+                                rows = rows.filter(r => r.payload?.serviceType === val);
+                            }
+                            return builder;
+                        },
+                        gte: (col: string, val: any) => {
+                            if (!isHead) appliedFilters.push(`gte:${col}`);
+                            rows = rows.filter(r => r[col] >= val);
+                            return builder;
+                        },
+                        lt: (col: string, val: any) => {
+                            if (!isHead) appliedFilters.push(`lt:${col}`);
+                            rows = rows.filter(r => r[col] < val);
+                            return builder;
+                        },
+                        is: (col: string, val: any) => {
+                            if (!isHead) appliedFilters.push(`is:${col}=${val}`);
+                            rows = rows.filter(r => r[col] === val);
+                            return builder;
+                        },
+                        in: () => builder,
+                        not: () => builder,
+                        or: () => builder,
+                        order: () => builder,
+                        range: () => builder,
+                        then: (resolve: any, reject: any) => {
+                            return Promise.resolve({
+                                data: isHead ? null : rows,
+                                count: rows.length,
+                                error: null
+                            }).then(resolve, reject);
+                        }
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            // Composite 1: Domain 'finishing' + dateRange 'last7days'
+            appliedFilters.length = 0;
+            const resDomain = await getUnifiedRequests({ domain: 'finishing', dateRange: 'last7days' });
+            assert.ok(appliedFilters.includes('eq:type=LEAD'), 'Must apply domain type=LEAD');
+            assert.ok(appliedFilters.includes('filter:payload->>serviceType:eq:finishing'), 'Must apply serviceType=finishing');
+            assert.ok(appliedFilters.includes('gte:created_at'), 'Must apply gte:created_at filter');
+            assert.strictEqual(resDomain.requests.length, 1);
+            assert.strictEqual(resDomain.requests[0].id, 'req-finishing-recent');
+
+            // Composite 2: Triage 'unassigned' + dateRange 'older'
+            appliedFilters.length = 0;
+            const resTriage = await getUnifiedRequests({ triageView: 'unassigned', dateRange: 'older' });
+            assert.ok(appliedFilters.includes('is:assigned_to=null'), 'Must apply unassigned triage criteria');
+            assert.ok(appliedFilters.includes('lt:created_at'), 'Must apply lt:created_at older filter');
+            assert.strictEqual(resTriage.requests.length, 1);
+            assert.strictEqual(resTriage.requests[0].id, 'req-finishing-old');
+        } finally {
+            (supabase as any).from = originalFrom;
+            (supabasePublic as any).from = originalPublicFrom;
+        }
+    });
+
+    await test('P2B.5: Empty results and database query failures remain handled cleanly', async () => {
+        const { supabase, supabasePublic } = await import('../lib/supabase');
+        const { getUnifiedRequests } = await import('../services/requests');
+
+        const originalFrom = (supabase as any).from;
+        const originalPublicFrom = (supabasePublic as any).from;
+
+        try {
+            (supabasePublic as any).from = (table: string) => {
+                if (table === 'partners') {
+                    const pBuilder: any = { select: () => pBuilder, order: () => Promise.resolve({ data: [], error: null }) };
+                    return pBuilder;
+                }
+                return originalPublicFrom.call(supabasePublic, table);
+            };
+
+            // Scenario 1: Empty results returned for date range
+            (supabase as any).from = (table: string) => {
+                if (table === 'requests') {
+                    let isHead = false;
+                    const builder: any = {
+                        select: (_cols: any, opts: any) => { if (opts?.head) isHead = true; return builder; },
+                        eq: () => builder,
+                        in: () => builder,
+                        not: () => builder,
+                        filter: () => builder,
+                        gte: () => builder,
+                        lt: () => builder,
+                        is: () => builder,
+                        or: () => builder,
+                        order: () => builder,
+                        range: () => builder,
+                        then: (resolve: any, reject: any) => {
+                            return Promise.resolve({
+                                data: isHead ? null : [],
+                                count: 0,
+                                error: null
+                            }).then(resolve, reject);
+                        }
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            const emptyRes = await getUnifiedRequests({ dateRange: 'today' });
+            assert.deepStrictEqual(emptyRes.requests, [], 'Empty response must have empty requests array');
+            assert.strictEqual(emptyRes.totalCount, 0, 'Empty response totalCount must be 0');
+            assert.ok(emptyRes.metrics, 'Metrics object must still be defined');
+
+            // Scenario 2: Supabase query failure throws error for UI error-boundary handling
+            (supabase as any).from = (table: string) => {
+                if (table === 'requests') {
+                    const builder: any = {
+                        select: () => builder,
+                        eq: () => builder,
+                        in: () => builder,
+                        not: () => builder,
+                        filter: () => builder,
+                        gte: () => builder,
+                        lt: () => builder,
+                        is: () => builder,
+                        or: () => builder,
+                        order: () => builder,
+                        range: () => builder,
+                        then: (resolve: any, reject: any) => {
+                            return Promise.resolve({
+                                data: null,
+                                count: null,
+                                error: { message: 'Database connection timeout' }
+                            }).then(resolve, reject);
+                        }
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            let thrownError: any = null;
+            try {
+                await getUnifiedRequests({ dateRange: 'last7days' });
+            } catch (err) {
+                thrownError = err;
+            }
+            assert.ok(thrownError, 'Query failure must be propagated/thrown to trigger React Query isError banner');
+            assert.match(thrownError.message || '', /Database connection timeout/i);
+        } finally {
+            (supabase as any).from = originalFrom;
+            (supabasePublic as any).from = originalPublicFrom;
+        }
+    });
+
     console.log('\n======================================================');
     console.log(`Results: ${passedCount} passed, ${failedCount} failed`);
     console.log('======================================================\n');

@@ -90,9 +90,9 @@ export const OperationalFilterBar: React.FC<OperationalFilterBarProps> = ({
             </div>
 
             {/* Filter Inputs Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 items-center">
                 {/* Search Term */}
-                <div className="sm:col-span-2 lg:col-span-2 relative">
+                <div className="relative">
                     <SearchIcon className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
                         type="text"
@@ -148,6 +148,22 @@ export const OperationalFilterBar: React.FC<OperationalFilterBarProps> = ({
                         <option value="high">{isAr ? 'أولوية عاجلة (High)' : 'High Priority'}</option>
                         <option value="medium">{isAr ? 'أولوية متوسطة (Medium)' : 'Medium Priority'}</option>
                         <option value="low">{isAr ? 'أولوية عادية (Low)' : 'Low Priority'}</option>
+                    </Select>
+                </div>
+
+                {/* Date Range */}
+                <div>
+                    <Select
+                        value={dateRange}
+                        onChange={e => onDateRangeChange?.(e.target.value as any)}
+                        className="text-xs h-9 py-1 bg-gray-50/50"
+                        aria-label={isAr ? 'تصفية حسب التاريخ' : 'Filter by date range'}
+                    >
+                        <option value="all">{isAr ? 'الفترة: الكل' : 'Date: All Time'}</option>
+                        <option value="today">{isAr ? 'اليوم (Today)' : 'Today'}</option>
+                        <option value="last7days">{isAr ? 'آخر 7 أيام (Last 7 Days)' : 'Last 7 Days'}</option>
+                        <option value="last30days">{isAr ? 'آخر 30 يوم (Last 30 Days)' : 'Last 30 Days'}</option>
+                        <option value="older">{isAr ? 'أقدم من 30 يوم (> 30 Days)' : 'Older (> 30 Days)'}</option>
                     </Select>
                 </div>
 
