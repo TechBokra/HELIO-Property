@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { Role } from '../types';
 import type { Lead, LeadMessage, LeadStatus } from '../types';
 import { addNotification } from './notifications';
 import { getAttribution } from '../utils/attribution';
@@ -125,7 +126,7 @@ export const getLeadsByPartnerId = async (partnerId: string): Promise<Lead[]> =>
     return (leadsData || []).map(lead => mapLeadFromDb(lead, []));
 };
 
-export const getLeadById = async (leadId: string): Promise<Lead | undefined> => {
+export const getLeadById = async (leadId: string, viewerRole?: string): Promise<Lead | undefined> => {
     const { data: leadData, error } = await supabase
         .from('requests')
         .select('*')
@@ -136,13 +137,57 @@ export const getLeadById = async (leadId: string): Promise<Lead | undefined> => 
         return undefined;
     }
 
-    const { data: messages } = await supabase
+    let query = supabase
+        .from('request_messages')
+        .select('*')
+        .eq('request_id', leadId);
+
+    const isInternalStaff = viewerRole === Role.SUPER_ADMIN || 
+        String(viewerRole || '').toLowerCase().includes('manager') || 
+        String(viewerRole || '').toLowerCase() === 'admin';
+
+    // Security Hardening (Phase 2A Closure): Fail safe.
+    // When viewerRole is omitted, undefined, or belongs to a customer/partner, explicitly filter to partner-visible 'message' type.
+    // Internal operational notes ('note') are only accessible to verified internal staff.
+    if (!isInternalStaff) {
+        query = query.eq('type', 'message');
+    }
+
+    const { data: messages, error: msgsError } = await query
+        .order('created_at', { ascending: true });
+
+    if (msgsError) {
+        console.error('Authoritative error fetching messages for lead:', msgsError.message);
+        throw msgsError;
+    }
+
+    return mapLeadFromDb(leadData, messages || []);
+};
+
+/**
+ * Partner-facing message query: explicitly filters to legitimate partner-visible message type
+ */
+export const getLeadMessagesForPartner = async (leadId: string): Promise<LeadMessage[]> => {
+    const { data, error } = await supabase
         .from('request_messages')
         .select('*')
         .eq('request_id', leadId)
+        .eq('type', 'message')
         .order('created_at', { ascending: true });
 
-    return mapLeadFromDb(leadData, messages || []);
+    if (error) {
+        console.error('Authoritative error querying partner messages:', error.message);
+        throw error;
+    }
+
+    return (data || []).map((msg: any) => ({
+        id: msg.id,
+        sender: msg.sender,
+        senderId: msg.sender_id,
+        type: msg.type,
+        content: msg.content,
+        timestamp: msg.created_at
+    }));
 };
 
 export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt' | 'updatedAt' | 'messages'>): Promise<Lead> => {

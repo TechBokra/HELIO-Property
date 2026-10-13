@@ -225,6 +225,337 @@ async function runTests() {
         assert.strictEqual(partnerById?.id, firstPartner.id);
     });
 
+    console.log('\n--- Suite 5: Phase 2A — Partner Message Security Hardening & Behavioral Tests ---');
+
+    await test('P2A.1 & P2A.2: Partner-facing queries explicitly exclude internal notes and retain conversation messages', async () => {
+        const { supabase } = await import('../lib/supabase');
+        const { getRequestMessages } = await import('../services/requests');
+        const { getLeadMessagesForPartner } = await import('../services/leads');
+
+        const mockRecords = [
+            {
+                id: 'msg-client-1',
+                request_id: 'req-audit-123',
+                sender: 'client',
+                sender_id: 'client-uuid-1',
+                type: 'message',
+                content: 'Hello, what is the status of the design?',
+                created_at: '2026-10-10T10:00:00Z'
+            },
+            {
+                id: 'note-admin-internal',
+                request_id: 'req-audit-123',
+                sender: 'admin',
+                sender_id: 'admin-uuid-1',
+                type: 'note',
+                content: '[OPERATIONAL NOTE] Client budget is tight, margin approved at 12%',
+                created_at: '2026-10-10T11:00:00Z'
+            },
+            {
+                id: 'msg-partner-2',
+                request_id: 'req-audit-123',
+                sender: 'partner',
+                sender_id: 'partner-uuid-1',
+                type: 'message',
+                content: 'We uploaded the revised 3D layout.',
+                created_at: '2026-10-10T12:00:00Z'
+            }
+        ];
+
+        const originalFrom = (supabase as any).from;
+        let queryFilters: { column: string; value: any }[] = [];
+
+        try {
+            (supabase as any).from = (table: string) => {
+                if (table === 'request_messages') {
+                    queryFilters = [];
+                    const builder: any = {
+                        select: () => builder,
+                        eq: (column: string, value: any) => {
+                            queryFilters.push({ column, value });
+                            return builder;
+                        },
+                        order: () => {
+                            let filtered = [...mockRecords];
+                            for (const f of queryFilters) {
+                                filtered = filtered.filter((r: any) => r[f.column] === f.value);
+                            }
+                            return Promise.resolve({ data: filtered, error: null });
+                        }
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            // Test 1: getRequestMessages with partner role
+            const partnerMessages = await getRequestMessages('req-audit-123', Role.FINISHING_PARTNER);
+            assert.ok(queryFilters.some(f => f.column === 'type' && f.value === 'message'), 'Partner query must explicitly filter type=message');
+            assert.strictEqual(partnerMessages.length, 2, 'Must only return 2 conversation messages');
+            assert.strictEqual(partnerMessages.some(m => m.type === 'note'), false, 'Internal notes must be completely excluded from partner results');
+            assert.strictEqual(partnerMessages.some(m => m.id === 'note-admin-internal'), false, 'Operational note must not leak to partner');
+            assert.strictEqual(partnerMessages[0].id, 'msg-client-1');
+            assert.strictEqual(partnerMessages[1].id, 'msg-partner-2');
+
+            // Test 2: getLeadMessagesForPartner dedicated partner query
+            const leadPartnerMsgs = await getLeadMessagesForPartner('req-audit-123');
+            assert.ok(queryFilters.some(f => f.column === 'type' && f.value === 'message'), 'Lead partner query must explicitly filter type=message');
+            assert.strictEqual(leadPartnerMsgs.some(m => m.type === 'note'), false, 'Internal notes must be completely excluded from getLeadMessagesForPartner');
+            assert.strictEqual(leadPartnerMsgs.length, 2, 'Conversation messages remain fully accessible');
+        } finally {
+            (supabase as any).from = originalFrom;
+        }
+    });
+
+    await test('P2A.3: Administrative workflows that require internal notes are not accidentally restricted', async () => {
+        const { supabase } = await import('../lib/supabase');
+        const { getRequestMessages } = await import('../services/requests');
+
+        const mockRecords = [
+            {
+                id: 'msg-client-1',
+                request_id: 'req-audit-456',
+                sender: 'client',
+                sender_id: 'client-uuid-1',
+                type: 'message',
+                content: 'Need quotation',
+                created_at: '2026-10-10T10:00:00Z'
+            },
+            {
+                id: 'note-staff-internal',
+                request_id: 'req-audit-456',
+                sender: 'admin',
+                sender_id: 'admin-uuid-1',
+                type: 'note',
+                content: '[STAFF AUDIT] Reassigned request to Cairo team',
+                created_at: '2026-10-10T11:00:00Z'
+            }
+        ];
+
+        const originalFrom = (supabase as any).from;
+        let queryFilters: { column: string; value: any }[] = [];
+
+        try {
+            (supabase as any).from = (table: string) => {
+                if (table === 'request_messages') {
+                    queryFilters = [];
+                    const builder: any = {
+                        select: () => builder,
+                        eq: (column: string, value: any) => {
+                            queryFilters.push({ column, value });
+                            return builder;
+                        },
+                        order: () => {
+                            let filtered = [...mockRecords];
+                            for (const f of queryFilters) {
+                                filtered = filtered.filter((r: any) => r[f.column] === f.value);
+                            }
+                            return Promise.resolve({ data: filtered, error: null });
+                        }
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            // Super Admin query
+            const superAdminMsgs = await getRequestMessages('req-audit-456', Role.SUPER_ADMIN);
+            assert.strictEqual(queryFilters.some(f => f.column === 'type'), false, 'Super admin query must not restrict by message type');
+            assert.strictEqual(superAdminMsgs.length, 2, 'Super admin must see all records including notes');
+            assert.strictEqual(superAdminMsgs.some(m => m.type === 'note'), true, 'Super admin must see operational notes');
+
+            // Content / Platform Manager query
+            const managerMsgs = await getRequestMessages('req-audit-456', Role.PLATFORM_FINISHING_MANAGER);
+            assert.strictEqual(queryFilters.some(f => f.column === 'type'), false, 'Manager query must not restrict by message type');
+            assert.strictEqual(managerMsgs.some(m => m.type === 'note'), true, 'Manager must see operational notes');
+        } finally {
+            (supabase as any).from = originalFrom;
+        }
+    });
+
+    await test('P2A.4: Query failures remain visible through existing error handling', async () => {
+        const { supabase } = await import('../lib/supabase');
+        const { getRequestMessages } = await import('../services/requests');
+        const { getLeadMessagesForPartner } = await import('../services/leads');
+
+        const originalFrom = (supabase as any).from;
+        const simulatedError = new Error('Database connection failed / table unavailable');
+
+        try {
+            (supabase as any).from = (table: string) => {
+                if (table === 'request_messages') {
+                    const builder: any = {
+                        select: () => builder,
+                        eq: () => builder,
+                        order: () => Promise.resolve({ data: null, error: simulatedError })
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            // getRequestMessages should throw rather than silently returning []
+            await assert.rejects(
+                async () => {
+                    await getRequestMessages('req-fail-1', Role.FINISHING_PARTNER);
+                },
+                /Database connection failed/i,
+                'getRequestMessages must propagate query failures so they remain visible'
+            );
+
+            // getLeadMessagesForPartner should also propagate failures
+            await assert.rejects(
+                async () => {
+                    await getLeadMessagesForPartner('req-fail-1');
+                },
+                /Database connection failed/i,
+                'getLeadMessagesForPartner must propagate query failures so they remain visible'
+            );
+        } finally {
+            (supabase as any).from = originalFrom;
+        }
+    });
+
+    await test('P2A.5: Client-side role claims cannot bypass server-side authorization', async () => {
+        // Test that forging actorRole in request body cannot bypass token validation
+        const result = await handleAdminCredentialsRequest(
+            'Bearer forged-or-invalid-token',
+            {
+                action: 'send_password_reset',
+                actorRole: 'super_admin',
+                role: 'super_admin',
+                isSuperAdmin: true,
+                targetUserId: 'user-xyz'
+            },
+            {
+                supabaseServiceKey: 'dummy-service-key',
+                supabaseUrl: 'https://dummy.supabase.co',
+                supabaseAnonKey: 'dummy-key'
+            }
+        );
+
+        assert.strictEqual(result.status, 401, 'Forged body claims must not bypass token authentication');
+    });
+
+    await test('P2A.6: getLeadById safely isolates internal notes across partner, customer, staff, and missing-role scenarios', async () => {
+        const { supabase } = await import('../lib/supabase');
+        const { getLeadById } = await import('../services/leads');
+
+        const mockLeadRecord = {
+            id: 'lead-sec-789',
+            type: 'LEAD',
+            status: 'in-progress',
+            customer_name: 'Ahmed Zaki',
+            customer_phone: '+201000000001',
+            service_type: 'DECORATION',
+            created_at: '2026-10-10T09:00:00Z',
+            updated_at: '2026-10-10T12:00:00Z',
+            payload: {}
+        };
+
+        const mockMessages = [
+            {
+                id: 'msg-conv-1',
+                request_id: 'lead-sec-789',
+                sender: 'client',
+                sender_id: 'client-1',
+                type: 'message',
+                content: 'Can you provide the revised moodboard?',
+                created_at: '2026-10-10T10:00:00Z'
+            },
+            {
+                id: 'note-staff-1',
+                request_id: 'lead-sec-789',
+                sender: 'admin',
+                sender_id: 'admin-1',
+                type: 'note',
+                content: '[OPERATIONAL NOTE] Partner fee is set to 8%',
+                created_at: '2026-10-10T11:00:00Z'
+            },
+            {
+                id: 'msg-conv-2',
+                request_id: 'lead-sec-789',
+                sender: 'partner',
+                sender_id: 'partner-1',
+                type: 'message',
+                content: 'Moodboard uploaded and available in files.',
+                created_at: '2026-10-10T11:30:00Z'
+            }
+        ];
+
+        const originalFrom = (supabase as any).from;
+        let queryFilters: { column: string; value: any }[] = [];
+
+        try {
+            (supabase as any).from = (table: string) => {
+                if (table === 'requests') {
+                    const reqBuilder: any = {
+                        select: () => reqBuilder,
+                        eq: () => reqBuilder,
+                        maybeSingle: () => Promise.resolve({ data: mockLeadRecord, error: null })
+                    };
+                    return reqBuilder;
+                }
+                if (table === 'request_messages') {
+                    queryFilters = [];
+                    const msgBuilder: any = {
+                        select: () => msgBuilder,
+                        eq: (column: string, value: any) => {
+                            queryFilters.push({ column, value });
+                            return msgBuilder;
+                        },
+                        order: () => {
+                            let filtered = [...mockMessages];
+                            for (const f of queryFilters) {
+                                filtered = filtered.filter((r: any) => r[f.column] === f.value);
+                            }
+                            return Promise.resolve({ data: filtered, error: null });
+                        }
+                    };
+                    return msgBuilder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            // Scenario 1: Missing viewerRole (undefined) - must default to safe filtering
+            const leadNoRole = await getLeadById('lead-sec-789');
+            assert.ok(leadNoRole, 'Lead must be returned');
+            assert.ok(queryFilters.some(f => f.column === 'type' && f.value === 'message'), 'Missing role must default to type=message filter');
+            assert.strictEqual(leadNoRole!.messages.some(m => m.type === 'note'), false, 'Internal notes must NOT be present when viewerRole is omitted');
+            assert.strictEqual(leadNoRole!.messages.length, 2, 'Normal conversation messages must remain present');
+
+            // Scenario 2: Partner viewerRole - must filter internal notes
+            const leadPartner = await getLeadById('lead-sec-789', Role.FINISHING_PARTNER);
+            assert.ok(leadPartner, 'Lead must be returned');
+            assert.ok(queryFilters.some(f => f.column === 'type' && f.value === 'message'), 'Partner role must filter type=message');
+            assert.strictEqual(leadPartner!.messages.some(m => m.type === 'note'), false, 'Internal notes must NOT be present for partner');
+            assert.strictEqual(leadPartner!.messages.length, 2, 'Conversation messages remain present for partner');
+
+            // Scenario 3: Customer viewerRole - must filter internal notes
+            const leadCustomer = await getLeadById('lead-sec-789', Role.CUSTOMER);
+            assert.ok(leadCustomer, 'Lead must be returned');
+            assert.ok(queryFilters.some(f => f.column === 'type' && f.value === 'message'), 'Customer role must filter type=message');
+            assert.strictEqual(leadCustomer!.messages.some(m => m.type === 'note'), false, 'Internal notes must NOT be present for customer');
+            assert.strictEqual(leadCustomer!.messages.length, 2, 'Conversation messages remain present for customer');
+
+            // Scenario 4: Authorized internal staff (Super Admin) - must access all messages including notes
+            const leadSuperAdmin = await getLeadById('lead-sec-789', Role.SUPER_ADMIN);
+            assert.ok(leadSuperAdmin, 'Lead must be returned');
+            assert.strictEqual(queryFilters.some(f => f.column === 'type'), false, 'Super admin must not have type filter applied');
+            assert.strictEqual(leadSuperAdmin!.messages.length, 3, 'Super admin must receive all messages and notes');
+            assert.strictEqual(leadSuperAdmin!.messages.some(m => m.type === 'note'), true, 'Operational note must be visible to Super Admin');
+
+            // Scenario 5: Authorized internal staff (Decoration Manager) - must access all messages including notes
+            const leadManager = await getLeadById('lead-sec-789', Role.DECORATION_MANAGER);
+            assert.ok(leadManager, 'Lead must be returned');
+            assert.strictEqual(queryFilters.some(f => f.column === 'type'), false, 'Manager must not have type filter applied');
+            assert.strictEqual(leadManager!.messages.length, 3, 'Manager must receive all messages and notes');
+            assert.strictEqual(leadManager!.messages.some(m => m.type === 'note'), true, 'Operational note must be visible to Manager');
+        } finally {
+            (supabase as any).from = originalFrom;
+        }
+    });
+
     console.log('\n======================================================');
     console.log(`Results: ${passedCount} passed, ${failedCount} failed`);
     console.log('======================================================\n');

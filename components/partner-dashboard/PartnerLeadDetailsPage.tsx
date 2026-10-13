@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getRequestById, addMessageToLead, updateRequest } from '../../services/requests';
+import { getRequestById, getRequestMessages, addMessageToLead, updateRequest } from '../../services/requests';
 import { useLanguage } from '../shared/LanguageContext';
 import { useAuth } from '../auth/AuthContext';
 import { RequestStatus, Lead, LeadStatus, RequestType, Role, FinishingQuote, DecorationStage } from '../../types';
@@ -59,13 +59,22 @@ const PartnerLeadDetailsPage: React.FC = () => {
         enabled: !!leadId,
     });
     
+    const { data: requestMessages = [] } = useQuery({
+        queryKey: ['requestMessages', leadId],
+        queryFn: () => getRequestMessages(leadId!, currentUser?.role),
+        enabled: !!leadId,
+    });
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
 
     const lead = useMemo(() => {
         if (!request || request.type !== RequestType.LEAD) return null;
-        return request.payload as Lead;
-    }, [request]);
+        return {
+            ...(request.payload as Lead),
+            messages: requestMessages
+        };
+    }, [request, requestMessages]);
 
     const { data: quotes = [], refetch: refetchQuotes } = useQuery({
         queryKey: ['finishingQuotes', leadId],
@@ -497,7 +506,10 @@ const PartnerLeadDetailsPage: React.FC = () => {
                             <ConversationThread 
                                 lead={lead} 
                                 requestId={request.id}
-                                onMessageSent={() => queryClient.invalidateQueries({ queryKey: ['request', leadId] })} 
+                                onMessageSent={() => {
+                                    queryClient.invalidateQueries({ queryKey: ['request', leadId] });
+                                    queryClient.invalidateQueries({ queryKey: ['requestMessages', leadId] });
+                                }} 
                             />
                         </CardContent>
                     </Card>

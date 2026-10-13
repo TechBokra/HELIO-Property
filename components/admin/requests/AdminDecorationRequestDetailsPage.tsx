@@ -49,7 +49,7 @@ const AdminDecorationRequestDetailsPage: React.FC = () => {
         queryKey: ['lead', requestId],
         queryFn: async () => {
             if (!requestId) return null;
-            const single = await getLeadById(requestId);
+            const single = await getLeadById(requestId, currentUser?.role);
             if (single) return single;
             const all = await getAllLeads();
             return all.find(l => l.id === requestId) || null;

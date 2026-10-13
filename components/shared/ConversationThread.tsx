@@ -32,8 +32,9 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
     const isPartner = currentUser?.role?.includes('_partner') || (currentUser as any)?.type === 'finishing' || (currentUser as any)?.type === 'agency';
     const isClient = !isStaff && !isPartner;
 
-    // Filter internal notes if viewer is a client
-    const visibleMessages = isClient ? messages.filter(m => m.type === 'message') : messages;
+    // Internal notes are strictly isolated to internal staff; partners and clients only see customer-partner messages
+    const canViewInternalNotes = isStaff;
+    const visibleMessages = canViewInternalNotes ? messages : messages.filter(m => m.type === 'message');
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -55,7 +56,8 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
         if (!newMessage.trim() || !currentUser) return;
         
         const senderType: 'admin' | 'partner' | 'client' = isStaff ? 'admin' : (isPartner ? 'partner' : 'client');
-        const effectiveType: 'message' | 'note' = isClient ? 'message' : messageType;
+        // Non-staff callers (partners and clients) can only send legitimate conversation messages
+        const effectiveType: 'message' | 'note' = isStaff ? messageType : 'message';
         
         mutation.mutate({
             sender: senderType,
@@ -123,7 +125,7 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-2">
-                {!isClient && (
+                {isStaff && (
                     <div className="flex gap-2 text-xs">
                         <button
                             type="button"
@@ -154,8 +156,8 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     placeholder={
-                        isClient
-                            ? (language === 'ar' ? 'اكتب استفسارك أو رسالتك لمسؤول الخدمة هنا...' : 'Type your message or inquiry here...')
+                        !isStaff
+                            ? (language === 'ar' ? 'اكتب رسالتك هنا...' : 'Type your message here...')
                             : (messageType === 'message' ? (language === 'ar' ? 'اكتب رسالة للعميل...' : 'Message to client...') : (language === 'ar' ? 'إضافة ملاحظة داخلية...' : 'Add an internal note...'))
                     }
                     className="mb-2"
@@ -164,7 +166,7 @@ const ConversationThread: React.FC<ConversationThreadProps> = ({ lead, requestId
                 />
                 <div className="flex justify-end items-center">
                     <Button type="submit" isLoading={mutation.isPending} disabled={!newMessage.trim()}>
-                        {isClient
+                        {!isStaff
                             ? (language === 'ar' ? 'إرسال الرسالة' : 'Send Message')
                             : (messageType === 'message' 
                                 ? (language === 'ar' ? 'إرسال للعميل' : 'Send to Client') 

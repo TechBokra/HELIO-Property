@@ -407,7 +407,7 @@ export const getRequestMessages = async (requestId: string, viewerRole?: string)
 
     if (error) {
         console.error('Error fetching request messages:', error);
-        return [];
+        throw error;
     }
 
     return (data || []).map((msg: any) => ({
