@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # قيم وهمية عمدًا: lib/supabase.ts و server/credentialsEndpoint.ts يملكان قيمًا
+      # احتياطية تشير للإنتاج (R1). هذه القيم تمنع CI من الاتصال بقاعدة الإنتاج.
+      VITE_SUPABASE_URL: http://127.0.0.1:54321
+      VITE_SUPABASE_ANON_KEY: ci-dummy-anon-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # لا يوجد lockfile بعد، لذا npm install وليس npm ci (البناء غير قابل لإعادة الإنتاج).
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npx tsc -b
+
+      - name: Build
+        run: npx vite build
+
+      - name: Test
+        run: npm test
+
+      # ESLint بلا قواعد فعلية حاليًا؛ النتيجة للعلم فقط ولا تُفشل الفحص.
+      - name: Lint (informational)
+        run: npm run lint
+        continue-on-error: true
