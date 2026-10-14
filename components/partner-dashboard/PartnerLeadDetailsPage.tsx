@@ -116,13 +116,15 @@ const PartnerLeadDetailsPage: React.FC = () => {
             
             const senderType = currentUser.role.includes('_manager') || currentUser.role === Role.SUPER_ADMIN ? 'admin' : 'partner';
             
-            // 1. Add the note to the lead conversation
-            await addMessageToLead(request.id, {
-                sender: senderType,
-                senderId: currentUser.id,
-                type: 'note',
-                content: note,
-            });
+            // 1. Add the note to the lead conversation if provided
+            if (note && note.trim()) {
+                await addMessageToLead(request.id, {
+                    sender: senderType,
+                    senderId: currentUser.id,
+                    type: senderType === 'admin' ? 'note' : 'message',
+                    content: note.trim(),
+                });
+            }
 
             // 2. Update the payload status locally before sending
             const updatedPayload = { ...lead, status: status };

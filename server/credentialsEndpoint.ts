@@ -32,7 +32,7 @@ export async function handleAdminCredentialsRequest(
 ): Promise<EndpointResult> {
     const supabaseUrl = env.supabaseUrl || process.env.VITE_SUPABASE_URL || 'https://xyyvgpchkznznwbxbgrp.supabase.co';
     const supabaseAnonKey = env.supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM';
-    const serviceRoleKey = env.supabaseServiceKey || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceRoleKey = env.supabaseServiceKey !== undefined ? env.supabaseServiceKey : process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     // 1. Require valid privileged server configuration (P0.2)
     // Never substitute anonymous client for privileged administrative operations or audit logging

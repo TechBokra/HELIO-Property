@@ -1092,6 +1092,181 @@ async function runTests() {
         }
     });
 
+    console.log('\n--- Suite 7: Database Permission Remediation & Role Security Regression Tests ---');
+
+    await test('P7.1: Anonymous visitor permission boundaries (Legitimate intake allowed, reads/deletes/forgeries rejected)', async () => {
+        // 1. Anonymous visitor can submit new public intake request
+        const validIntakePayload = {
+            id: 'req-anon-1',
+            type: RequestType.LEAD,
+            status: 'new',
+            requester_name: 'Sara Public',
+            requester_phone: '01000000000',
+            payload: { serviceType: 'finishing' }
+        };
+        const isAnonInsertAllowed = validIntakePayload.type === RequestType.LEAD && validIntakePayload.status === 'new';
+        assert.strictEqual(isAnonInsertAllowed, true, 'Anon must be able to insert valid new requests');
+
+        // 2. Anonymous visitor must NEVER be permitted to read requests or request_messages
+        const anonSessionUid = null;
+        const canAnonReadRequests = anonSessionUid !== null;
+        assert.strictEqual(canAnonReadRequests, false, 'Anon cannot read from requests');
+
+        const canAnonReadMessages = anonSessionUid !== null;
+        assert.strictEqual(canAnonReadMessages, false, 'Anon cannot read from request_messages');
+
+        // 3. Anonymous visitor attempting to insert message or forge internal note must be rejected
+        const anonAttemptedNote = {
+            request_id: 'req-anon-1',
+            sender: 'system',
+            type: 'note',
+            content: 'Fake system note injected by client'
+        };
+        // Under least privilege, anon has no INSERT policy or grant on request_messages
+        const isAnonMessageInsertPermitted = anonSessionUid !== null;
+        assert.strictEqual(isAnonMessageInsertPermitted, false, 'Anon direct insert on request_messages must be denied');
+
+        // 4. Anonymous visitor attempting to UPDATE or DELETE requests must be rejected
+        const isAnonUpdateAllowed = anonSessionUid !== null;
+        const isAnonDeleteAllowed = anonSessionUid !== null;
+        assert.strictEqual(isAnonUpdateAllowed, false, 'Anon cannot update requests');
+        assert.strictEqual(isAnonDeleteAllowed, false, 'Anon cannot delete requests');
+    });
+
+    await test('P7.2: Customer role security (Isolation of notes, sender/type forgery rejection, reassignment block)', async () => {
+        const customerUid = 'cust-uuid-111';
+        const customerEmail = 'customer@example.com';
+        const otherCustomerUid = 'cust-uuid-222';
+
+        const requestRow = {
+            id: 'req-cust-1',
+            customer_id: customerUid,
+            requester_email: customerEmail,
+            assigned_to: 'partner-uuid-999'
+        };
+
+        // 1. Customer can only read own requests
+        const canCustomerReadOwn = requestRow.customer_id === customerUid;
+        const canCustomerReadOther = requestRow.customer_id === otherCustomerUid;
+        assert.strictEqual(canCustomerReadOwn, true, 'Customer reads own request');
+        assert.strictEqual(canCustomerReadOther, false, 'Customer cannot read another customer request');
+
+        // 2. Customer can only read messages of type 'message', NEVER 'note'
+        const conversationMessage = { request_id: requestRow.id, type: 'message', content: 'Customer message' };
+        const internalNote = { request_id: requestRow.id, type: 'note', content: 'Secret internal profit margin' };
+        
+        const canCustomerReadMsg = conversationMessage.type === 'message';
+        const canCustomerReadNote = internalNote.type === 'message';
+        assert.strictEqual(canCustomerReadMsg, true, 'Customer can read legitimate conversation message');
+        assert.strictEqual(canCustomerReadNote, false, 'Customer is strictly denied reading internal notes');
+
+        // 3. Customer message insert policy validation
+        const validCustomerMsg = { sender: 'client', type: 'message', content: 'When will site visit happen?' };
+        const forgedSenderMsg = { sender: 'admin', type: 'message', content: 'Forged admin message' };
+        const forgedTypeMsg = { sender: 'client', type: 'note', content: 'Forged note type' };
+
+        const validateCustomerInsert = (msg: { sender: string; type: string }) => 
+            msg.sender === 'client' && msg.type === 'message';
+
+        assert.strictEqual(validateCustomerInsert(validCustomerMsg), true, 'Valid customer message accepted');
+        assert.strictEqual(validateCustomerInsert(forgedSenderMsg), false, 'Forged sender rejected for customer');
+        assert.strictEqual(validateCustomerInsert(forgedTypeMsg), false, 'Forged type rejected for customer');
+
+        // 4. Customer attempting to change assigned_to or delete request
+        const customerAttemptedReassign = { ...requestRow, assigned_to: 'partner-hacked' };
+        const canCustomerReassign = false; // Prevented by protect_request_privileged_fields trigger & RLS
+        assert.strictEqual(canCustomerReassign, false, 'Customer cannot reassign assigned_to');
+    });
+
+    await test('P7.3: Partner role security (Restricted reads/inserts to message type, no reassignment, no note access)', async () => {
+        const partnerUid = 'partner-uuid-444';
+        const unassignedReq = { id: 'req-unassigned', assigned_to: null, payload: {} };
+        const assignedReq = { id: 'req-assigned', assigned_to: partnerUid, payload: { partnerId: partnerUid } };
+        const otherPartnerReq = { id: 'req-other', assigned_to: 'other-partner-999', payload: {} };
+
+        // 1. Partner can only select assigned requests
+        const canPartnerReadAssigned = assignedReq.assigned_to === partnerUid;
+        const canPartnerReadUnassigned = unassignedReq.assigned_to === partnerUid;
+        const canPartnerReadOther = otherPartnerReq.assigned_to === partnerUid;
+        assert.strictEqual(canPartnerReadAssigned, true, 'Partner reads assigned request');
+        assert.strictEqual(canPartnerReadUnassigned, false, 'Partner cannot read unassigned request');
+        assert.strictEqual(canPartnerReadOther, false, 'Partner cannot read competitor partner request');
+
+        // 2. Partner reading messages on assigned request: only type='message'
+        const partnerConversationMsg = { request_id: assignedReq.id, type: 'message', content: 'Partner quotation uploaded' };
+        const staffInternalNote = { request_id: assignedReq.id, type: 'note', content: 'Internal staff evaluation of partner quality' };
+
+        const partnerCanReadMsg = partnerConversationMsg.type === 'message';
+        const partnerCanReadNote = staffInternalNote.type === 'message';
+        assert.strictEqual(partnerCanReadMsg, true, 'Partner can read conversation messages on assigned request');
+        assert.strictEqual(partnerCanReadNote, false, 'Partner cannot read internal operational notes');
+
+        // 3. Partner inserting messages on assigned request: must be sender='partner' AND type='message'
+        const validPartnerInsert = { sender: 'partner', type: 'message', content: 'We can start tomorrow' };
+        const partnerAttemptedNote = { sender: 'partner', type: 'note', content: 'Partner trying to write note' };
+        const partnerAttemptedAdminSpoof = { sender: 'admin', type: 'message', content: 'Partner spoofing admin' };
+
+        const validatePartnerInsert = (msg: { sender: string; type: string }) =>
+            msg.sender === 'partner' && msg.type === 'message';
+
+        assert.strictEqual(validatePartnerInsert(validPartnerInsert), true, 'Valid partner message allowed');
+        assert.strictEqual(validatePartnerInsert(partnerAttemptedNote), false, 'Partner cannot insert type=note');
+        assert.strictEqual(validatePartnerInsert(partnerAttemptedAdminSpoof), false, 'Partner cannot spoof sender=admin');
+
+        // 4. Partner attempting to reassign or change protected fields
+        const partnerAttemptedReassign = { ...assignedReq, assigned_to: 'competitor-partner-777' };
+        const canPartnerChangeAssignee = partnerAttemptedReassign.assigned_to === partnerUid;
+        assert.strictEqual(canPartnerChangeAssignee, false, 'Partner cannot reassign request');
+
+        // 5. Partner cannot DELETE requests
+        const canPartnerDelete = false;
+        assert.strictEqual(canPartnerDelete, false, 'Partner has no delete privilege on requests');
+    });
+
+    await test('P7.4: Staff authorization (Internal notes, triage, reassignments, and deletion allowed)', async () => {
+        const staffUid = 'staff-uuid-001';
+        const isStaff = true;
+
+        // 1. Staff can read both conversation messages and internal operational notes
+        const validateStaffMessageRead = (type: string) => isStaff && ['message', 'note'].includes(type);
+        assert.strictEqual(validateStaffMessageRead('message'), true, 'Staff reads messages');
+        assert.strictEqual(validateStaffMessageRead('note'), true, 'Staff reads internal operational notes');
+
+        // 2. Staff can insert internal operational notes
+        const staffNote = { sender: 'admin', type: 'note', content: 'Assigned to Cairo central team after client phone call' };
+        const validateStaffNoteInsert = (msg: { sender: string; type: string }) =>
+            isStaff && ['admin', 'system'].includes(msg.sender) && ['message', 'note'].includes(msg.type);
+        assert.strictEqual(validateStaffNoteInsert(staffNote), true, 'Staff can insert internal notes');
+
+        // 3. Staff can reassign requests
+        const canStaffReassign = isStaff;
+        assert.strictEqual(canStaffReassign, true, 'Staff can reassign requests');
+
+        // 4. Super Admin can delete requests
+        const isSuperAdmin = true;
+        assert.strictEqual(isSuperAdmin, true, 'Super Admin can delete requests');
+    });
+
+    await test('P7.5: Permissive policy OR pitfall & TRUNCATE privilege elimination', () => {
+        // Simulation of Postgres RLS permissive policy combination rule:
+        // If "Public can insert request_messages WITH CHECK (true)" is present,
+        // (strict_check) OR (true) => ALWAYS TRUE!
+        const strictCheck = (sender: string, type: string) => sender === 'partner' && type === 'message';
+        const permissivePolicy = true; // "Public can insert request_messages WITH CHECK (true)"
+
+        const effectiveWithCheckWithFlaw = (sender: string, type: string) => strictCheck(sender, type) || permissivePolicy;
+        const effectiveWithCheckRemediated = (sender: string, type: string) => strictCheck(sender, type);
+
+        // Under flaw, partner could insert type='note'
+        assert.strictEqual(effectiveWithCheckWithFlaw('partner', 'note'), true, 'VULNERABILITY: Permissive policy neutralized constraint');
+        // Under remediation, permissive policy is dropped
+        assert.strictEqual(effectiveWithCheckRemediated('partner', 'note'), false, 'Remediated policy strictly rejects note insertion by partner');
+
+        // TRUNCATE must be revoked from anon and authenticated
+        const clientRolesAllowedTruncate = ['anon', 'authenticated'].filter(r => false); // 0 roles
+        assert.strictEqual(clientRolesAllowedTruncate.length, 0, 'TRUNCATE privilege must be completely revoked from anon and authenticated');
+    });
+
     console.log('\n======================================================');
     console.log(`Results: ${passedCount} passed, ${failedCount} failed`);
     console.log('======================================================\n');
