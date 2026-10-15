@@ -88,22 +88,38 @@ CREATE TABLE IF NOT EXISTS public.request_history (
 -- Audit Integrity: ensure request_id is nullable and foreign key uses ON DELETE SET NULL
 -- Deleting a request entity must NEVER cascade-delete its historical audit records.
 DO $$
+DECLARE
+    r RECORD;
 BEGIN
+    -- Ensure request_id is nullable (safe and idempotent in PostgreSQL)
     ALTER TABLE public.request_history ALTER COLUMN request_id DROP NOT NULL;
-    
-    IF EXISTS (
-        SELECT 1 FROM information_schema.table_constraints 
-        WHERE constraint_name = 'request_history_request_id_fkey' 
-        AND table_name = 'request_history'
-    ) THEN
-        ALTER TABLE public.request_history DROP CONSTRAINT request_history_request_id_fkey;
-    END IF;
 
+    -- Drop any existing foreign key constraint on request_history(request_id)
+    FOR r IN (
+        SELECT con.conname
+        FROM pg_constraint con
+        INNER JOIN pg_class rel ON rel.oid = con.conrelid
+        INNER JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        WHERE nsp.nspname = 'public'
+          AND rel.relname = 'request_history'
+          AND con.contype = 'f'
+          AND ARRAY['request_id'::name] <@ (
+              SELECT array_agg(attname ORDER BY attnum)
+              FROM pg_attribute
+              WHERE attrelid = rel.oid AND attnum = ANY(con.conkey)
+          )
+    ) LOOP
+        EXECUTE 'ALTER TABLE public.request_history DROP CONSTRAINT IF EXISTS ' || quote_ident(r.conname);
+    END LOOP;
+
+    -- Add the constraint with ON DELETE SET NULL
     ALTER TABLE public.request_history 
         ADD CONSTRAINT request_history_request_id_fkey 
         FOREIGN KEY (request_id) REFERENCES public.requests(id) ON DELETE SET NULL;
-EXCEPTION WHEN OTHERS THEN
-    NULL;
+EXCEPTION
+    WHEN duplicate_object THEN
+        -- Only ignore if the constraint with this exact name already exists
+        NULL;
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_request_history_req ON public.request_history(request_id);
