@@ -94,7 +94,8 @@ BEGIN
     -- Ensure request_id is nullable (safe and idempotent in PostgreSQL)
     ALTER TABLE public.request_history ALTER COLUMN request_id DROP NOT NULL;
 
-    -- Drop any existing foreign key constraint on request_history(request_id)
+    -- Drop any existing foreign key constraint strictly on request_history(request_id)
+    -- Excludes composite foreign keys by checking exact equality of conkey attribute array
     FOR r IN (
         SELECT con.conname
         FROM pg_constraint con
@@ -103,11 +104,13 @@ BEGIN
         WHERE nsp.nspname = 'public'
           AND rel.relname = 'request_history'
           AND con.contype = 'f'
-          AND ARRAY['request_id'::name] <@ (
-              SELECT array_agg(attname ORDER BY attnum)
-              FROM pg_attribute
-              WHERE attrelid = rel.oid AND attnum = ANY(con.conkey)
-          )
+          AND con.conkey = ARRAY[(
+              SELECT att.attnum
+              FROM pg_attribute att
+              WHERE att.attrelid = rel.oid
+                AND att.attname = 'request_id'
+                AND NOT att.attisdropped
+          )]
     ) LOOP
         EXECUTE 'ALTER TABLE public.request_history DROP CONSTRAINT IF EXISTS ' || quote_ident(r.conname);
     END LOOP;

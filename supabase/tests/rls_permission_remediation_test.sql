@@ -34,11 +34,8 @@ BEGIN
     END IF;
 
     -- Grant roles to the current session runner so SET LOCAL ROLE succeeds
-    BEGIN
-        EXECUTE 'GRANT anon, authenticated, service_role TO ' || quote_ident(current_user);
-    EXCEPTION WHEN OTHERS THEN
-        NULL;
-    END;
+    -- Do not silently suppress unexpected failures so that setup errors fail fast and cleanly.
+    EXECUTE 'GRANT anon, authenticated, service_role TO ' || quote_ident(current_user);
 END $$;
 
 DO $$
@@ -58,6 +55,8 @@ DECLARE
     v_hist_total INT;
     v_null_fk_count INT;
     v_error_caught BOOLEAN;
+    v_sqlstate TEXT;
+    v_errmsg TEXT;
 BEGIN
     RAISE NOTICE '=== STARTING POSTGRESQL RLS REMEDIATION TESTS ===';
 
@@ -160,13 +159,19 @@ BEGIN
         SET assigned_to = v_other_partner 
         WHERE id = v_req_id;
     EXCEPTION WHEN OTHERS THEN
-        v_error_caught := TRUE;
+        GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE, v_errmsg = MESSAGE_TEXT;
+        -- The protect_request_privileged_fields trigger explicitly raises P0001 (raise_exception)
+        IF v_sqlstate = 'P0001' AND v_errmsg LIKE '%Unauthorized%' THEN
+            v_error_caught := TRUE;
+        ELSE
+            RAISE EXCEPTION 'TEST 3A FAILED: Unexpected error caught instead of trigger authorization failure (SQLSTATE %, message: %)', v_sqlstate, v_errmsg;
+        END IF;
     END;
 
     IF NOT v_error_caught THEN
-        RAISE EXCEPTION 'TEST 3A FAILED: Partner was able to reassign request assigned_to!';
+        RAISE EXCEPTION 'TEST 3A FAILED: Unauthorized update succeeded! Partner was able to reassign request assigned_to.';
     END IF;
-    RAISE NOTICE 'TEST 3A PASSED: Partner request reassignment blocked.';
+    RAISE NOTICE 'TEST 3A PASSED: Partner request reassignment blocked (SQLSTATE P0001 verified).';
 
     -- 3B: Partner attempts to set customer_id on request where customer_id was NULL
     v_error_caught := FALSE;
@@ -175,13 +180,18 @@ BEGIN
         SET customer_id = v_customer_id 
         WHERE id = v_req_id;
     EXCEPTION WHEN OTHERS THEN
-        v_error_caught := TRUE;
+        GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE, v_errmsg = MESSAGE_TEXT;
+        IF v_sqlstate = 'P0001' AND v_errmsg LIKE '%Unauthorized%' THEN
+            v_error_caught := TRUE;
+        ELSE
+            RAISE EXCEPTION 'TEST 3B FAILED: Unexpected error caught instead of trigger authorization failure (SQLSTATE %, message: %)', v_sqlstate, v_errmsg;
+        END IF;
     END;
 
     IF NOT v_error_caught THEN
-        RAISE EXCEPTION 'TEST 3B FAILED: Partner was able to set customer_id from NULL!';
+        RAISE EXCEPTION 'TEST 3B FAILED: Unauthorized update succeeded! Partner was able to set customer_id from NULL.';
     END IF;
-    RAISE NOTICE 'TEST 3B PASSED: Partner setting customer_id from NULL blocked.';
+    RAISE NOTICE 'TEST 3B PASSED: Partner setting customer_id from NULL blocked (SQLSTATE P0001 verified).';
 
     -- 3C: Partner attempts to change request type
     v_error_caught := FALSE;
@@ -190,19 +200,25 @@ BEGIN
         SET type = 'PARTNER_APPLICATION' 
         WHERE id = v_req_id;
     EXCEPTION WHEN OTHERS THEN
-        v_error_caught := TRUE;
+        GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE, v_errmsg = MESSAGE_TEXT;
+        IF v_sqlstate = 'P0001' AND v_errmsg LIKE '%Unauthorized%' THEN
+            v_error_caught := TRUE;
+        ELSE
+            RAISE EXCEPTION 'TEST 3C FAILED: Unexpected error caught instead of trigger authorization failure (SQLSTATE %, message: %)', v_sqlstate, v_errmsg;
+        END IF;
     END;
 
     IF NOT v_error_caught THEN
-        RAISE EXCEPTION 'TEST 3C FAILED: Partner was able to alter request type!';
+        RAISE EXCEPTION 'TEST 3C FAILED: Unauthorized update succeeded! Partner was able to alter request type.';
     END IF;
-    RAISE NOTICE 'TEST 3C PASSED: Request type modification blocked.';
+    RAISE NOTICE 'TEST 3C PASSED: Request type modification blocked (SQLSTATE P0001 verified).';
 
     -- -------------------------------------------------------------------------
     -- TEST 4: PARTNER SENDER & TYPE RESTRICTIONS ON MESSAGES
     -- Genuine RLS execution under ROLE authenticated (as Partner).
     -- Expected: Partner cannot post type='note' or sender='admin'.
-    -- Must fail explicitly if unauthorized insert succeeds; pass only on rejection.
+    -- Must fail explicitly if unauthorized insert succeeds; pass only on expected
+    -- PostgreSQL RLS denial (SQLSTATE '42501': insufficient_privilege).
     -- -------------------------------------------------------------------------
     RAISE NOTICE '--- Test 4: Partner Sender/Type Restriction Verification (ROLE authenticated, Partner) ---';
 
@@ -212,13 +228,18 @@ BEGIN
         INSERT INTO public.request_messages (request_id, sender, type, content)
         VALUES (v_req_id, 'admin', 'message', 'Partner forged admin message');
     EXCEPTION WHEN OTHERS THEN
-        v_error_caught := TRUE;
+        GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE, v_errmsg = MESSAGE_TEXT;
+        IF v_sqlstate = '42501' THEN
+            v_error_caught := TRUE;
+        ELSE
+            RAISE EXCEPTION 'TEST 4A FAILED: Unexpected error caught instead of RLS denial (expected SQLSTATE 42501, got %: %)', v_sqlstate, v_errmsg;
+        END IF;
     END;
 
     IF NOT v_error_caught THEN
         RAISE EXCEPTION 'TEST 4A FAILED: Unauthorized message insert succeeded! Partner was able to forge admin sender.';
     END IF;
-    RAISE NOTICE 'TEST 4A PASSED: Partner cannot forge admin sender (rejected as expected).';
+    RAISE NOTICE 'TEST 4A PASSED: Partner cannot forge admin sender (rejected with SQLSTATE 42501 as expected).';
 
     -- 4B: Attempt internal note insertion type='note'
     v_error_caught := FALSE;
@@ -226,13 +247,18 @@ BEGIN
         INSERT INTO public.request_messages (request_id, sender, type, content)
         VALUES (v_req_id, 'partner', 'note', 'Partner internal note');
     EXCEPTION WHEN OTHERS THEN
-        v_error_caught := TRUE;
+        GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE, v_errmsg = MESSAGE_TEXT;
+        IF v_sqlstate = '42501' THEN
+            v_error_caught := TRUE;
+        ELSE
+            RAISE EXCEPTION 'TEST 4B FAILED: Unexpected error caught instead of RLS denial (expected SQLSTATE 42501, got %: %)', v_sqlstate, v_errmsg;
+        END IF;
     END;
 
     IF NOT v_error_caught THEN
         RAISE EXCEPTION 'TEST 4B FAILED: Unauthorized message insert succeeded! Partner was able to insert message with type=note.';
     END IF;
-    RAISE NOTICE 'TEST 4B PASSED: Partner cannot create type=note (rejected as expected).';
+    RAISE NOTICE 'TEST 4B PASSED: Partner cannot create type=note (rejected with SQLSTATE 42501 as expected).';
 
     -- 4C: Legitimate partner message should succeed
     INSERT INTO public.request_messages (request_id, sender, type, content)
