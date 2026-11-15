@@ -516,5 +516,185 @@ export let propertiesData: Property[] = [
       listingStartDate: '2024-07-25',
       contactMethod: 'platform',
       listingStatus: 'active',
+      cityId: 'heliopolis',
+    },
+    {
+      id: 'villa-shorouk-101',
+      partnerId: 'sodic',
+      projectId: 'proj-shorouk-1',
+      imageUrl: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+      imageUrl_small: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+      imageUrl_medium: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+      imageUrl_large: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+      gallery: ['/src/assets/images/city_portal_shorouk_1794779921340.jpg'],
+      status: { en: 'For Sale', ar: 'للبيع' },
+      price: { en: 'EGP 9,850,000', ar: '9,850,000 ج.م' },
+      priceNumeric: 9850000,
+      type: { en: 'Villa', ar: 'فيلا' },
+      title: {
+        ar: 'تاون هاوس ناصية في الباتيو كازا الشروق',
+        en: 'Corner Townhouse in El Patio Casa El Shorouk'
+      },
+      address: {
+        ar: 'مدينة الشروق، مدخل ٢ طريق السويس، الباتيو كازا',
+        en: 'El Shorouk City, Entrance 2 Suez Road, El Patio Casa'
+      },
+      description: {
+        ar: 'تاون هاوس ناصية بحديقة خاصة 140 متر وإطلالة مباشرة على اللاندسكيب والمسطحات المائية في قلب مدينة الشروق.',
+        en: 'Corner townhouse with a 140 sqm private garden overlooking lush landscaping and water features in El Shorouk City.'
+      },
+      beds: 4,
+      baths: 4,
+      area: 245,
+      amenities: {
+        ar: ['حديقة خاصة', 'نادي اجتماعي', 'أمن 24/7', 'جراج خاص'],
+        en: ['Private Garden', 'Clubhouse', '24/7 Security', 'Private Garage']
+      },
+      finishingStatus: { en: 'Semi-finished', ar: 'نصف تشطيب' },
+      installmentsAvailable: true,
+      isInCompound: true,
+      realEstateFinanceAvailable: true,
+      delivery: { isImmediate: true },
+      installments: { downPayment: 1970000, monthlyInstallment: 93800, years: 7 },
+      location: { lat: 30.1449, lng: 31.6295 },
+      listingStartDate: '2024-08-01',
+      contactMethod: 'platform',
+      listingStatus: 'active',
+      cityId: 'shorouk',
+    },
+    {
+      id: 'apartment-shorouk-102',
+      partnerId: 'capital-group-properties',
+      projectId: 'proj-shorouk-2',
+      imageUrl: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+      imageUrl_small: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+      imageUrl_medium: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+      imageUrl_large: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+      gallery: ['/src/assets/images/city_portal_shorouk_1794779921340.jpg'],
+      status: { en: 'For Sale', ar: 'للبيع' },
+      price: { en: 'EGP 4,600,000', ar: '4,600,000 ج.م' },
+      priceNumeric: 4600000,
+      type: { en: 'Apartment', ar: 'شقة' },
+      title: {
+        ar: 'شقة 180م ألترا سوبر لوكس بجوار نادي هليوبوليس الشروق',
+        en: '180 sqm Ultra Super Lux Apartment near Heliopolis Club Shorouk'
+      },
+      address: {
+        ar: 'مدينة الشروق، الحي الثامن، المجاورة الأولى',
+        en: 'El Shorouk City, 8th District, Neighborhood 1'
+      },
+      description: {
+        ar: 'شقة واجهة بحرية بالكامل خطوات من نادي هليوبوليس الشروق والجامعة البريطانية BUE، تشطيب فندقي فاخر واستلام فوري.',
+        en: 'North-facing apartment steps from Heliopolis Sporting Club El Shorouk and BUE, hotel-grade finishing and immediate delivery.'
+      },
+      beds: 3,
+      baths: 3,
+      area: 180,
+      floor: 2,
+      amenities: {
+        ar: ['أسانسير', 'حصة في الجراج', 'عدادات كاملة', 'واجهة بحرية'],
+        en: ['Elevator', 'Garage Share', 'Full Utilities', 'North Facade']
+      },
+      finishingStatus: { en: 'Super Lux', ar: 'سوبر لوكس' },
+      installmentsAvailable: false,
+      isInCompound: true,
+      realEstateFinanceAvailable: true,
+      delivery: { isImmediate: true },
+      location: { lat: 30.1395, lng: 31.6185 },
+      listingStartDate: '2024-08-05',
+      contactMethod: 'platform',
+      listingStatus: 'active',
+      cityId: 'shorouk',
+    },
+    {
+      id: 'apartment-badr-201',
+      partnerId: 'modern-construction-group',
+      projectId: 'proj-badr-1',
+      imageUrl: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+      imageUrl_small: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+      imageUrl_medium: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+      imageUrl_large: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+      gallery: ['/src/assets/images/city_portal_badr_1794779922365.jpg'],
+      status: { en: 'For Sale', ar: 'للبيع' },
+      price: { en: 'EGP 2,850,000', ar: '2,850,000 ج.م' },
+      priceNumeric: 2850000,
+      type: { en: 'Apartment', ar: 'شقة' },
+      title: {
+        ar: 'شقة 160م بالحي المتميز في مدينة بدر أمام محطة القطار الكهربائي',
+        en: '160 sqm Apartment in Badr Distinguished District Facing LRT'
+      },
+      address: {
+        ar: 'مدينة بدر، الحي المتميز، بدر جاردنز سيتي سنتر',
+        en: 'Badr City, Distinguished District, Badr Gardens City Center'
+      },
+      description: {
+        ar: 'وحدة سكنية فاخرة في قلب الحي المتميز بمدينة بدر على بُعد 3 دقائق من محطة القطار الكهربائي LRT وطريق السويس والعاصمة الإدارية.',
+        en: 'Luxury residential apartment in Badr Distinguished District 3 minutes from the LRT station, Suez Road, and New Administrative Capital.'
+      },
+      beds: 3,
+      baths: 2,
+      area: 160,
+      floor: 3,
+      amenities: {
+        ar: ['بجوار محطة LRT', 'جراج خاص', 'حديقة عائلية', 'أمن 24/7'],
+        en: ['Near LRT Station', 'Private Garage', 'Family Garden', '24/7 Security']
+      },
+      finishingStatus: { en: 'Fully Finished', ar: 'تشطيب كامل' },
+      installmentsAvailable: true,
+      isInCompound: true,
+      realEstateFinanceAvailable: true,
+      delivery: { isImmediate: true },
+      installments: { downPayment: 850000, monthlyInstallment: 41600, years: 4 },
+      location: { lat: 30.1365, lng: 31.7145 },
+      listingStartDate: '2024-08-08',
+      contactMethod: 'platform',
+      listingStatus: 'active',
+      cityId: 'badr',
+    },
+    {
+      id: 'commercial-badr-202',
+      partnerId: 'modern-construction-group',
+      projectId: 'proj-badr-1',
+      imageUrl: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+      imageUrl_small: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+      imageUrl_medium: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+      imageUrl_large: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+      gallery: ['/src/assets/images/city_portal_badr_1794779922365.jpg'],
+      status: { en: 'For Sale', ar: 'للبيع' },
+      price: { en: 'EGP 5,900,000', ar: '5,900,000 ج.م' },
+      priceNumeric: 5900000,
+      type: { en: 'Commercial', ar: 'تجاري' },
+      title: {
+        ar: 'وحدة تجارية وإدارية 115م في المحور المركزي بمدينة بدر',
+        en: '115 sqm Commercial & Retail Unit on Badr Central Axis'
+      },
+      address: {
+        ar: 'مدينة بدر، المحور المركزي التجاري، بجوار مجمع البنوك',
+        en: 'Badr City, Central Commercial Axis, beside Banking Complex'
+      },
+      description: {
+        ar: 'فرصة استثمارية بعائد إيجاري مرتفع في المحور التجاري الرئيسي لمدينة بدر لخدمة الكثافة السكنية وموظفي العاصمة الإدارية.',
+        en: 'High-yield commercial retail opportunity on Badr City’s central axis serving residential and New Capital commuters.'
+      },
+      beds: 0,
+      baths: 1,
+      area: 115,
+      floor: 1,
+      amenities: {
+        ar: ['واجهة زجاجية مزدوجة', 'ساحة انتظار سيارات', 'مولدات طوارئ'],
+        en: ['Double Glass Facade', 'Parking Plaza', 'Backup Generators']
+      },
+      finishingStatus: { en: 'Semi-finished', ar: 'نصف تشطيب' },
+      installmentsAvailable: true,
+      isInCompound: false,
+      realEstateFinanceAvailable: false,
+      delivery: { isImmediate: true },
+      installments: { downPayment: 1475000, monthlyInstallment: 73750, years: 5 },
+      location: { lat: 30.1380, lng: 31.7190 },
+      listingStartDate: '2024-08-10',
+      contactMethod: 'platform',
+      listingStatus: 'active',
+      cityId: 'badr',
     }
 ];
+

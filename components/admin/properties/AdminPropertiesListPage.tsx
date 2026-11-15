@@ -19,6 +19,7 @@ import ErrorState from '../../shared/ErrorState';
 import { getAllPropertyTypes, getAllFinishingStatuses } from '../../../services/filters';
 import { StatusBadge } from '../../ui/StatusBadge';
 import { useToast } from '../../shared/ToastContext';
+import { useCityStore } from '../../../store/useCityStore';
 
 interface AdminPropertiesListPageProps {
     title?: string;
@@ -57,7 +58,20 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
     const { data: propertyTypes } = useQuery({ queryKey: ['propertyTypes'], queryFn: getAllPropertyTypes });
     const { data: finishingStatuses } = useQuery({ queryKey: ['finishingStatuses'], queryFn: getAllFinishingStatuses });
     
-    const properties = propProperties || fetchedProperties;
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const cities = useCityStore((s) => s.cities);
+
+    const getCityBadgeName = (cityId?: string) => {
+        const target = cities.find(c => c.id === (cityId || 'heliopolis'));
+        return target ? target.name[language] : (language === 'ar' ? 'هليوبوليس الجديدة' : 'New Heliopolis');
+    };
+
+    const properties = useMemo(() => {
+        const base = propProperties || fetchedProperties || [];
+        if (adminCityScope === 'all') return base;
+        return base.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
+    }, [propProperties, fetchedProperties, adminCityScope]);
+
     const isLoading = propIsLoading || fetchedIsLoading;
 
     // Initial filters from URL
@@ -220,12 +234,17 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
                                 <TableCell><img src={prop.imageUrl} alt="" className="w-14 h-14 object-cover rounded-md" /></TableCell>
                                 <TableCell className="font-medium text-gray-900 dark:text-white max-w-xs">
                                     <div className="truncate">{prop.title?.[language] || prop.title?.en || prop.title?.ar || ''}</div>
-                                    {prop.projectName && (
-                                        <span className="text-xs text-amber-600 dark:text-amber-400 block truncate">
-                                            {prop.projectName[language] || prop.projectName.en || prop.projectName.ar || ''}
+                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                            {getCityBadgeName(prop.cityId)}
                                         </span>
-                                    )}
-                                    {prop.listingStatus === 'draft' && <span className="block text-xs text-amber-600 font-normal">(Draft / Pending Review)</span>}
+                                        {prop.projectName && (
+                                            <span className="text-xs text-amber-600 dark:text-amber-400 truncate">
+                                                • {prop.projectName[language] || prop.projectName.en || prop.projectName.ar || ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {prop.listingStatus === 'draft' && <span className="block text-xs text-amber-600 font-normal mt-0.5">(Draft / Pending Review)</span>}
                                 </TableCell>
                                 <TableCell className="text-xs whitespace-nowrap">{prop.type?.[language] || prop.type?.en || ''}</TableCell>
                                 <TableCell className="whitespace-nowrap">

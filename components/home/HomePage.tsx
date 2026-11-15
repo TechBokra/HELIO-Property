@@ -13,15 +13,20 @@ import { useLanguage } from '../shared/LanguageContext';
 import SocialProof from './SocialProof';
 import Testimonial from './Testimonial';
 import { useSiteContent } from '../../hooks/useSiteContent';
+import { useCityStore } from '../../store/useCityStore';
 
 const HomePage: React.FC = () => {
     const { language, t } = useLanguage();
     const { data: siteContent } = useSiteContent();
-    const pageTitle = `ONLY HELIO | ${t.nav.home}`;
+    const activeCity = useCityStore((s) => s.getActiveCity());
+    const brandTitle = activeCity?.brandTitle?.[language] || 'ONLY HELIO';
+    const pageTitle = `${brandTitle} | ${t.nav.home}`;
     const pageDescription =
-        language === 'ar'
-            ? 'بوابتك الحصرية لأرقى العقارات والخدمات في هليوبوليس الجديدة. اكتشف روائع معمارية وخدمات تشطيب وديكور متكاملة.'
-            : 'Your exclusive gateway to the finest properties and services in New Heliopolis. Discover architectural masterpieces and integrated finishing and decoration services.';
+        activeCity && activeCity.id !== 'heliopolis'
+            ? activeCity.tagline[language]
+            : language === 'ar'
+                ? 'بوابتك الحصرية لأرقى العقارات والخدمات في هليوبوليس الجديدة. اكتشف روائع معمارية وخدمات تشطيب وديكور متكاملة.'
+                : 'Your exclusive gateway to the finest properties and services in New Heliopolis. Discover architectural masterpieces and integrated finishing and decoration services.';
 
     return (
         <>

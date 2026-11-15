@@ -77,6 +77,7 @@ const AdminAuditLogPage = React.lazy(() => import('./governance/AdminAuditLogPag
 const AdminOperationsCenterPage = React.lazy(() => import('./operations/AdminOperationsCenterPage'));
 const AdminCreateRequestPage = React.lazy(() => import('./requests/AdminCreateRequestPage'));
 const AdminRequestDetailsPage = React.lazy(() => import('./requests/AdminRequestDetailsPage'));
+const AdminCitiesPage = React.lazy(() => import('./cities/AdminCitiesPage'));
 
 const AdminRoutes: React.FC = () => {
     return (
@@ -84,6 +85,16 @@ const AdminRoutes: React.FC = () => {
             <Routes>
                 {/* 1. Control Center Dashboard */}
                 <Route index element={<AdminHomePage />} />
+
+                {/* Multi-City & Subdomains Governance */}
+                <Route
+                    path="cities"
+                    element={
+                        <ProtectedRoute permission={Permission.VIEW_ADMIN_DASHBOARD}>
+                            <AdminCitiesPage />
+                        </ProtectedRoute>
+                    }
+                />
 
                 {/* Operations Center (Phase 3B Canonical) */}
                 <Route 

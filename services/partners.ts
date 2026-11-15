@@ -30,7 +30,8 @@ export const getFallbackPartners = (): Partner[] => {
             contactMethods: p.contactMethods || { whatsapp: { enabled: false, number: '' }, phone: { enabled: false, number: '' }, form: { enabled: true } },
             subscriptionEndDate: p.subscriptionEndDate,
             parentId: p.parentId,
-            createdAt: p.createdAt
+            createdAt: p.createdAt,
+            allowedCities: (p as any).allowedCities || (resolvedRole === Role.SUPER_ADMIN ? ['*'] : ['heliopolis', 'shorouk', 'badr'])
         };
     });
 };
@@ -69,6 +70,14 @@ export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
         ? ADMIN_AVATAR_CDN
         : row.image_url || (resolvedRole === Role.SUPER_ADMIN ? 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=400&auto=format&fit=crop' : 'https://via.placeholder.com/150');
 
+    const rawAllowedCities = Array.isArray(row.allowed_cities)
+        ? row.allowed_cities
+        : Array.isArray(contactMethods?._allowedCities)
+            ? contactMethods._allowedCities
+            : resolvedRole === Role.SUPER_ADMIN
+                ? ['*']
+                : ['heliopolis'];
+
     return {
         id: row.id,
         email: row.email,
@@ -85,7 +94,8 @@ export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
         contactMethods,
         subscriptionEndDate: row.subscription_end_date,
         parentId: row.parent_id,
-        createdAt: row.created_at
+        createdAt: row.created_at,
+        allowedCities: rawAllowedCities
     };
 };
 
@@ -285,6 +295,9 @@ export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
     const newId = authData.user.id;
 
     const resolvedRole = mapPartnerTypeToRole(userData.type, userData.role || userData.type);
+    const allowedCities = Array.isArray(userData.allowedCities) && userData.allowedCities.length > 0
+        ? userData.allowedCities
+        : (resolvedRole === Role.SUPER_ADMIN ? ['*'] : ['heliopolis']);
 
     const dbPayload = {
         id: newId,
@@ -295,11 +308,18 @@ export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
         subscription_plan: 'basic',
         name_ar: userData.nameAr,
         name_en: userData.name,
-        image_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto.format&fit=crop'
+        image_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto.format&fit=crop',
+        contact_methods: {
+            whatsapp: { enabled: false, number: '' },
+            phone: { enabled: false, number: '' },
+            form: { enabled: true },
+            _allowedCities: allowedCities
+        }
     };
 
     const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
     if (error) throw error;
+    invalidatePartnersCache();
     return mapPartnerFromDb(data) as AdminPartner;
 };
 
@@ -312,7 +332,12 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
     if (updates.descriptionEn) dbUpdates.description_en = updates.descriptionEn;
     if (updates.imageUrl) dbUpdates.image_url = updates.imageUrl;
     if (updates.status) dbUpdates.status = updates.status;
-    if (updates.contactMethods) dbUpdates.contact_methods = updates.contactMethods;
+    if (updates.contactMethods || updates.allowedCities) {
+        const baseContact = updates.contactMethods || { whatsapp: { enabled: false }, phone: { enabled: false }, form: { enabled: true } };
+        dbUpdates.contact_methods = updates.allowedCities
+            ? { ...baseContact, _allowedCities: updates.allowedCities }
+            : baseContact;
+    }
     if (updates.email) dbUpdates.email = updates.email;
     if (updates.type) {
         dbUpdates.type = updates.type;

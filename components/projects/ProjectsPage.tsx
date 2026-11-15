@@ -16,6 +16,8 @@ import { Card, CardContent } from '../ui/Card';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { getResponsiveImageSources } from '../../utils/imageUtils';
 import { projectsData } from '../../data/projects';
+import { useCityStore } from '../../store/useCityStore';
+import { filterProjectsByCity } from '../../services/projects';
 
 interface ProjectCardProps {
     project: Project; 
@@ -87,17 +89,20 @@ const ProjectCard: React.FC<ProjectCardProps> = React.memo(({ project, developer
 const ProjectsPage: React.FC = () => {
   const { language, t } = useLanguage();
   const [view, setView] = useState<'grid' | 'list'>('grid');
+  const activeCityId = useCityStore((s) => s.activeCityId);
+  const activeCity = useCityStore((s) => s.getActiveCity());
+  const cityProjectsFallback = useMemo(() => filterProjectsByCity(projectsData, activeCityId), [activeCityId]);
   
   const { data: siteContent } = useSiteContent();
   const { 
-    data: projects = projectsData, 
+    data: projects = cityProjectsFallback, 
     isLoading: isLoadingProjs, 
     isError: isProjectsError, 
     refetch: refetchProjects 
   } = useQuery<Project[]>({ 
-    queryKey: ['allProjects'], 
-    queryFn: getAllProjects,
-    placeholderData: projectsData,
+    queryKey: ['allProjects', activeCityId], 
+    queryFn: () => getAllProjects(activeCityId),
+    placeholderData: cityProjectsFallback,
     staleTime: 1000 * 60 * 5 
   });
   const { data: partners } = useQuery<Partner[]>({ 
@@ -106,8 +111,8 @@ const ProjectsPage: React.FC = () => {
     staleTime: 1000 * 60 * 5 
   });
   const { data: properties } = useQuery<Property[]>({ 
-    queryKey: ['allProperties'], 
-    queryFn: getAllProperties,
+    queryKey: ['allProperties', activeCityId], 
+    queryFn: () => getAllProperties(activeCityId),
     staleTime: 1000 * 60 * 5 
   });
   
@@ -116,7 +121,7 @@ const ProjectsPage: React.FC = () => {
   // Use dynamic content if available, fallback to translation file
   const content = siteContent?.projectsPage?.[language] || t.projectsPage;
   
-  const projectsList = Array.isArray(projects) ? projects : projectsData;
+  const projectsList = Array.isArray(projects) ? filterProjectsByCity(projects, activeCityId) : cityProjectsFallback;
 
   const projectsWithDetails = useMemo(() => {
     return projectsList.map(project => {
@@ -126,16 +131,24 @@ const ProjectsPage: React.FC = () => {
     });
   }, [projectsList, partners, properties]);
 
+  const brandLabel = activeCity?.brandTitle?.[language] || 'ONLY HELIO';
+
   return (
     <div className="bg-gray-50 py-20">
       <SEO 
-        title={`${t.nav.projects} | ONLY HELIO`}
+        title={`${t.nav.projects} | ${brandLabel}`}
         description={content.subtitle}
       />
       <div className="container mx-auto px-6">
         <div className="text-center mb-16">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900">{content.title}</h1>
-          <p className="text-lg text-gray-500 mt-4 max-w-3xl mx-auto">{content.subtitle}</p>
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900">
+            {activeCityId !== 'heliopolis'
+              ? (language === 'ar' ? `مشروعات وكمبوندات ${activeCity.name.ar}` : `${activeCity.name.en} Compounds & Projects`)
+              : content.title}
+          </h1>
+          <p className="text-lg text-gray-500 mt-4 max-w-3xl mx-auto">
+            {activeCityId !== 'heliopolis' ? activeCity.tagline[language] : content.subtitle}
+          </p>
         </div>
         
         <div className="flex justify-end items-center mb-8 max-w-7xl mx-auto">

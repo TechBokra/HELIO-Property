@@ -2445,6 +2445,160 @@ async function runTests() {
         assert.strictEqual(clientRolesAllowedTruncate.length, 0, 'TRUNCATE privilege must be completely revoked from anon and authenticated');
     });
 
+    // ------------------------------------------------------------------------
+    // SUITE 8: Multi-City & Subdomain Ecosystem Verification (Only Property)
+    // ------------------------------------------------------------------------
+    console.log('\n--- Suite 8: Only Property Multi-City & Subdomain Ecosystem Verification ---');
+
+    await test('MC.1: resolveCityFromEnvironment resolves Root Hub vs City Subdomains and URL query parameters accurately', async () => {
+        const { resolveCityFromEnvironment, INITIAL_CITIES } = await import('../data/cities');
+
+        assert.strictEqual(INITIAL_CITIES.length >= 3, true, 'Must define at least 3 initial cities (heliopolis, shorouk, badr)');
+
+        // Root Hub domain resolution
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('only-property.com', ''),
+            { portalMode: 'hub', cityId: 'heliopolis' }
+        );
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('www.only-property.com', ''),
+            { portalMode: 'hub', cityId: 'heliopolis' }
+        );
+
+        // Subdomain resolution (including common spelling aliases)
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('heliopolis.only-property.com', ''),
+            { portalMode: 'city', cityId: 'heliopolis' }
+        );
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('heliopolies.only-property.com', ''),
+            { portalMode: 'city', cityId: 'heliopolis' }
+        );
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('shorouk.only-property.com', ''),
+            { portalMode: 'city', cityId: 'shorouk' }
+        );
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('shrouk.only-property.com', ''),
+            { portalMode: 'city', cityId: 'shorouk' }
+        );
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('badr.only-property.com', ''),
+            { portalMode: 'city', cityId: 'badr' }
+        );
+
+        // Query param preview override on localhost
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('localhost', '?city=hub'),
+            { portalMode: 'hub', cityId: 'heliopolis' }
+        );
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('localhost', '?city=shorouk'),
+            { portalMode: 'city', cityId: 'shorouk' }
+        );
+        assert.deepStrictEqual(
+            resolveCityFromEnvironment('localhost', '?city=badr'),
+            { portalMode: 'city', cityId: 'badr' }
+        );
+    });
+
+    await test('MC.2: City-scoped property and project filtering strictly isolates each city while preserving global All-Cities view', async () => {
+        const { filterPropertiesByCity } = await import('../services/properties');
+        const { filterProjectsByCity } = await import('../services/projects');
+        const { propertiesData } = await import('../data/properties');
+        const { projectsData } = await import('../data/projects');
+
+        const helioProps = filterPropertiesByCity(propertiesData, 'heliopolis');
+        const shoroukProps = filterPropertiesByCity(propertiesData, 'shorouk');
+        const badrProps = filterPropertiesByCity(propertiesData, 'badr');
+        const allProps = filterPropertiesByCity(propertiesData, 'all');
+
+        assert.ok(helioProps.length > 0, 'Heliopolis must have properties');
+        assert.ok(shoroukProps.length > 0, 'El Shorouk must have isolated properties');
+        assert.ok(badrProps.length > 0, 'Badr City must have isolated properties');
+        assert.strictEqual(allProps.length, propertiesData.length, 'Global all-cities scope must return all properties');
+        assert.strictEqual(
+            shoroukProps.every(p => p.cityId === 'shorouk'),
+            true,
+            'Shorouk portal must only return Shorouk properties'
+        );
+        assert.strictEqual(
+            badrProps.every(p => p.cityId === 'badr'),
+            true,
+            'Badr portal must only return Badr properties'
+        );
+
+        const shoroukProjects = filterProjectsByCity(projectsData, 'shorouk');
+        const badrProjects = filterProjectsByCity(projectsData, 'badr');
+        assert.ok(shoroukProjects.length > 0, 'Shorouk must have isolated projects');
+        assert.ok(badrProjects.length > 0, 'Badr must have isolated projects');
+    });
+
+    await test('MC.3: Multi-City SQL migration 20261015_multi_city_only_property_architecture.sql defines cities table, city_id tenant columns, and RLS', () => {
+        const sqlPath = path.resolve(
+            process.cwd(),
+            'supabase/migrations/20261015_multi_city_only_property_architecture.sql'
+        );
+        assert.strictEqual(fs.existsSync(sqlPath), true, 'Multi-city migration file must exist');
+        const sql = fs.readFileSync(sqlPath, 'utf8');
+
+        assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.cities/);
+        assert.match(sql, /ALTER TABLE public\.cities ENABLE ROW LEVEL SECURITY/);
+        assert.match(sql, /ADD COLUMN IF NOT EXISTS city_id TEXT NOT NULL DEFAULT 'heliopolis'/);
+        assert.match(sql, /ADD COLUMN IF NOT EXISTS allowed_cities TEXT\[\]/);
+        assert.match(sql, /CREATE OR REPLACE FUNCTION public\.can_access_city\(target_city_id TEXT\)/);
+    });
+
+    await test('MC.4: Admin Control Plane scopes unified operational requests by cityId and maps partner allowedCities permissions', async () => {
+        const { useCityStore } = await import('../store/useCityStore');
+
+        // Verify store adminCityScope switching
+        useCityStore.getState().setAdminCityScope('shorouk');
+        assert.strictEqual(useCityStore.getState().adminCityScope, 'shorouk');
+        useCityStore.getState().setAdminCityScope('all');
+        assert.strictEqual(useCityStore.getState().adminCityScope, 'all');
+
+        // Verify operational request cityId mapping and filtering
+        const helioReq = mapRequestToUnified(mapRequestFromDb({
+            id: 'req-helio-1',
+            city_id: 'heliopolis',
+            type: RequestType.PROPERTY_INQUIRY,
+            status: 'new',
+            created_at: new Date().toISOString(),
+            requester_name: 'Helio Buyer',
+            requester_phone: '010111',
+            payload: {}
+        }));
+        const shoroukReq = mapRequestToUnified(mapRequestFromDb({
+            id: 'req-shorouk-1',
+            city_id: 'shorouk',
+            type: RequestType.PROPERTY_INQUIRY,
+            status: 'new',
+            created_at: new Date().toISOString(),
+            requester_name: 'Shorouk Buyer',
+            requester_phone: '010222',
+            payload: { cityId: 'shorouk' }
+        }));
+
+        assert.strictEqual(helioReq.cityId, 'heliopolis');
+        assert.strictEqual(shoroukReq.cityId, 'shorouk');
+        assert.strictEqual(matchesUnifiedRequestFilter(helioReq, { cityId: 'shorouk' }), false);
+        assert.strictEqual(matchesUnifiedRequestFilter(shoroukReq, { cityId: 'shorouk' }), true);
+        assert.strictEqual(matchesUnifiedRequestFilter(shoroukReq, { cityId: 'all' }), true);
+
+        // Verify partner allowedCities mapping
+        const { mapPartnerFromDb } = await import('../services/partners');
+        const mappedPartner = mapPartnerFromDb({
+            id: 'p-multi-1',
+            email: 'manager@only-property.com',
+            type: 'listings_manager',
+            role: 'listings_manager',
+            status: 'active',
+            contact_methods: { _allowedCities: ['shorouk', 'badr'] }
+        });
+        assert.deepStrictEqual(mappedPartner.allowedCities, ['shorouk', 'badr']);
+    });
+
     console.log('\n======================================================');
     console.log(`Results: ${passedCount} passed, ${failedCount} failed`);
     console.log('======================================================\n');
@@ -2455,3 +2609,4 @@ async function runTests() {
 }
 
 runTests();
+

@@ -16,6 +16,7 @@ export const isValidUUID = (id?: string): boolean => {
 // Helper to map DB row to Request object
 export const mapRequestFromDb = (row: any): Request => ({
     id: row.id,
+    cityId: row.city_id || row.payload?.cityId || row.payload?.propertyDetails?.cityId || 'heliopolis',
     type: row.type as RequestType,
     status: row.status,
     customerId: row.customer_id,
@@ -625,6 +626,7 @@ export const mapRequestToUnified = (
 
     return {
         id: req.id,
+        cityId: req.cityId || payload.cityId || payload.propertyDetails?.cityId || 'heliopolis',
         type: req.type,
         typeLabel,
         domain,
@@ -667,6 +669,7 @@ export const mapRequestToUnified = (
 };
 
 export interface UnifiedRequestsFilter {
+    cityId?: string | 'all';
     domain?: OperationalDomain | 'all';
     type?: RequestType | 'all';
     operationalStatus?: OperationalStatus | 'all';
@@ -721,6 +724,11 @@ export const matchesUnifiedRequestFilter = (
     const nowMs = now.getTime();
     const oneDayMs = 24 * 60 * 60 * 1000;
     const twoDaysMs = 48 * 60 * 60 * 1000;
+
+    if (filter.cityId && filter.cityId !== 'all' && filter.cityId !== 'hub') {
+        const reqCity = String(req.cityId || req.rawPayload?.cityId || 'heliopolis').toLowerCase();
+        if (reqCity !== filter.cityId.toLowerCase()) return false;
+    }
 
     if (filter.type && filter.type !== 'all' && req.type !== filter.type) {
         return false;
@@ -1156,7 +1164,11 @@ export const getUnifiedRequests = async (
         throw error;
     }
 
-    const mappedRequests = (rawRows || []).map((r: any) => mapRequestToUnified(mapRequestFromDb(r), managersMap, nowMs));
+    const allMappedRequests = (rawRows || []).map((r: any) => mapRequestToUnified(mapRequestFromDb(r), managersMap, nowMs));
+    const hasCityFilter = Boolean(filter.cityId && filter.cityId !== 'all' && filter.cityId !== 'hub');
+    const mappedRequests = hasCityFilter
+        ? allMappedRequests.filter((r: UnifiedRequest) => (r.cityId || 'heliopolis').toLowerCase() === String(filter.cityId).toLowerCase())
+        : allMappedRequests;
 
     // Calculate metrics via lightweight targeted counts aligned with canonical mappings
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
@@ -1186,20 +1198,20 @@ export const getUnifiedRequests = async (
     ]);
 
     const metrics: OperationalMetrics = {
-        total: totalRes.count || 0,
-        unassigned: unassignedRes.count || 0,
-        newCount: newRes.count || 0,
-        inProgress: inProgressRes.count || 0,
-        waiting: waitingRes.count || 0,
-        agedRisk: agedRes.count || 0,
-        highPriority: highPriorityRes.count || 0,
-        resolvedToday: resolvedTodayRes.count || 0,
-        recentlyUpdated: recentlyUpdatedRes.count || 0
+        total: hasCityFilter ? mappedRequests.length : (totalRes.count || 0),
+        unassigned: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => !r.assignedTo).length : (unassignedRes.count || 0),
+        newCount: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.operationalStatus === OperationalStatus.NEW).length : (newRes.count || 0),
+        inProgress: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.operationalStatus === OperationalStatus.IN_PROGRESS).length : (inProgressRes.count || 0),
+        waiting: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.operationalStatus === OperationalStatus.WAITING).length : (waitingRes.count || 0),
+        agedRisk: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.isAged).length : (agedRes.count || 0),
+        highPriority: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.priority === 'high').length : (highPriorityRes.count || 0),
+        resolvedToday: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.operationalStatus === OperationalStatus.RESOLVED).length : (resolvedTodayRes.count || 0),
+        recentlyUpdated: hasCityFilter ? mappedRequests.length : (recentlyUpdatedRes.count || 0)
     };
 
     return {
         requests: mappedRequests,
-        totalCount: count ?? (rawRows?.length || 0),
+        totalCount: hasCityFilter ? mappedRequests.length : (count ?? (rawRows?.length || 0)),
         metrics
     };
 };

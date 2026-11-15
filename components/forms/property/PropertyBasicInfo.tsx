@@ -6,6 +6,7 @@ import FormField, { inputClasses, selectClasses } from '../../ui/FormField';
 import { Role } from '../../../types';
 import { useAuth } from '../../auth/AuthContext';
 import type { Project } from '../../../types';
+import { useCityStore } from '../../../store/useCityStore';
 
 interface PropertyBasicInfoProps {
     projects: Project[];
@@ -18,6 +19,7 @@ const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partner
     const { language, t } = useLanguage();
     const td = t.dashboard.propertyForm;
     const { currentUser } = useAuth();
+    const cities = useCityStore((s) => s.cities);
 
     const availableProjects = isAdmin ? projects : partnerProjects;
     const showProjectSelector = currentUser && (currentUser.role === Role.DEVELOPER_PARTNER || currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.LISTINGS_MANAGER);
@@ -27,17 +29,29 @@ const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partner
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 border-b pb-2 border-gray-100 dark:border-gray-700">
                 {language === 'ar' ? 'البيانات الأساسية' : 'Basic Information'}
             </h2>
-            
-            {showProjectSelector && (
-                <FormField label={language === 'ar' ? 'المشروع (اختياري)' : 'Project (Optional)'} id="projectId">
-                    <select {...register("projectId")} className={selectClasses}>
-                        <option value="">{language === 'ar' ? 'اختر مشروعاً...' : 'Select a project...'}</option>
-                        {availableProjects?.map(proj => (
-                            <option key={proj.id} value={proj.id}>{proj.name[language]}</option>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField label={language === 'ar' ? 'المدينة / النطاق الفرعي (Only Property)' : 'City Subdomain Portal (Only Property)'} id="cityId">
+                    <select {...register("cityId", { required: true })} className={selectClasses}>
+                        {cities.map(city => (
+                            <option key={city.id} value={city.id}>
+                                {city.name[language]} ({city.brandTitle[language]} — {city.subdomain})
+                            </option>
                         ))}
                     </select>
                 </FormField>
-            )}
+
+                {showProjectSelector && (
+                    <FormField label={language === 'ar' ? 'المشروع (اختياري)' : 'Project (Optional)'} id="projectId">
+                        <select {...register("projectId")} className={selectClasses}>
+                            <option value="">{language === 'ar' ? 'اختر مشروعاً...' : 'Select a project...'}</option>
+                            {availableProjects?.map(proj => (
+                                <option key={proj.id} value={proj.id}>{proj.name[language]}</option>
+                            ))}
+                        </select>
+                    </FormField>
+                )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField label={td.propertyTitleAr} id="title.ar">

@@ -16,16 +16,30 @@ import { ResponsiveList } from '../../shared/ResponsiveList';
 import { Card, CardContent } from '../../ui/Card';
 import { BuildingIcon } from '../../ui/Icons';
 import ErrorState from '../../shared/ErrorState';
+import { useCityStore } from '../../../store/useCityStore';
 
 const AdminProjectsPage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_admin = t.adminDashboard;
     const queryClient = useQueryClient();
     const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const cities = useCityStore((s) => s.cities);
 
-    const { data: projects, isLoading: loadingProjects, isError: isErrorProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
+    const getCityBadgeName = (cityId?: string) => {
+        const target = cities.find(c => c.id === (cityId || 'heliopolis'));
+        return target ? target.name[language] : (language === 'ar' ? 'هليوبوليس الجديدة' : 'New Heliopolis');
+    };
+
+    const { data: rawProjects, isLoading: loadingProjects, isError: isErrorProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
     const { data: partners, isLoading: loadingPartners, isError: isErrorPartners, refetch: refetchPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
     const { data: properties, isLoading: loadingProperties, isError: isErrorProperties, refetch: refetchProperties } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties });
+
+    const projects = React.useMemo(() => {
+        if (!rawProjects) return [];
+        if (adminCityScope === 'all') return rawProjects;
+        return rawProjects.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
+    }, [rawProjects, adminCityScope]);
 
     const isLoading = loadingProjects || loadingPartners || loadingProperties;
     const isError = isErrorProjects || isErrorPartners || isErrorProperties;
@@ -75,6 +89,7 @@ const AdminProjectsPage: React.FC = () => {
                 <TableHeader>
                     <TableRow>
                         <TableHead>{t_admin.projects.table.project}</TableHead>
+                        <TableHead>{language === 'ar' ? 'المدينة / النطاق الفرعي' : 'City Portal'}</TableHead>
                         <TableHead>{t_admin.projects.table.partner}</TableHead>
                         <TableHead>{t_admin.projects.table.units}</TableHead>
                         <TableHead>{t_admin.projects.table.actions}</TableHead>
@@ -82,7 +97,7 @@ const AdminProjectsPage: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                         {isLoading ? (
-                        <TableRow><TableCell colSpan={4} className="text-center p-8">Loading...</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={5} className="text-center p-8">Loading...</TableCell></TableRow>
                     ) : items.map(p => (
                         <TableRow key={p.id}>
                             <TableCell>
@@ -91,8 +106,13 @@ const AdminProjectsPage: React.FC = () => {
                                     <div className="font-medium text-gray-900 dark:text-white">{p.name[language]}</div>
                                 </div>
                             </TableCell>
+                            <TableCell>
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                    {getCityBadgeName(p.cityId)}
+                                </span>
+                            </TableCell>
                             <TableCell>{p.partnerName}</TableCell>
-                            <TableCell>{p.unitsCount}</TableCell>
+                            <TableCell className="tabular-nums font-semibold">{p.unitsCount}</TableCell>
                             <TableCell>
                                 <Link to={`/admin/projects/edit/${p.id}`}><Button variant="link">{t.adminShared.edit}</Button></Link>
                                 <Button variant="link" className="text-red-500" onClick={() => setProjectToDelete(p)}>{t.adminShared.delete}</Button>

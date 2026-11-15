@@ -18,9 +18,11 @@ import { UserPlusIcon, UsersIcon, BuildingIcon, KeyIcon } from '../../ui/Icons';
 import { useAuth } from '../../auth/AuthContext';
 import { Permission } from '../../../types';
 import { PasswordManagementModal } from './PasswordManagementModal';
+import { useCityStore } from '../../../store/useCityStore';
 
 const AdminUsersPage: React.FC = () => {
     const { language, t } = useLanguage();
+    const isAr = language === 'ar';
     const t_admin = t.adminDashboard;
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -55,15 +57,49 @@ const AdminUsersPage: React.FC = () => {
         Role.FINISHING_PARTNER,
     ];
 
-    // Filter data based on active tab
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const cities = useCityStore((s) => s.cities);
+
+    const renderAllowedCitiesBadges = (user: AdminPartner) => {
+        const list = user.allowedCities && user.allowedCities.length > 0
+            ? user.allowedCities
+            : (user.role === Role.SUPER_ADMIN ? ['*'] : ['heliopolis']);
+        if (list.includes('*')) {
+            return (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    {isAr ? 'كل المدن (*)' : 'All Cities (*)'}
+                </span>
+            );
+        }
+        return (
+            <div className="flex flex-wrap gap-1">
+                {list.map((cityId) => {
+                    const c = cities.find(ct => ct.id === cityId);
+                    return (
+                        <span key={cityId} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-800 border border-gray-200">
+                            {c ? c.name[language] : cityId}
+                        </span>
+                    );
+                })}
+            </div>
+        );
+    };
+
+    // Filter data based on active tab and adminCityScope
     const filteredData = useMemo(() => {
         if (!partners) return [];
-        if (activeTab === 'internal') {
-            return partners.filter(p => internalUserRoles.includes(p.role));
-        } else {
-            return partners.filter(p => partnerRoles.includes(p.role));
-        }
-    }, [partners, activeTab]);
+        const byTab = activeTab === 'internal'
+            ? partners.filter(p => internalUserRoles.includes(p.role))
+            : partners.filter(p => partnerRoles.includes(p.role));
+
+        if (adminCityScope === 'all') return byTab;
+        return byTab.filter(p => {
+            const list = p.allowedCities && p.allowedCities.length > 0
+                ? p.allowedCities
+                : (p.role === Role.SUPER_ADMIN ? ['*'] : ['heliopolis']);
+            return list.includes('*') || list.includes(adminCityScope);
+        });
+    }, [partners, activeTab, adminCityScope]);
 
     const deleteMutation = useMutation({
         mutationFn: deletePartner,
@@ -120,13 +156,14 @@ const AdminUsersPage: React.FC = () => {
                     <TableRow>
                         <TableHead>{t_admin.userManagement.user}</TableHead>
                         <TableHead>{t_admin.userManagement.role}</TableHead>
+                        <TableHead>{isAr ? 'المدن المصرح بها' : 'Authorized Cities'}</TableHead>
                         <TableHead>{t_admin.userManagement.status}</TableHead>
                         <TableHead>{t_admin.userManagement.actions}</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                         {isLoading ? (
-                        <TableRow><TableCell colSpan={4} className="text-center p-8">Loading...</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={5} className="text-center p-8">Loading...</TableCell></TableRow>
                     ) : items.map(user => (
                         <TableRow key={user.id}>
                             <TableCell>
@@ -139,6 +176,7 @@ const AdminUsersPage: React.FC = () => {
                                 </div>
                             </TableCell>
                             <TableCell className="capitalize">{t_admin.partnerTypes[user.type as keyof typeof t_admin.partnerTypes]}</TableCell>
+                            <TableCell>{renderAllowedCitiesBadges(user)}</TableCell>
                             <TableCell>
                                     <span className={`px-2 py-1 text-xs font-medium rounded-full capitalize ${user.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                                     {user.status}

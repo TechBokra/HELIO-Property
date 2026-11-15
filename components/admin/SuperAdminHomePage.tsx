@@ -20,6 +20,7 @@ import { Button } from '../ui/Button';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { getCommercialKPIs, getAnalyticsEventCounts } from '../../services/analytics';
+import { useCityStore } from '../../store/useCityStore';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -39,13 +40,32 @@ const SuperAdminHomePage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_home = t.adminDashboard.home;
     const t_analytics = t.adminAnalytics;
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
     
     const { data: partners, isLoading: loadingPartners, refetch: refetchPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
-    const { data: properties, isLoading: loadingProperties, refetch: refetchProperties } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties });
-    const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
+    const { data: rawProperties, isLoading: loadingProperties, refetch: refetchProperties } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties });
+    const { data: rawProjects, isLoading: loadingProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
     const { data: leads, isLoading: loadingLeads, refetch: refetchLeads } = useQuery({ queryKey: ['allLeads'], queryFn: getAllLeads });
-    const { data: requests, isLoading: loadingRequests, refetch: refetchRequests } = useQuery({ queryKey: ['allRequestsAdmin'], queryFn: getAllRequests });
+    const { data: rawRequests, isLoading: loadingRequests, refetch: refetchRequests } = useQuery({ queryKey: ['allRequestsAdmin'], queryFn: getAllRequests });
     const { data: analyticsCounts, refetch: refetchAnalytics } = useQuery({ queryKey: ['analyticsEventCounts'], queryFn: () => getAnalyticsEventCounts() });
+
+    const properties = useMemo(() => {
+        if (!rawProperties) return [];
+        if (adminCityScope === 'all') return rawProperties;
+        return rawProperties.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
+    }, [rawProperties, adminCityScope]);
+
+    const projects = useMemo(() => {
+        if (!rawProjects) return [];
+        if (adminCityScope === 'all') return rawProjects;
+        return rawProjects.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
+    }, [rawProjects, adminCityScope]);
+
+    const requests = useMemo(() => {
+        if (!rawRequests) return [];
+        if (adminCityScope === 'all') return rawRequests;
+        return rawRequests.filter(r => (r.cityId || r.payload?.cityId || 'heliopolis') === adminCityScope);
+    }, [rawRequests, adminCityScope]);
 
     const loading = loadingPartners || loadingProperties || loadingLeads || loadingProjects || loadingRequests;
 

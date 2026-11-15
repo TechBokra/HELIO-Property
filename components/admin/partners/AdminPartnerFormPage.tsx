@@ -14,15 +14,19 @@ import { Select } from '../../ui/Select';
 import { Textarea } from '../../ui/Textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 import { ArrowLeftIcon, UsersIcon, LockClosedIcon } from '../../ui/Icons';
+import { useCityStore } from '../../../store/useCityStore';
 
 const AdminPartnerFormPage: React.FC = () => {
     const { partnerId } = useParams();
     const isEdit = !!partnerId;
     const { t, language } = useLanguage();
+    const isAr = language === 'ar';
     const t_admin = t.adminDashboard;
     const { showToast } = useToast();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const cities = useCityStore((s) => s.cities);
+    const [selectedCities, setSelectedCities] = useState<string[]>(['heliopolis', 'shorouk', 'badr']);
     
     const { data: plansData } = useQuery({ queryKey: ['plans'], queryFn: getPlans });
     
@@ -44,7 +48,6 @@ const AdminPartnerFormPage: React.FC = () => {
 
     useEffect(() => {
         if (isEdit && partnerToEdit) {
-            // Cast to any to access AdminPartner fields
             const p = partnerToEdit as AdminPartner;
             reset({
                 companyName: language === 'ar' ? p.nameAr : p.name, 
@@ -55,15 +58,33 @@ const AdminPartnerFormPage: React.FC = () => {
                 endDate: p.subscriptionEndDate?.split('T')[0],
                 description: language === 'ar' ? p.descriptionAr : p.description
             });
+            if (Array.isArray(p.allowedCities) && p.allowedCities.length > 0) {
+                setSelectedCities(p.allowedCities);
+            }
         }
     }, [isEdit, partnerToEdit, reset, language]);
+
+    const toggleAllowedCity = (cityId: string) => {
+        if (cityId === '*') {
+            setSelectedCities(prev => prev.includes('*') ? ['heliopolis'] : ['*']);
+            return;
+        }
+        setSelectedCities(prev => {
+            const withoutWildcard = prev.filter(c => c !== '*');
+            if (withoutWildcard.includes(cityId)) {
+                const next = withoutWildcard.filter(c => c !== cityId);
+                return next.length > 0 ? next : ['heliopolis'];
+            }
+            return [...withoutWildcard, cityId];
+        });
+    };
 
     const addMutation = useMutation({
         mutationFn: (data: PartnerRequest & { password?: string }) => addPartner(data, data.password),
         onSuccess: () => {
             showToast('Partner added successfully!', 'success');
             queryClient.invalidateQueries({ queryKey: ['allPartnersAdmin'] });
-            navigate('/admin/users'); // Redirect back to users if accessed from there, or partners list
+            navigate('/admin/users');
         },
         onError: () => showToast('Failed to add partner.', 'error'),
     });
@@ -84,8 +105,8 @@ const AdminPartnerFormPage: React.FC = () => {
                 subscriptionPlan: data.subscriptionPlan,
                 subscriptionEndDate: data.endDate || undefined,
                 displayType: data.displayType,
-                // Allow updating email and password
                 contactEmail: data.contactEmail,
+                allowedCities: selectedCities,
             };
             if (data.password) {
                 updates.password = data.password;
@@ -99,7 +120,8 @@ const AdminPartnerFormPage: React.FC = () => {
                 documents: [],
                 managementContacts: [],
                 logo: 'https://via.placeholder.com/150',
-                status: 'approved' as const
+                status: 'approved' as const,
+                allowedCities: selectedCities
             };
             addMutation.mutate(fullData);
         }
@@ -179,6 +201,67 @@ const AdminPartnerFormPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/* Multi-City Authorized Portals Section */}
+                        <div className="p-4 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-900 dark:text-white">
+                                    {isAr ? 'المدن والنطاقات الفرعية المصرح للشريك بالعمل فيها' : 'Authorized City Subdomain Portals for Partner'}
+                                </label>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    {isAr
+                                        ? 'يستطيع الشريك نشر وحداته ومشروعاته واستقبال طلبات العملاء في المدن المحددة بنفس الحساب الموحد'
+                                        : 'Partner can publish units, compounds, and receive leads in selected city portals under a single unified account'}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    selectedCities.includes('*')
+                                        ? 'bg-amber-50 border-amber-400 text-amber-950 dark:bg-amber-900/30 dark:border-amber-500 dark:text-white'
+                                        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700'
+                                }`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedCities.includes('*')}
+                                        onChange={() => toggleAllowedCity('*')}
+                                        className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div>
+                                        <span className="text-xs font-extrabold block">
+                                            {isAr ? 'كل المدن (تغطية شاملة *)' : 'All Cities (Full Ecosystem *)'}
+                                        </span>
+                                        <span className="text-[11px] text-gray-500 font-mono">*.only-property.com</span>
+                                    </div>
+                                </label>
+
+                                {cities.map(city => {
+                                    const isChecked = selectedCities.includes('*') || selectedCities.includes(city.id);
+                                    return (
+                                        <label
+                                            key={city.id}
+                                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                                isChecked
+                                                    ? 'bg-amber-50/70 border-amber-300 text-gray-900 dark:bg-amber-900/20 dark:border-amber-600 dark:text-white'
+                                                    : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700'
+                                            }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                disabled={selectedCities.includes('*')}
+                                                onChange={() => toggleAllowedCity(city.id)}
+                                                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 disabled:opacity-50"
+                                            />
+                                            <div>
+                                                <span className="text-xs font-bold block">{city.name[language]}</span>
+                                                <span className="text-[11px] text-gray-500 font-mono" dir="ltr">{city.subdomain}</span>
+                                            </div>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
 

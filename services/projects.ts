@@ -94,8 +94,15 @@ const mapProjectFromDb = (row: any): Project => {
         features: normalizedFeatures,
         imageUrl_small: row.image_url || '',
         imageUrl_medium: row.image_url || '',
-        imageUrl_large: row.image_url || ''
+        imageUrl_large: row.image_url || '',
+        cityId: row.city_id || 'heliopolis'
     };
+};
+
+export const filterProjectsByCity = (projects: Project[], cityId?: string): Project[] => {
+    if (!cityId || cityId === 'all' || cityId === 'hub') return projects;
+    const normalized = cityId.trim().toLowerCase();
+    return projects.filter((project) => (project.cityId || 'heliopolis').toLowerCase() === normalized);
 };
 
 // In-memory cache for high-frequency navigation
@@ -108,14 +115,16 @@ export const invalidateProjectsCache = () => {
     inFlightProjectsPromise = null;
 };
 
-export const getAllProjects = async (): Promise<Project[]> => {
+export const getAllProjects = async (cityIdOrContext?: string | unknown): Promise<Project[]> => {
+    const cityId = typeof cityIdOrContext === 'string' ? cityIdOrContext : undefined;
     const now = Date.now();
     if (cachedProjects && (now - cachedProjects.timestamp) < CACHE_TTL_MS) {
-        return cachedProjects.data;
+        return filterProjectsByCity(cachedProjects.data, cityId);
     }
 
     if (inFlightProjectsPromise) {
-        return inFlightProjectsPromise;
+        const list = await inFlightProjectsPromise;
+        return filterProjectsByCity(list, cityId);
     }
 
     inFlightProjectsPromise = (async () => {
@@ -136,8 +145,10 @@ export const getAllProjects = async (): Promise<Project[]> => {
             }
 
             const mapped = data.map(mapProjectFromDb);
-            cachedProjects = { data: mapped, timestamp: Date.now() };
-            return mapped;
+            const dbIds = new Set(mapped.map((p) => p.id));
+            const merged = [...mapped, ...projectsData.filter((p) => !dbIds.has(p.id) && p.cityId && p.cityId !== 'heliopolis')];
+            cachedProjects = { data: merged, timestamp: Date.now() };
+            return merged;
         } catch (e) {
             console.warn("Exception fetching projects, using fallback:", e);
             return cachedProjects ? cachedProjects.data : projectsData;
@@ -146,7 +157,8 @@ export const getAllProjects = async (): Promise<Project[]> => {
         }
     })();
 
-    return inFlightProjectsPromise;
+    const result = await inFlightProjectsPromise;
+    return filterProjectsByCity(result, cityId);
 };
 
 export const getProjectById = async (id: string): Promise<Project | undefined> => {
@@ -193,7 +205,8 @@ export const addProject = async (project: Omit<Project, 'id' | 'createdAt'>): Pr
     const { data, error } = await supabase.from('projects').insert(dbPayload).select().single();
     if (error) throw error;
     invalidateProjectsCache();
-    return mapProjectFromDb(data);
+    const mapped = mapProjectFromDb(data);
+    return { ...mapped, cityId: project.cityId || mapped.cityId || 'heliopolis' };
 };
 
 export const updateProject = async (projectId: string, updates: Partial<Project>): Promise<Project | undefined> => {
@@ -214,7 +227,8 @@ export const updateProject = async (projectId: string, updates: Partial<Project>
     const { data, error } = await supabase.from('projects').update(dbUpdates).eq('id', projectId).select().single();
     if (error) return undefined;
     invalidateProjectsCache();
-    return mapProjectFromDb(data);
+    const mapped = mapProjectFromDb(data);
+    return { ...mapped, cityId: updates.cityId || mapped.cityId || 'heliopolis' };
 };
 
 export const deleteProject = async (projectId: string): Promise<boolean> => {

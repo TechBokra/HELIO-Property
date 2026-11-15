@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Language, Project } from '../../types';
 import { useAuth } from '../auth/AuthContext';
-import FormField, { inputClasses } from '../ui/FormField';
+import FormField, { inputClasses, selectClasses } from '../ui/FormField';
 import { addProject, updateProject, getAllProjects } from '../../services/projects';
 import { Role, Permission } from '../../types';
 import { useSubscriptionUsage } from '../../hooks/useSubscriptionUsage';
@@ -14,6 +14,7 @@ import { useLanguage } from '../shared/LanguageContext';
 import { useToast } from '../shared/ToastContext';
 import { Button } from '../ui/Button';
 import { uploadFile } from '../../services/upload';
+import { useCityStore } from '../../store/useCityStore';
 
 const ProjectFormPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -24,9 +25,15 @@ const ProjectFormPage: React.FC = () => {
     const { showToast } = useToast();
     const queryClient = useQueryClient();
     const t_form = t.projectDashboard.projectForm;
+    const cities = useCityStore((s) => s.cities);
+    const activeCityId = useCityStore((s) => s.activeCityId);
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const defaultCityId = adminCityScope !== 'all' ? adminCityScope : (activeCityId || 'heliopolis');
 
     const { isLimitReached } = useSubscriptionUsage('projects');
-    const { register, handleSubmit, reset, formState: { isSubmitting: isFormSubmitting, errors } } = useForm<Project>();
+    const { register, handleSubmit, reset, formState: { isSubmitting: isFormSubmitting, errors } } = useForm<Project>({
+        defaultValues: { cityId: defaultCityId }
+    });
     
     const [image, setImage] = useState<string>('');
     const [imageFile, setImageFile] = useState<File | null>(null);
@@ -36,7 +43,7 @@ const ProjectFormPage: React.FC = () => {
         if (projectId && projects) {
             const project = projects.find(p => p.id === projectId);
             if (project && currentUser && 'type' in currentUser && (project.partnerId === currentUser.id || hasPermission(Permission.MANAGE_ALL_PROJECTS))) {
-                reset(project);
+                reset({ ...project, cityId: project.cityId || 'heliopolis' });
                 setImage(project.imageUrl);
             } else if (!projectsLoading) {
                 const redirectPath = hasPermission(Permission.VIEW_ADMIN_DASHBOARD) ? '/admin/projects' : '/dashboard/projects';
@@ -97,6 +104,7 @@ const ProjectFormPage: React.FC = () => {
         const existingProject = projectId ? projects?.find(p => p.id === projectId) : undefined;
         const projectData = {
             ...formData,
+            cityId: formData.cityId || existingProject?.cityId || defaultCityId,
             imageUrl: imageUrl,
             partnerId: existingProject?.partnerId || currentUser.id,
             features: existingProject?.features || [],
@@ -124,6 +132,16 @@ const ProjectFormPage: React.FC = () => {
                 {projectId ? t_form.editTitle : t_form.addTitle}
             </h1>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-w-4xl bg-white dark:bg-gray-900 p-8 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+                <FormField label={language === 'ar' ? 'المدينة / البوابة الفرعية (Only Property)' : 'City Subdomain Portal (Only Property)'} id="cityId">
+                    <select {...register("cityId", { required: true })} className={selectClasses}>
+                        {cities.map(city => (
+                            <option key={city.id} value={city.id}>
+                                {city.name[language]} ({city.brandTitle[language]} — {city.subdomain})
+                            </option>
+                        ))}
+                    </select>
+                </FormField>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <FormField label={t_form.nameAr} id="name.ar">
                         <input type="text" {...register("name.ar", { required: true })} className={inputClasses} />

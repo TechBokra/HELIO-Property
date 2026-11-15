@@ -14,6 +14,7 @@ import { ArrowLeftIcon, ShieldCheckIcon, KeyIcon } from '../../ui/Icons';
 import { useAuth } from '../../auth/AuthContext';
 import { Permission, Role } from '../../../types';
 import { PasswordManagementModal } from './PasswordManagementModal';
+import { useCityStore } from '../../../store/useCityStore';
 
 interface UserFormData {
     nameAr: string;
@@ -22,6 +23,7 @@ interface UserFormData {
     password?: string;
     type: PartnerType;
     status: PartnerStatus;
+    allowedCities?: string[];
 }
 
 const AdminUserFormPage: React.FC = () => {
@@ -35,6 +37,8 @@ const AdminUserFormPage: React.FC = () => {
     const { hasPermission, currentUser } = useAuth();
     const canManageCredentials = hasPermission(Permission.MANAGE_USER_CREDENTIALS) || hasPermission(Permission.MANAGE_USERS);
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+    const [selectedCities, setSelectedCities] = useState<string[]>(['heliopolis']);
+    const cities = useCityStore((s) => s.cities);
     const queryClient = useQueryClient();
     
     const { data: userToEdit, isLoading } = useQuery({
@@ -51,7 +55,6 @@ const AdminUserFormPage: React.FC = () => {
 
     useEffect(() => {
         if (userToEdit) {
-            // Cast to any or AdminPartner to access specific admin fields if necessary
             const user = userToEdit as any;
             reset({
                 nameAr: user.nameAr || user.name,
@@ -60,8 +63,30 @@ const AdminUserFormPage: React.FC = () => {
                 type: user.type,
                 status: user.status,
             });
+            if (Array.isArray(user.allowedCities) && user.allowedCities.length > 0) {
+                setSelectedCities(user.allowedCities);
+            } else if (user.role === Role.SUPER_ADMIN) {
+                setSelectedCities(['*']);
+            } else {
+                setSelectedCities(['heliopolis']);
+            }
         }
     }, [userToEdit, reset]);
+
+    const toggleAllowedCity = (cityId: string) => {
+        if (cityId === '*') {
+            setSelectedCities(prev => prev.includes('*') ? ['heliopolis'] : ['*']);
+            return;
+        }
+        setSelectedCities(prev => {
+            const withoutWildcard = prev.filter(c => c !== '*');
+            if (withoutWildcard.includes(cityId)) {
+                const next = withoutWildcard.filter(c => c !== cityId);
+                return next.length > 0 ? next : ['heliopolis'];
+            }
+            return [...withoutWildcard, cityId];
+        });
+    };
 
     const addMutation = useMutation({
         mutationFn: (data: Omit<UserFormData, 'status'>) => addInternalUser({
@@ -69,7 +94,8 @@ const AdminUserFormPage: React.FC = () => {
             nameAr: data.nameAr,
             email: data.email,
             password: data.password,
-            type: data.type
+            type: data.type,
+            allowedCities: selectedCities
         }),
         onSuccess: () => {
             showToast('User added successfully!', 'success');
@@ -85,7 +111,8 @@ const AdminUserFormPage: React.FC = () => {
             nameAr: data.updates.nameAr,
             email: data.updates.email,
             type: data.updates.type,
-            status: data.updates.status
+            status: data.updates.status,
+            allowedCities: selectedCities
         }),
         onSuccess: () => {
             showToast('User updated successfully!', 'success');
@@ -199,6 +226,67 @@ const AdminUserFormPage: React.FC = () => {
                                     <option value="active">Active</option>
                                     <option value="disabled">Disabled</option>
                                 </Select>
+                            </div>
+                        </div>
+
+                        {/* Multi-City Authorized Portals Section */}
+                        <div className="p-4 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-900 dark:text-white">
+                                    {isAr ? 'المدن والبوابات الفرعية المصرح بإدارتها (Only Property Ecosystem)' : 'Authorized City Subdomain Portals'}
+                                </label>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    {isAr
+                                        ? 'حدد المدن التي يحق لهذا المدير أو الموظف الوصول لبياناتها وإدارتها عبر النطاقات الفرعية'
+                                        : 'Select which city portals this manager account is authorized to access and administer'}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    selectedCities.includes('*')
+                                        ? 'bg-amber-50 border-amber-400 text-amber-950 dark:bg-amber-900/30 dark:border-amber-500 dark:text-white'
+                                        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700'
+                                }`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedCities.includes('*')}
+                                        onChange={() => toggleAllowedCity('*')}
+                                        className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div>
+                                        <span className="text-xs font-extrabold block">
+                                            {isAr ? 'كل المدن (صلاحية شاملة *)' : 'All Cities (Global Access *)'}
+                                        </span>
+                                        <span className="text-[11px] text-gray-500 font-mono">*.only-property.com</span>
+                                    </div>
+                                </label>
+
+                                {cities.map(city => {
+                                    const isChecked = selectedCities.includes('*') || selectedCities.includes(city.id);
+                                    return (
+                                        <label
+                                            key={city.id}
+                                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                                isChecked
+                                                    ? 'bg-amber-50/70 border-amber-300 text-gray-900 dark:bg-amber-900/20 dark:border-amber-600 dark:text-white'
+                                                    : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700'
+                                            }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                disabled={selectedCities.includes('*')}
+                                                onChange={() => toggleAllowedCity(city.id)}
+                                                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 disabled:opacity-50"
+                                            />
+                                            <div>
+                                                <span className="text-xs font-bold block">{city.name[language]}</span>
+                                                <span className="text-[11px] text-gray-500 font-mono" dir="ltr">{city.subdomain}</span>
+                                            </div>
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </div>
 

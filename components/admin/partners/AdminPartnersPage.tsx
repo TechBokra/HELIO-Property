@@ -19,9 +19,11 @@ import { Card, CardContent } from '../../ui/Card';
 import TableSkeleton from '../../shared/TableSkeleton';
 import ErrorState from '../../shared/ErrorState';
 import { useToast } from '../../shared/ToastContext';
+import { useCityStore } from '../../../store/useCityStore';
 
 const AdminPartnersPage: React.FC = () => {
     const { language, t } = useLanguage();
+    const isAr = language === 'ar';
     const t_admin = t.adminDashboard;
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -34,11 +36,42 @@ const AdminPartnersPage: React.FC = () => {
     const [actionToConfirm, setActionToConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(null);
     const highlightedId = searchParams.get('highlight');
 
-    // Filter to show only external business partners
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const cities = useCityStore((s) => s.cities);
+
+    const renderAllowedCitiesBadges = (p: AdminPartner) => {
+        const list = p.allowedCities && p.allowedCities.length > 0 ? p.allowedCities : ['heliopolis'];
+        if (list.includes('*')) {
+            return (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    {isAr ? 'كل المدن (*)' : 'All Cities (*)'}
+                </span>
+            );
+        }
+        return (
+            <div className="flex flex-wrap gap-1">
+                {list.map((cityId) => {
+                    const c = cities.find(ct => ct.id === cityId);
+                    return (
+                        <span key={cityId} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-800 border border-gray-200">
+                            {c ? c.name[language] : cityId}
+                        </span>
+                    );
+                })}
+            </div>
+        );
+    };
+
+    // Filter to show only external business partners and respect adminCityScope
     const businessPartners = useMemo(() => {
         if (!partners) return [];
-        return partners.filter(p => ['developer', 'finishing', 'agency'].includes(p.type));
-    }, [partners]);
+        const base = partners.filter(p => ['developer', 'finishing', 'agency'].includes(p.type));
+        if (adminCityScope === 'all') return base;
+        return base.filter(p => {
+            const list = p.allowedCities && p.allowedCities.length > 0 ? p.allowedCities : ['heliopolis'];
+            return list.includes('*') || list.includes(adminCityScope);
+        });
+    }, [partners, adminCityScope]);
 
     const statusMutation = useMutation({
         mutationFn: ({ id, status }: { id: string, status: PartnerStatus }) => updatePartnerStatus(id, status),
@@ -171,6 +204,7 @@ const AdminPartnersPage: React.FC = () => {
                         <TableHead>{t_admin.partnerTable.partner}</TableHead>
                         <TableHead>{t_admin.partnerTable.accountType}</TableHead>
                         <TableHead>{t_admin.partnerTable.type}</TableHead>
+                        <TableHead>{isAr ? 'المدن المصرح بها' : 'Authorized Cities'}</TableHead>
                         <TableHead>{t_admin.partnerTable.subscriptionPlan}</TableHead>
                         <TableHead>{t_admin.partnerTable.status}</TableHead>
                         <TableHead>{t_admin.partnerTable.actions}</TableHead>
@@ -202,6 +236,7 @@ const AdminPartnersPage: React.FC = () => {
                                 )}
                             </TableCell>
                             <TableCell className="capitalize">{t_admin.partnerTypes[p.type as keyof typeof t_admin.partnerTypes]}</TableCell>
+                            <TableCell>{renderAllowedCitiesBadges(p)}</TableCell>
                             <TableCell className="capitalize">{p.subscriptionPlan}</TableCell>
                             <TableCell>
                                 <ToggleSwitch 

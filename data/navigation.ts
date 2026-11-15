@@ -106,6 +106,17 @@ export const adminNavLinks: NavLinkItem[] = [
         permission: Permission.VIEW_REQUESTS,
         matchPrefixes: ['/admin/operations', '/admin/requests', '/admin/all-requests'],
     },
+    {
+        id: 'admin_cities',
+        name: () => 'إدارة المدن والنطاقات الفرعية',
+        labelEn: 'Cities & Subdomains',
+        labelAr: 'إدارة المدن والنطاقات الفرعية',
+        href: '/admin/cities',
+        icon: CubeIcon,
+        group: 'control_center',
+        permission: Permission.VIEW_ADMIN_DASHBOARD,
+        matchPrefixes: ['/admin/cities'],
+    },
 
     // --- 2. REAL ESTATE ---
     {

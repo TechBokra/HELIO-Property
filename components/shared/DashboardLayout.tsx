@@ -8,6 +8,7 @@ import NotificationBell from './NotificationBell';
 import { MenuIcon, GlobeAltIcon, ChevronRightIcon, ChevronLeftIcon } from '@/components/ui/Icons';
 import { Permission, Role } from '@/types';
 import { type NavLinkItem, getAdminBreadcrumbs } from '@/data/navigation';
+import AdminCityScopeBar from '@/components/admin/cities/AdminCityScopeBar';
 
 interface DashboardLayoutProps {
   navLinks: NavLinkItem[];
@@ -170,6 +171,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ navLinks }) => {
 
                 {/* Page Content Body */}
                 <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+                    {isAdminDashboard && <AdminCityScopeBar />}
                     <Outlet />
                 </main>
             </div>

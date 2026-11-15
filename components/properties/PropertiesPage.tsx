@@ -17,6 +17,7 @@ import { getAllPropertyTypes, getAllFinishingStatuses, getAllAmenities } from '.
 import { getPaginatedProperties } from '../../services/properties';
 import { usePropertyFilters } from '../../hooks/usePropertyFilters';
 import Pagination from '../shared/Pagination';
+import { useCityStore } from '../../store/useCityStore';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -24,6 +25,8 @@ const PropertiesPage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_page = t.propertiesPage;
     const [isInquiryModalOpen, setIsInquiryModalOpen] = useState(false);
+    const activeCityId = useCityStore((s) => s.activeCityId);
+    const activeCity = useCityStore((s) => s.getActiveCity());
     
     const filterControls = usePropertyFilters();
     const { 
@@ -32,11 +35,10 @@ const PropertiesPage: React.FC = () => {
         amenities: amenitiesFilter, beds, baths, setFilter, setPage
     } = filterControls;
     
-    // Fetch dependencies (dropdown options)
     // Fetch dependencies (dropdown options) with 10-minute cache
     const { data: projects } = useQuery({ 
-        queryKey: ['allProjects'], 
-        queryFn: getAllProjects,
+        queryKey: ['allProjects', activeCityId], 
+        queryFn: () => getAllProjects(activeCityId),
         staleTime: 1000 * 60 * 10
     });
     const { data: partners } = useQuery({ 
@@ -78,12 +80,13 @@ const PropertiesPage: React.FC = () => {
         isError: isPropsError,
         refetch: refetchProps
     } = useQuery({
-        queryKey: ['properties', page, queryFilters],
+        queryKey: ['properties', activeCityId, page, queryFilters],
         queryFn: () => getPaginatedProperties({ 
             page: page, 
             limit: ITEMS_PER_PAGE, 
             filters: { ...queryFilters, view: (view as 'grid' | 'list') },
             disablePagination: false,
+            cityId: activeCityId,
         }),
         placeholderData: keepPreviousData,
         staleTime: 1000 * 60 * 2, // 2 minutes cache for listing pages
@@ -98,9 +101,11 @@ const PropertiesPage: React.FC = () => {
         ? 'grid-cols-1 gap-4' 
         : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8';
 
+    const brandLabel = activeCity?.brandTitle?.[language] || 'ONLY HELIO';
+
     return (
         <div className="bg-white dark:bg-gray-900 min-h-screen">
-            <SEO title={`${t.nav.properties} | ONLY HELIO`} description={t_page.subtitle} />
+            <SEO title={`${t.nav.properties} | ${brandLabel}`} description={t_page.subtitle} />
             {isInquiryModalOpen && <PropertyInquiryModal onClose={() => setIsInquiryModalOpen(false)} />}
             
             <div className="container mx-auto px-6 py-8">

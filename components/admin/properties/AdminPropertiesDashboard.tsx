@@ -11,15 +11,23 @@ import { isListingActive } from '../../../utils/propertyUtils';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import type { Property } from '../../../types';
+import { useCityStore } from '../../../store/useCityStore';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
 const AdminPropertiesDashboard: React.FC = () => {
     const { language, t } = useLanguage();
     const t_dash = t.adminDashboard.propertiesDashboard;
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
     
-    const { data: properties, isLoading: loadingProps } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties });
+    const { data: rawProperties, isLoading: loadingProps } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties });
     const { data: partners, isLoading: loadingPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
+
+    const properties = useMemo(() => {
+        if (!rawProperties) return undefined;
+        if (adminCityScope === 'all') return rawProperties;
+        return rawProperties.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
+    }, [rawProperties, adminCityScope]);
 
     const isLoading = loadingProps || loadingPartners;
 

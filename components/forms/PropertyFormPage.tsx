@@ -25,8 +25,10 @@ import PropertyFinancials from './property/PropertyFinancials';
 import PropertyLocation from './property/PropertyLocation';
 import PropertyMedia from './property/PropertyMedia';
 import LocationPickerModal from '../shared/LocationPickerModal';
+import { useCityStore } from '../../store/useCityStore';
 
 export interface PropertyFormData {
+    cityId?: string;
     projectId?: string;
     title: { ar: string; en: string };
     description: { ar: string; en: string };
@@ -60,6 +62,9 @@ const PropertyFormPage: React.FC = () => {
     const { language, t } = useLanguage();
     const { showToast } = useToast();
     const queryClient = useQueryClient();
+    const activeCityId = useCityStore((s) => s.activeCityId);
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const defaultCityId = adminCityScope !== 'all' ? adminCityScope : (activeCityId || 'heliopolis');
     
     const usageType = currentUser?.type === 'developer' ? 'units' : 'properties';
     const { isLimitReached } = useSubscriptionUsage(usageType);
@@ -143,6 +148,7 @@ const PropertyFormPage: React.FC = () => {
             if (userCanEdit) {
                 // Prepare form data from property object
                 reset({
+                    cityId: prop.cityId || 'heliopolis',
                     projectId: prop.projectId,
                     title: prop.title,
                     description: prop.description,
@@ -178,8 +184,10 @@ const PropertyFormPage: React.FC = () => {
                  navigate(redirectPath);
                  showToast("You don't have permission to edit this property", "error");
             }
+        } else if (!propertyId) {
              // New Property Defaults
              reset({
+                cityId: defaultCityId,
                 projectId: searchParams.get('projectId') || undefined,
                 status: { en: 'For Sale', ar: 'للبيع' },
                 type: { en: 'Apartment', ar: 'شقة' },
@@ -197,7 +205,7 @@ const PropertyFormPage: React.FC = () => {
                 title: { ar: '', en: '' }, description: { ar: '', en: '' }, address: { ar: '', en: '' }
             });
         }
-    }, [propertyId, propertyToEdit, currentUser, navigate, reset, searchParams, hasPermission, isAdmin]);
+    }, [propertyId, propertyToEdit, currentUser, navigate, reset, searchParams, hasPermission, isAdmin, defaultCityId]);
     
     // Image Handlers
     const handleMainImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,6 +294,7 @@ const PropertyFormPage: React.FC = () => {
 
         const propertyData: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl'> = {
             ...formData,
+            cityId: formData.cityId || propertyToEdit?.cityId || defaultCityId,
             sourceRequestId: propertyToEdit?.sourceRequestId || (!propertyId ? searchParams.get('sourceRequestId') || undefined : undefined),
             sourceType: propertyToEdit?.sourceType || (isPartner ? (currentUser.type === 'developer' ? 'developer' : 'broker') : 'platform_admin'),
             verificationStatus,

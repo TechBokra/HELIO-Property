@@ -11,6 +11,7 @@ import { useLanguage } from './components/shared/LanguageContext';
 import { adminNavLinks, partnerNavLinks } from './data/navigation';
 import LoadingFallback from './components/shared/LoadingFallback';
 import { useAuthStore } from './store/useAuthStore';
+import { useCityStore } from './store/useCityStore';
 import { initAttribution } from './utils/attribution';
 
 // --- Layouts ---
@@ -31,6 +32,7 @@ const UserFavoritesPage = lazy(() => import('./components/user-dashboard/UserFav
 
 // --- Public Pages (Lazy Loaded) ---
 const HomePage = lazy(() => import('./components/home/HomePage'));
+const OnlyPropertyHubPage = lazy(() => import('./components/hub/OnlyPropertyHubPage'));
 const PropertiesPage = lazy(() => import('./components/properties/PropertiesPage'));
 const ProjectsPage = lazy(() => import('./components/projects/ProjectsPage'));
 const PropertyDetailsPage = lazy(() => import('./components/properties/PropertyDetailsPage'));
@@ -53,11 +55,14 @@ const NotFoundPage = lazy(() => import('./components/shared/NotFoundPage'));
 const App = () => {
     const { t } = useLanguage();
     const initializeAuth = useAuthStore(state => state.initialize);
+    const portalMode = useCityStore(state => state.portalMode);
+    const syncFromLocation = useCityStore(state => state.syncFromLocation);
 
     useEffect(() => {
         initializeAuth();
         initAttribution();
-    }, [initializeAuth]);
+        syncFromLocation();
+    }, [initializeAuth, syncFromLocation]);
 
     return (
         <div>
@@ -114,7 +119,8 @@ const App = () => {
                     {/*                       Public Routes & Catch-all                    */}
                     {/* ================================================================== */}
                     <Route path="/" element={<PublicLayout />}>
-                        <Route index element={<HomePage />} />
+                        <Route index element={portalMode === 'hub' ? <OnlyPropertyHubPage /> : <HomePage />} />
+                        <Route path="hub" element={<OnlyPropertyHubPage />} />
                         <Route path="properties" element={<PropertiesPage />} />
                         <Route path="projects" element={<ProjectsPage />} />
                         <Route path="properties/:propertyId" element={<PropertyDetailsPage />} />

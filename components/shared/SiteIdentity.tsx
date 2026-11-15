@@ -2,6 +2,7 @@ import React from 'react';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { HelioLogo } from '../ui/HelioLogo';
 import { useLanguage } from './LanguageContext';
+import { useCityStore } from '../../store/useCityStore';
 
 interface SiteIdentityProps {
     className?: string;
@@ -20,10 +21,18 @@ export const SiteIdentity: React.FC<SiteIdentityProps> = ({
 }) => {
     const { data: siteContent } = useSiteContent();
     const { language } = useLanguage();
+    const portalMode = useCityStore((s) => s.portalMode);
+    const activeCity = useCityStore((s) => s.getActiveCity());
     
-    // Safely access properties even if data is still loading
     const logoUrl = siteContent?.logoUrl;
-    const siteName = siteContent?.siteName?.[language] || "ONLY HELIO";
+    const defaultHelioName = siteContent?.siteName?.[language] || "ONLY HELIO";
+
+    const displaySiteName =
+        portalMode === 'hub'
+            ? (language === 'ar' ? 'أونلي بروبرتي' : 'ONLY PROPERTY')
+            : activeCity && activeCity.id !== 'heliopolis'
+                ? activeCity.brandTitle[language]
+                : defaultHelioName;
 
     return (
         <div className={`flex items-center gap-3 font-bold ${className}`}>
@@ -39,9 +48,10 @@ export const SiteIdentity: React.FC<SiteIdentityProps> = ({
             
             {showText && (
                 <span className={`${textClassName} ${hideTextOnMobile ? 'hidden sm:block' : 'block'}`}>
-                    {siteName}
+                    {displaySiteName}
                 </span>
             )}
         </div>
     );
 };
+

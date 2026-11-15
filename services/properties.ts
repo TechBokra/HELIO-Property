@@ -247,7 +247,14 @@ const mapPropertyFromDb = (row: any): Property => {
         imageUrl_small: row.main_image, 
         imageUrl_medium: row.main_image,
         imageUrl_large: row.main_image,
+        cityId: row.city_id || meta.cityId || 'heliopolis',
     };
+};
+
+export const filterPropertiesByCity = (properties: Property[], cityId?: string): Property[] => {
+    if (!cityId || cityId === 'all' || cityId === 'hub') return properties;
+    const normalized = cityId.trim().toLowerCase();
+    return properties.filter((prop) => (prop.cityId || 'heliopolis').toLowerCase() === normalized);
 };
 
 /**
@@ -311,14 +318,16 @@ export const invalidatePropertiesCache = () => {
 /**
  * Fetches all properties for Admin management
  */
-export const getAllProperties = async (): Promise<Property[]> => {
+export const getAllProperties = async (cityIdOrContext?: string | unknown): Promise<Property[]> => {
+    const cityId = typeof cityIdOrContext === 'string' ? cityIdOrContext : undefined;
     const now = Date.now();
     if (cachedAllProperties && (now - cachedAllProperties.timestamp) < PROPERTIES_CACHE_TTL) {
-        return cachedAllProperties.data;
+        return filterPropertiesByCity(cachedAllProperties.data, cityId);
     }
 
     if (inFlightAllPropertiesPromise) {
-        return inFlightAllPropertiesPromise;
+        const list = await inFlightAllPropertiesPromise;
+        return filterPropertiesByCity(list, cityId);
     }
 
     inFlightAllPropertiesPromise = (async () => {
@@ -338,7 +347,12 @@ export const getAllProperties = async (): Promise<Property[]> => {
             }
 
             const rawProperties = data.map(mapPropertyFromDb);
-            const hydrated = await hydratePropertiesBatch(rawProperties);
+            const dbIds = new Set(rawProperties.map((p) => p.id));
+            const mergedRaw = [
+                ...rawProperties,
+                ...propertiesData.filter((p) => !dbIds.has(p.id) && p.cityId && p.cityId !== 'heliopolis'),
+            ];
+            const hydrated = await hydratePropertiesBatch(mergedRaw);
             cachedAllProperties = { data: hydrated, timestamp: Date.now() };
             return hydrated;
         } catch (e) {
@@ -349,20 +363,23 @@ export const getAllProperties = async (): Promise<Property[]> => {
         }
     })();
 
-    return inFlightAllPropertiesPromise;
+    const result = await inFlightAllPropertiesPromise;
+    return filterPropertiesByCity(result, cityId);
 };
 
 /**
  * Fetches publicly visible properties (active or sold listings, never drafts or archived)
  */
-export const getProperties = async (): Promise<Property[]> => {
+export const getProperties = async (cityIdOrContext?: string | unknown): Promise<Property[]> => {
+    const cityId = typeof cityIdOrContext === 'string' ? cityIdOrContext : undefined;
     const now = Date.now();
     if (cachedPublicProperties && (now - cachedPublicProperties.timestamp) < PROPERTIES_CACHE_TTL) {
-        return cachedPublicProperties.data;
+        return filterPropertiesByCity(cachedPublicProperties.data, cityId);
     }
 
     if (inFlightPublicPropertiesPromise) {
-        return inFlightPublicPropertiesPromise;
+        const list = await inFlightPublicPropertiesPromise;
+        return filterPropertiesByCity(list, cityId);
     }
 
     inFlightPublicPropertiesPromise = (async () => {
@@ -383,7 +400,12 @@ export const getProperties = async (): Promise<Property[]> => {
             }
 
             const rawProperties = data.map(mapPropertyFromDb);
-            const hydrated = await hydratePropertiesBatch(rawProperties);
+            const dbIds = new Set(rawProperties.map((p) => p.id));
+            const mergedRaw = [
+                ...rawProperties,
+                ...propertiesData.filter((p) => !dbIds.has(p.id) && p.cityId && p.cityId !== 'heliopolis'),
+            ];
+            const hydrated = await hydratePropertiesBatch(mergedRaw);
             cachedPublicProperties = { data: hydrated, timestamp: Date.now() };
             return hydrated;
         } catch (e) {
@@ -394,7 +416,8 @@ export const getProperties = async (): Promise<Property[]> => {
         }
     })();
 
-    return inFlightPublicPropertiesPromise;
+    const result = await inFlightPublicPropertiesPromise;
+    return filterPropertiesByCity(result, cityId);
 };
 
 /**
@@ -490,8 +513,9 @@ export const getPaginatedProperties = async (options: {
   limit: number;
   filters: PropertyFiltersType;
   disablePagination?: boolean;
+  cityId?: string;
 }): Promise<{ properties: Property[]; total: number }> => {
-    const allProps = await getProperties();
+    const allProps = await getProperties(options.cityId);
     const filtered = filterProperties(allProps, options.filters);
     
     const total = filtered.length;
@@ -565,6 +589,7 @@ const mapPropertyToDbPayload = (property: Partial<Property>, existingMeta: Recor
     const baseInstallments = property.installments || existingMeta.installments || {};
     const updatedMeta = {
         ...existingMeta,
+        cityId: property.cityId || existingMeta.cityId || 'heliopolis',
         referenceNumber: property.referenceNumber || existingMeta.referenceNumber,
         slug: property.slug || existingMeta.slug,
         sourceType: property.sourceType || existingMeta.sourceType,

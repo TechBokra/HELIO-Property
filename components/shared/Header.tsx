@@ -1,11 +1,12 @@
 
 import { memo } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import type { Partner } from '../../types';
-import { LightBulbIcon, HeartIcon, MenuIcon } from '../ui/Icons';
+import { LightBulbIcon, HeartIcon, MenuIcon, GlobeAltIcon } from '../ui/Icons';
 import { SiteIdentity } from './SiteIdentity';
 import { useLanguage } from './LanguageContext';
 import NotificationBell from './NotificationBell';
+import { useCityStore } from '../../store/useCityStore';
 
 interface HeaderProps {
     onToggleQuietZone: () => void;
@@ -25,6 +26,24 @@ export const Header = memo<HeaderProps>(({
     logout
 }) => {
     const { language, setLanguage, t } = useLanguage();
+    const navigate = useNavigate();
+    const cities = useCityStore((s) => s.cities);
+    const portalMode = useCityStore((s) => s.portalMode);
+    const activeCityId = useCityStore((s) => s.activeCityId);
+    const switchToHub = useCityStore((s) => s.switchToHub);
+    const switchToCity = useCityStore((s) => s.switchToCity);
+
+    const activeCities = cities.filter((c) => c.isActive);
+    const currentSelectorValue = portalMode === 'hub' ? 'hub' : activeCityId;
+
+    const handlePortalSwitch = (value: string) => {
+        if (value === 'hub') {
+            switchToHub();
+            navigate('/');
+        } else {
+            switchToCity(value);
+        }
+    };
 
     const navLinks = [
         { name: t.nav.home, href: '/' },
@@ -62,11 +81,33 @@ export const Header = memo<HeaderProps>(({
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm border-b border-gray-200">
             <div className="container mx-auto px-6">
                 <div className="flex justify-between items-center h-16 lg:h-20">
-                    <Link to="/" target="_self" className="text-amber-500 hover:opacity-80 transition-opacity" title={language === 'ar' ? 'الرئيسية' : 'Home'}>
-                        <SiteIdentity />
-                    </Link>
+                    <div className="flex items-center gap-4">
+                        <Link to="/" target="_self" className="text-amber-500 hover:opacity-80 transition-opacity" title={language === 'ar' ? 'الرئيسية' : 'Home'}>
+                            <SiteIdentity />
+                        </Link>
 
-                    <nav className="hidden lg:flex items-center gap-8 text-lg">
+                        {/* Multi-City & Root Hub Subdomain Switcher */}
+                        <div className="flex items-center gap-1.5 bg-gray-100/90 border border-gray-200 rounded-lg px-2.5 py-1.5">
+                            <GlobeAltIcon className="w-4 h-4 text-amber-600 shrink-0" />
+                            <select
+                                aria-label={language === 'ar' ? 'تبديل موقع المدينة' : 'Switch City Portal'}
+                                value={currentSelectorValue}
+                                onChange={(e) => handlePortalSwitch(e.target.value)}
+                                className="bg-transparent text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none cursor-pointer"
+                            >
+                                <option value="hub">
+                                    {language === 'ar' ? '🌐 البوابة الأم (Only Property)' : '🌐 Root Hub (Only Property)'}
+                                </option>
+                                {activeCities.map((city) => (
+                                    <option key={city.id} value={city.slug}>
+                                        {city.name[language]} ({city.slug})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <nav className="hidden xl:flex items-center gap-7 text-base">
                         {navLinks.map((link) => (
                             <NavLink
                                 key={link.href}

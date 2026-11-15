@@ -5,15 +5,22 @@ import { useLanguage } from '../shared/LanguageContext';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 
 import { siteContentData as fallbackData } from '../../data/content';
+import { useCityStore } from '../../store/useCityStore';
 
 const Hero: React.FC = () => {
     const { language, t } = useLanguage();
     const { data: siteContent } = useSiteContent();
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
+    const activeCity = useCityStore((s) => s.getActiveCity());
+    const isCustomCity = activeCity && activeCity.id !== 'heliopolis';
     
-    const heroImages = (siteContent?.hero?.images && siteContent.hero.images.length > 0)
+    const baseHeroImages = (siteContent?.hero?.images && siteContent.hero.images.length > 0)
         ? siteContent.hero.images 
         : fallbackData.hero.images;
+
+    const heroImages = isCustomCity
+        ? [{ src: activeCity.heroImageUrl, alt: activeCity.name }]
+        : baseHeroImages;
 
     useEffect(() => {
         if (heroImages.length === 0) return;
@@ -26,8 +33,15 @@ const Hero: React.FC = () => {
     const activeImage = heroImages[currentImageIndex] || heroImages[0];
     const currentImageAlt = activeImage?.alt?.[language] || activeImage?.alt?.en || `${t.nav.properties} ${currentImageIndex + 1}`;
 
-    const heroTitle = siteContent?.hero?.[language]?.title || fallbackData.hero[language].title;
-    const heroSubtitle = siteContent?.hero?.[language]?.subtitle || fallbackData.hero[language].subtitle;
+    const heroTitle = isCustomCity
+        ? (language === 'ar'
+            ? `بوابتك المتخصصة لعقارات وخدمات ${activeCity.name.ar}`
+            : `Your Dedicated Real Estate & Service Portal for ${activeCity.name.en}`)
+        : (siteContent?.hero?.[language]?.title || fallbackData.hero[language].title);
+
+    const heroSubtitle = isCustomCity
+        ? activeCity.tagline[language]
+        : (siteContent?.hero?.[language]?.subtitle || fallbackData.hero[language].subtitle);
 
     return (
         <section className="relative h-[85vh] flex items-center justify-center text-center text-white overflow-hidden">

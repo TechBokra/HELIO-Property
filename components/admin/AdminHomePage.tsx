@@ -19,6 +19,7 @@ import {
 import { 
     getAllRequests 
 } from '../../services/requests';
+import { useCityStore } from '../../store/useCityStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { 
     BuildingIcon, 
@@ -76,9 +77,14 @@ const AdminHomePage: React.FC = () => {
                             hasPermission(Permission.MANAGE_PLATFORM_FINISHING_LEADS) ||
                             hasPermission(Permission.MANAGE_DECORATIONS_LEADS);
 
+    const cities = useCityStore((s) => s.cities);
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const setAdminCityScope = useCityStore((s) => s.setAdminCityScope);
+    const switchToCity = useCityStore((s) => s.switchToCity);
+
     // 2. Selective React Query execution
     const { 
-        data: properties, 
+        data: rawProperties, 
         isLoading: loadingProperties, 
         isError: errorProperties, 
         refetch: refetchProperties 
@@ -100,7 +106,7 @@ const AdminHomePage: React.FC = () => {
     });
 
     const { 
-        data: projects, 
+        data: rawProjects, 
         isLoading: loadingProjects, 
         isError: errorProjects, 
         refetch: refetchProjects 
@@ -122,7 +128,7 @@ const AdminHomePage: React.FC = () => {
     });
 
     const { 
-        data: requests, 
+        data: rawRequests, 
         isLoading: loadingRequests, 
         isError: errorRequests, 
         refetch: refetchRequests 
@@ -132,13 +138,31 @@ const AdminHomePage: React.FC = () => {
         enabled: canViewRequests,
     });
 
+    const properties = useMemo(() => {
+        if (!rawProperties) return [];
+        if (adminCityScope === 'all') return rawProperties;
+        return rawProperties.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
+    }, [rawProperties, adminCityScope]);
+
+    const projects = useMemo(() => {
+        if (!rawProjects) return [];
+        if (adminCityScope === 'all') return rawProjects;
+        return rawProjects.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
+    }, [rawProjects, adminCityScope]);
+
+    const requests = useMemo(() => {
+        if (!rawRequests) return [];
+        if (adminCityScope === 'all') return rawRequests;
+        return rawRequests.filter(r => (r.cityId || r.payload?.cityId || 'heliopolis') === adminCityScope);
+    }, [rawRequests, adminCityScope]);
+
     const isGlobalLoading = loadingProperties || loadingPartners || loadingProjects || loadingLeads || loadingRequests;
     const hasAnyError = Boolean(
-        (errorProperties && (!properties || properties.length === 0)) ||
+        (errorProperties && (!rawProperties || rawProperties.length === 0)) ||
         (errorPartners && (!partners || partners.length === 0)) ||
-        (errorProjects && (!projects || projects.length === 0)) ||
+        (errorProjects && (!rawProjects || rawProjects.length === 0)) ||
         (errorLeads && (!leads || leads.length === 0)) ||
-        (errorRequests && (!requests || requests.length === 0))
+        (errorRequests && (!rawRequests || rawRequests.length === 0))
     );
 
     const refetchAll = () => {
@@ -662,6 +686,110 @@ const AdminHomePage: React.FC = () => {
                         ))}
                     </div>
                 )}
+            </div>
+
+            {/* MULTI-CITY PORTALS BREAKDOWN */}
+            <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-900">
+                            {isAr ? 'مؤشرات المواقع الفرعية للمدن (Only Property Ecosystem)' : 'City Subdomain Portals Breakdown'}
+                        </h2>
+                        <p className="text-xs text-gray-500">
+                            {isAr ? 'اضغط على أي مدينة لتخصيص لوحة التحكم والعمليات لبياناتها فقط' : 'Click any city portal to scope the entire Admin Dashboard to that city'}
+                        </p>
+                    </div>
+                    <Link
+                        to="/admin/cities"
+                        className="text-xs font-bold text-amber-600 hover:text-amber-700 inline-flex items-center gap-1"
+                    >
+                        <span>{isAr ? 'إدارة المدن والنطاقات' : 'Manage City Portals'}</span>
+                        <ChevronRightIcon className={`w-3.5 h-3.5 ${isAr ? 'rotate-180' : ''}`} />
+                    </Link>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {cities.map((city) => {
+                        const cityPropsCount = (rawProperties || []).filter(p => (p.cityId || 'heliopolis') === city.id).length;
+                        const cityProjectsCount = (rawProjects || []).filter(p => (p.cityId || 'heliopolis') === city.id).length;
+                        const cityReqsCount = (rawRequests || []).filter(r => (r.cityId || r.payload?.cityId || 'heliopolis') === city.id).length;
+                        const isScoped = adminCityScope === city.id;
+
+                        return (
+                            <div
+                                key={city.id}
+                                className={`rounded-xl border p-4 bg-white transition-all flex flex-col justify-between ${
+                                    isScoped
+                                        ? 'border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
+                                        : 'border-gray-200 hover:border-amber-300 shadow-2xs'
+                                }`}
+                            >
+                                <div>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-extrabold text-gray-900">
+                                                    {city.name[language]}
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                    city.isFeatured ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+                                                }`}>
+                                                    {city.brandTitle[language]}
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] font-mono text-gray-400 mt-0.5" dir="ltr">
+                                                {city.subdomain}
+                                            </p>
+                                        </div>
+                                        {isScoped && (
+                                            <span className="px-2 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-extrabold">
+                                                {isAr ? 'النطاق النشط' : 'Active Scope'}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-gray-100 text-center">
+                                        <div className="bg-gray-50 rounded-lg p-2">
+                                            <span className="text-[10px] text-gray-500 block">{isAr ? 'العقارات' : 'Units'}</span>
+                                            <span className="text-sm font-extrabold text-gray-900 tabular-nums">{cityPropsCount}</span>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-lg p-2">
+                                            <span className="text-[10px] text-gray-500 block">{isAr ? 'الكمبوندات' : 'Compounds'}</span>
+                                            <span className="text-sm font-extrabold text-gray-900 tabular-nums">{cityProjectsCount}</span>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-lg p-2">
+                                            <span className="text-[10px] text-gray-500 block">{isAr ? 'الطلبات' : 'Requests'}</span>
+                                            <span className="text-sm font-extrabold text-gray-900 tabular-nums">{cityReqsCount}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAdminCityScope(isScoped ? 'all' : city.id)}
+                                        className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors ${
+                                            isScoped
+                                                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                        }`}
+                                    >
+                                        {isScoped
+                                            ? (isAr ? 'إلغاء الحصر (عرض الكل)' : 'Reset to All Cities')
+                                            : (isAr ? `حصر لوحة التحكم بـ ${city.name.ar}` : `Scope Admin to ${city.name.en}`)}
+                                    </button>
+                                    <Link
+                                        to={`/?city=${city.slug}`}
+                                        onClick={() => switchToCity(city.slug)}
+                                        className="text-[11px] font-semibold text-gray-500 hover:text-amber-600"
+                                    >
+                                        {isAr ? 'معاينة البوابة ↗' : 'Preview ↗'}
+                                    </Link>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* SECTION 2: OPERATIONAL KPIS BY DOMAIN */}

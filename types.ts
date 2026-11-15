@@ -156,6 +156,33 @@ export interface Partner {
     descriptionAr?: string;
     createdAt?: string;
     isDemo?: boolean;
+    allowedCities?: string[];
+}
+
+export type CitySlug = 'hub' | 'heliopolis' | 'shorouk' | 'badr' | string;
+
+export interface CityPortalConfig {
+    id: string;
+    slug: string;
+    subdomain: string;
+    name: { ar: string; en: string };
+    brandTitle: { ar: string; en: string };
+    tagline: { ar: string; en: string };
+    region: { ar: string; en: string };
+    description?: { ar: string; en: string };
+    accentColor: string;
+    heroImageUrl: string;
+    isActive: boolean;
+    isFeatured?: boolean;
+    sortOrder?: number;
+    stats: {
+        propertiesCount: number;
+        projectsCount: number;
+        partnersCount: number;
+        districtsCount: number;
+    };
+    coordinates?: { lat: number; lng: number };
+    districts?: { ar: string[]; en: string[] };
 }
 
 export interface AdminPartner extends Partner {
@@ -166,6 +193,7 @@ export interface AdminPartner extends Partner {
 
 export interface Project {
     id: string;
+    cityId?: string;
     partnerId: string;
     name: { ar: string; en: string };
     description: { ar: string; en: string };
@@ -200,6 +228,7 @@ export interface PropertyHistoryEntry {
 
 export interface Property {
     id: string;
+    cityId?: string;
     referenceNumber?: string;
     slug?: string;
     partnerId: string;
@@ -311,6 +340,7 @@ export enum RequestType {
 
 export interface Request {
     id: string;
+    cityId?: string;
     customerId?: string;
     type: RequestType;
     requesterInfo: { name: string; phone: string; email?: string; customerId?: string };
@@ -361,6 +391,7 @@ export type OperationalDomain =
 
 export interface UnifiedRequest {
     id: string;
+    cityId?: string;
     type: RequestType;
     typeLabel: { en: string; ar: string };
     domain: OperationalDomain;

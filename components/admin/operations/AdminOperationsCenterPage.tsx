@@ -16,6 +16,7 @@ import { getAllPartnersForAdmin } from '../../../services/partners';
 import { OperationalMetricsBar } from './OperationalMetricsBar';
 import { OperationalFilterBar } from './OperationalFilterBar';
 import { OperationalRequestDrawer } from './OperationalRequestDrawer';
+import { useCityStore } from '../../../store/useCityStore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/Table';
 import Pagination from '../../shared/Pagination';
 import { 
@@ -75,6 +76,14 @@ const AdminOperationsCenterPage: React.FC = () => {
         );
     }, [partners]);
 
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const cities = useCityStore((s) => s.cities);
+
+    const getCityBadgeName = (cityId?: string) => {
+        const target = cities.find(c => c.id === (cityId || 'heliopolis'));
+        return target ? target.name[language] : (isAr ? 'هليوبوليس الجديدة' : 'New Heliopolis');
+    };
+
     // 3. Query Unified Requests
     const {
         data: response,
@@ -83,8 +92,9 @@ const AdminOperationsCenterPage: React.FC = () => {
         refetch,
         isFetching
     } = useQuery({
-        queryKey: ['unifiedRequests', domain, requestType, operationalStatus, priority, dateRange, assignedTo, triageView, searchTerm, currentPage],
+        queryKey: ['unifiedRequests', adminCityScope, domain, requestType, operationalStatus, priority, dateRange, assignedTo, triageView, searchTerm, currentPage],
         queryFn: () => getUnifiedRequests({
+            cityId: adminCityScope,
             domain,
             type: requestType,
             operationalStatus,
@@ -349,10 +359,15 @@ const AdminOperationsCenterPage: React.FC = () => {
 
                                                 {/* Domain & Type */}
                                                 <TableCell>
-                                                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-700">
-                                                        {isAr ? req.domainLabel.ar : req.domainLabel.en}
-                                                    </span>
-                                                    <span className="block text-[11px] text-gray-500 mt-0.5 truncate max-w-[130px]">
+                                                    <div className="flex items-center gap-1 flex-wrap">
+                                                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-700">
+                                                            {isAr ? req.domainLabel.ar : req.domainLabel.en}
+                                                        </span>
+                                                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                                            {getCityBadgeName(req.cityId)}
+                                                        </span>
+                                                    </div>
+                                                    <span className="block text-[11px] text-gray-500 mt-0.5 truncate max-w-[150px]">
                                                         {req.typeLabel[isAr ? 'ar' : 'en']}
                                                     </span>
                                                 </TableCell>
