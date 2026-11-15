@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { mapPartnerTypeToRole } from '../data/permissions';
 import { Role } from '../types';
 
 export interface CredentialsRequestBody {
@@ -21,14 +20,30 @@ export interface EndpointResult {
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export interface CredentialsEndpointEnv {
+    supabaseUrl?: string;
+    supabaseAnonKey?: string;
+    supabaseServiceKey?: string;
+    authVerifyClient?: any;
+    serverClient?: any;
+    adminAuthClient?: any;
+}
+
+/**
+ * Authoritative Super Admin definition strictly aligned with DB partner_role enum and RLS policies.
+ * Never promotes generic 'admin', 'system_admin', or type === 'admin' without canonical 'super_admin' role.
+ */
+export const isAuthoritativeSuperAdmin = (
+    profile: { role?: string | null; type?: string | null } | null | undefined
+): boolean => {
+    if (!profile) return false;
+    return String(profile.role || '').trim().toLowerCase() === Role.SUPER_ADMIN;
+};
+
 export async function handleAdminCredentialsRequest(
     authHeader: string | undefined,
     rawBody: any,
-    env: {
-        supabaseUrl?: string;
-        supabaseAnonKey?: string;
-        supabaseServiceKey?: string;
-    }
+    env: CredentialsEndpointEnv = {}
 ): Promise<EndpointResult> {
     const supabaseUrl = env.supabaseUrl || process.env.VITE_SUPABASE_URL || 'https://xyyvgpchkznznwbxbgrp.supabase.co';
     const supabaseAnonKey = env.supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM';
@@ -60,7 +75,7 @@ export async function handleAdminCredentialsRequest(
     }
 
     // Client for token verification
-    const authVerifyClient = createClient(supabaseUrl, supabaseAnonKey, {
+    const authVerifyClient = env.authVerifyClient || createClient(supabaseUrl, supabaseAnonKey, {
         auth: { persistSession: false, autoRefreshToken: false }
     });
 
@@ -77,7 +92,7 @@ export async function handleAdminCredentialsRequest(
     const actorId = actorUser.id;
 
     // Privileged server client using verified service role key (P0.2)
-    const serverClient = createClient(supabaseUrl, serviceRoleKey, {
+    const serverClient = env.serverClient || createClient(supabaseUrl, serviceRoleKey, {
         auth: { persistSession: false, autoRefreshToken: false }
     });
 
@@ -102,13 +117,13 @@ export async function handleAdminCredentialsRequest(
                 });
             if (insertError) {
                 console.error('Failed to write to credential_audit_log:', insertError.message);
-                return { error: insertError.message };
+                return { error: 'Audit insert failed' };
             }
             return {};
         } catch (e: any) {
             const msg = e?.message || 'Exception during audit log insertion';
             console.error('Exception writing to credential_audit_log:', msg);
-            return { error: msg };
+            return { error: 'Audit insert exception' };
         }
     };
 
@@ -134,8 +149,8 @@ export async function handleAdminCredentialsRequest(
         };
     }
 
-    // 5. Authoritative Super Admin definition via application role model (P0.3)
-    const isSuperAdmin = mapPartnerTypeToRole(actorProfile.type, actorProfile.role) === Role.SUPER_ADMIN;
+    // 5. Authoritative Super Admin definition strictly via canonical role === 'super_admin' (P0.3)
+    const isSuperAdmin = isAuthoritativeSuperAdmin(actorProfile);
     const customPerms: string[] = Array.isArray(actorProfile.custom_permissions) ? actorProfile.custom_permissions : [];
     const hasCredentialPermission = isSuperAdmin || customPerms.includes('manage_user_credentials');
 
@@ -167,31 +182,51 @@ export async function handleAdminCredentialsRequest(
             };
         }
 
-        // Fetch target user profile by email or targetUserId if provided
-        let targetQuery = serverClient.from('partners').select('id, email, role, type, status');
-        if (body.targetUserId && UUID_REGEX.test(body.targetUserId)) {
-            targetQuery = targetQuery.eq('id', body.targetUserId);
-        } else {
-            targetQuery = targetQuery.eq('email', targetEmail);
-        }
+        const { data: targetByEmail } = await serverClient
+            .from('partners')
+            .select('id, email, role, type, status')
+            .eq('email', targetEmail)
+            .maybeSingle();
 
-        const { data: targetProfile } = await targetQuery.maybeSingle();
-
-        // Privilege Escalation Prevention (P0.3)
-        if (targetProfile) {
-            const targetIsSuperAdmin = mapPartnerTypeToRole(targetProfile.type, targetProfile.role) === Role.SUPER_ADMIN;
-            if (targetIsSuperAdmin && !isSuperAdmin) {
-                await logAudit(
-                    'PASSWORD_RESET_EMAIL_SENT',
-                    targetProfile.id,
-                    false,
-                    'Privilege escalation rejected: Non-Super Admin cannot trigger reset email for Super Admin'
-                );
+        let targetById: any = null;
+        if (body.targetUserId) {
+            if (!UUID_REGEX.test(body.targetUserId)) {
                 return {
-                    status: 403,
-                    body: { error: 'Forbidden: Cannot trigger password reset for a Super Administrator account' }
+                    status: 400,
+                    body: { error: 'Valid targetUserId (UUID) is required when provided' }
                 };
             }
+            const { data } = await serverClient
+                .from('partners')
+                .select('id, email, role, type, status')
+                .eq('id', body.targetUserId)
+                .maybeSingle();
+            targetById = data;
+
+            if (targetById?.email && String(targetById.email).trim().toLowerCase() !== targetEmail) {
+                return {
+                    status: 400,
+                    body: { error: 'Target user email does not match target user identifier' }
+                };
+            }
+        }
+
+        const targetProfile = targetById || targetByEmail;
+
+        // Privilege Escalation Prevention (P0.3): protect Super Admins matched by either ID or email
+        const targetIsSuperAdmin = isAuthoritativeSuperAdmin(targetById) || isAuthoritativeSuperAdmin(targetByEmail);
+        if (targetIsSuperAdmin && !isSuperAdmin) {
+            const protectedTargetId = (isAuthoritativeSuperAdmin(targetById) ? targetById?.id : targetByEmail?.id) || null;
+            await logAudit(
+                'PASSWORD_RESET_EMAIL_SENT',
+                protectedTargetId,
+                false,
+                'Privilege escalation rejected: Non-Super Admin cannot trigger reset email for Super Admin'
+            );
+            return {
+                status: 403,
+                body: { error: 'Forbidden: Cannot trigger password reset for a Super Administrator account' }
+            };
         }
 
         // Trigger password reset email via authoritative Supabase Auth
@@ -201,15 +236,16 @@ export async function handleAdminCredentialsRequest(
             });
 
             if (resetError) {
+                console.error('Supabase resetPasswordForEmail error:', resetError.message);
                 await logAudit(
                     'PASSWORD_RESET_EMAIL_SENT',
                     targetProfile?.id || null,
                     false,
-                    `Supabase resetPasswordForEmail error: ${resetError.message}`
+                    `Supabase resetPasswordForEmail failed: ${resetError.message}`
                 );
                 return {
                     status: 500,
-                    body: { error: `Failed to trigger reset email: ${resetError.message}` }
+                    body: { error: 'Failed to trigger password reset email' }
                 };
             }
 
@@ -223,7 +259,7 @@ export async function handleAdminCredentialsRequest(
             if (emailAudit.error) {
                 return {
                     status: 500,
-                    body: { error: `Password reset email dispatched but audit recording failed: ${emailAudit.error}` }
+                    body: { error: 'Password reset email dispatched but audit recording failed' }
                 };
             }
 
@@ -232,6 +268,7 @@ export async function handleAdminCredentialsRequest(
                 body: { success: true, message: 'Password reset email sent successfully' }
             };
         } catch (err: any) {
+            console.error('Exception during password reset email:', err?.message || 'Unknown error');
             await logAudit(
                 'PASSWORD_RESET_EMAIL_SENT',
                 targetProfile?.id || null,
@@ -240,7 +277,7 @@ export async function handleAdminCredentialsRequest(
             );
             return {
                 status: 500,
-                body: { error: err?.message || 'Failed to dispatch password reset email' }
+                body: { error: 'Failed to dispatch password reset email' }
             };
         }
     }
@@ -285,7 +322,7 @@ export async function handleAdminCredentialsRequest(
         }
 
         // Privilege Escalation Prevention (P0.3)
-        const targetIsSuperAdmin = mapPartnerTypeToRole(targetProfile.type, targetProfile.role) === Role.SUPER_ADMIN;
+        const targetIsSuperAdmin = isAuthoritativeSuperAdmin(targetProfile);
         if (targetIsSuperAdmin && !isSuperAdmin) {
             await logAudit(
                 'PASSWORD_RESET_COMPLETED',
@@ -309,13 +346,13 @@ export async function handleAdminCredentialsRequest(
         if (initAudit.error) {
             return {
                 status: 500,
-                body: { error: `Failed to record required audit initiation log: ${initAudit.error}. Reset aborted.` }
+                body: { error: 'Failed to record required audit initiation log. Reset aborted.' }
             };
         }
 
         try {
             // Server-side privileged execution via Supabase Auth Admin API
-            const adminAuthClient = createClient(supabaseUrl, serviceRoleKey, {
+            const adminAuthClient = env.adminAuthClient || createClient(supabaseUrl, serviceRoleKey, {
                 auth: { persistSession: false, autoRefreshToken: false }
             });
 
@@ -325,6 +362,7 @@ export async function handleAdminCredentialsRequest(
             );
 
             if (adminAuthError) {
+                console.error('Admin Auth API error:', adminAuthError.message);
                 await logAudit(
                     'PASSWORD_RESET_COMPLETED',
                     targetUserId,
@@ -333,7 +371,7 @@ export async function handleAdminCredentialsRequest(
                 );
                 return {
                     status: 500,
-                    body: { error: `Failed to reset user password: ${adminAuthError.message}` }
+                    body: { error: 'Failed to reset user password' }
                 };
             }
 
@@ -346,7 +384,7 @@ export async function handleAdminCredentialsRequest(
             if (completeAudit.error) {
                 return {
                     status: 500,
-                    body: { error: `Password was updated but audit completion recording failed: ${completeAudit.error}` }
+                    body: { error: 'Password was updated but audit completion recording failed' }
                 };
             }
 
@@ -355,6 +393,7 @@ export async function handleAdminCredentialsRequest(
                 body: { success: true, message: 'Password reset completed successfully' }
             };
         } catch (err: any) {
+            console.error('Exception during password reset:', err?.message || 'Server error');
             await logAudit(
                 'PASSWORD_RESET_COMPLETED',
                 targetUserId,
@@ -363,7 +402,7 @@ export async function handleAdminCredentialsRequest(
             );
             return {
                 status: 500,
-                body: { error: err?.message || 'Internal server error during password reset' }
+                body: { error: 'Internal server error during password reset' }
             };
         }
     }

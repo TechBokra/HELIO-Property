@@ -19,7 +19,7 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { Button } from '../ui/Button';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
-import { getCommercialKPIs } from '../../services/analytics';
+import { getCommercialKPIs, getAnalyticsEventCounts } from '../../services/analytics';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -45,6 +45,7 @@ const SuperAdminHomePage: React.FC = () => {
     const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
     const { data: leads, isLoading: loadingLeads, refetch: refetchLeads } = useQuery({ queryKey: ['allLeads'], queryFn: getAllLeads });
     const { data: requests, isLoading: loadingRequests, refetch: refetchRequests } = useQuery({ queryKey: ['allRequestsAdmin'], queryFn: getAllRequests });
+    const { data: analyticsCounts, refetch: refetchAnalytics } = useQuery({ queryKey: ['analyticsEventCounts'], queryFn: () => getAnalyticsEventCounts() });
 
     const loading = loadingPartners || loadingProperties || loadingLeads || loadingProjects || loadingRequests;
 
@@ -54,12 +55,13 @@ const SuperAdminHomePage: React.FC = () => {
         refetchProjects();
         refetchLeads();
         refetchRequests();
+        refetchAnalytics();
     };
 
     const commercialData = useMemo(() => {
         if (loading) return null;
 
-        const kpis = getCommercialKPIs(properties || [], leads || [], partners || []);
+        const kpis = getCommercialKPIs(properties || [], leads || [], partners || [], analyticsCounts);
         const totalProjectsCount = (projects || []).length;
 
         const leadStats = (leads || []).reduce((acc, lead) => {
@@ -182,7 +184,7 @@ const SuperAdminHomePage: React.FC = () => {
                 totalPendingAction: unassignedLeadsCount + pendingPartnersCount + pendingRequestsCount + pendingPropertiesCount
             }
         };
-    }, [loading, leads, properties, partners, projects, requests, language]);
+    }, [loading, leads, properties, partners, projects, requests, analyticsCounts, language]);
 
     if (loading || !commercialData) {
         return <div className="animate-pulse h-screen bg-gray-50 dark:bg-gray-800 rounded-lg p-6 space-y-6">

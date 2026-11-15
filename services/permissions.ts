@@ -5,6 +5,16 @@ import { requireSuperAdmin } from './authGuard';
 
 type PermissionRecord = { role: Role; permissions: Permission[] };
 
+export const normalizeRole = (r: any): Role => {
+    const s = String(r || '').trim().toLowerCase();
+    if (s === 'developer' || s === 'developer_partner') return Role.DEVELOPER_PARTNER;
+    if (s === 'finishing' || s === 'finishing_partner') return Role.FINISHING_PARTNER;
+    if (s === 'agency' || s === 'agency_partner') return Role.AGENCY_PARTNER;
+    if (s === 'super_admin') return Role.SUPER_ADMIN;
+    if (s === 'customer') return Role.CUSTOMER;
+    return r as Role;
+};
+
 /**
  * Loads authoritative role permissions from Supabase site_content,
  * falling back to the canonical code-defined matrix.
@@ -27,16 +37,6 @@ export const getRolePermissions = async (): Promise<Map<Role, Permission[]>> => 
     } catch (e) {
         console.warn("Notice: Using canonical code permissions defaults", e);
     }
-
-    const normalizeRole = (r: any): Role => {
-        const s = String(r || '').trim().toLowerCase();
-        if (s === 'developer' || s === 'developer_partner') return Role.DEVELOPER_PARTNER;
-        if (s === 'finishing' || s === 'finishing_partner') return Role.FINISHING_PARTNER;
-        if (s === 'agency' || s === 'agency_partner') return Role.AGENCY_PARTNER;
-        if (s === 'super_admin' || s === 'admin' || s === 'system_admin') return Role.SUPER_ADMIN;
-        if (s === 'customer') return Role.CUSTOMER;
-        return r as Role;
-    };
 
     // Initialize with canonical code defaults
     const permissionsMap = new Map<Role, Permission[]>(defaultRolePermissions);

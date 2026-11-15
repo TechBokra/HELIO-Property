@@ -43,7 +43,7 @@ const AdminUserFormPage: React.FC = () => {
         enabled: isEdit
     });
 
-    const isTargetSuperAdmin = (userToEdit as any)?.role === Role.SUPER_ADMIN || (userToEdit as any)?.type === 'admin' || (userToEdit as any)?.type === 'super_admin';
+    const isTargetSuperAdmin = (userToEdit as any)?.role === Role.SUPER_ADMIN;
     const isActorSuperAdmin = currentUser?.role === Role.SUPER_ADMIN;
     const cannotModifyTarget = isEdit && isTargetSuperAdmin && !isActorSuperAdmin;
 
@@ -101,8 +101,8 @@ const AdminUserFormPage: React.FC = () => {
             return;
         }
 
-        if (['super_admin', 'admin', 'system_admin'].includes(data.type) && !isActorSuperAdmin) {
-            showToast(isAr ? 'لا يمكنك تعيين صلاحيات إدارية عليا' : 'Cannot assign Super Admin or System Admin roles', 'error');
+        if (['super_admin', 'admin', 'system_admin'].includes(data.type as string) && !isActorSuperAdmin) {
+            showToast(isAr ? 'لا يمكنك تعيين صلاحيات إدارية عليا' : 'Cannot assign Super Admin role', 'error');
             return;
         }
 
@@ -115,10 +115,10 @@ const AdminUserFormPage: React.FC = () => {
     
     const isSubmitting = addMutation.isPending || updateMutation.isPending;
     const partnerTypes = Object.entries(t_admin.partnerTypes).filter(([key]) => {
-        if (['developer', 'agency', 'finishing', 'customer', 'developer_partner', 'finishing_partner', 'agency_partner'].includes(key)) {
+        if (['developer', 'agency', 'finishing', 'customer', 'developer_partner', 'finishing_partner', 'agency_partner', 'admin', 'system_admin'].includes(key)) {
             return false;
         }
-        if (['super_admin', 'admin', 'system_admin'].includes(key) && !isActorSuperAdmin) {
+        if (key === 'super_admin' && !isActorSuperAdmin) {
             return false;
         }
         return true;

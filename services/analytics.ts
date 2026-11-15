@@ -1,12 +1,18 @@
 import { supabase } from '../lib/supabase';
+import { Permission } from '../types';
+import { requireAnyPermission } from './authGuard';
 
-export type AnalyticsEventType = 
-    | 'property_view' 
-    | 'whatsapp_click' 
-    | 'call_click' 
-    | 'inquiry_submit' 
-    | 'search_performed' 
-    | 'filter_applied';
+export type AnalyticsEventType =
+    | 'property_view'
+    | 'whatsapp_click'
+    | 'call_click'
+    | 'inquiry_submit'
+    | 'property_inquiry'
+    | 'search_performed'
+    | 'filter_applied'
+    | 'finishing_service_view'
+    | 'finishing_request'
+    | 'share_click';
 
 export interface AnalyticsEvent {
     id?: string;
@@ -17,35 +23,27 @@ export interface AnalyticsEvent {
     createdAt?: string;
 }
 
-const LOCAL_STORAGE_KEY = 'onlyhelio_analytics_events';
-
-// In-memory queue with local persistence fallback
-export const getLocalEvents = (): AnalyticsEvent[] => {
-    try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
-};
-
-const saveLocalEvent = (event: AnalyticsEvent) => {
-    try {
-        const existing = getLocalEvents();
-        existing.push(event);
-        // keep last 500 events
-        const trimmed = existing.slice(-500);
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmed));
-    } catch (e) {
-        console.error('Error saving local analytics event:', e);
-    }
-};
+const ALLOWED_ANALYTICS_EVENTS: ReadonlySet<AnalyticsEventType> = new Set([
+    'property_view',
+    'whatsapp_click',
+    'call_click',
+    'inquiry_submit',
+    'property_inquiry',
+    'search_performed',
+    'filter_applied',
+    'finishing_service_view',
+    'finishing_request',
+    'share_click',
+]);
 
 const getSessionId = (): string => {
     try {
         let sid = sessionStorage.getItem('onlyhelio_session_id');
         if (!sid) {
-            sid = 'sid_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now();
+            const randomPart = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+                : Math.random().toString(36).substring(2, 12);
+            sid = `sid_${randomPart}_${Date.now()}`;
             sessionStorage.setItem('onlyhelio_session_id', sid);
         }
         return sid;
@@ -55,35 +53,32 @@ const getSessionId = (): string => {
 };
 
 export const trackEvent = async (
-    eventType: AnalyticsEventType, 
-    data: { propertyId?: string; partnerId?: string; metadata?: Record<string, any> } = {}
+    eventType: AnalyticsEventType,
+    data: { propertyId?: string; partnerId?: string; metadata?: Record<string, any> } = {},
+    options: { client?: any } = {}
 ) => {
+    if (!ALLOWED_ANALYTICS_EVENTS.has(eventType)) {
+        return;
+    }
+
+    const dbClient = options.client || supabase;
     const sessionId = getSessionId();
-    const event: AnalyticsEvent = {
-        eventType,
-        propertyId: data.propertyId,
-        partnerId: data.partnerId,
-        metadata: {
-            ...data.metadata,
-            url: typeof window !== 'undefined' ? window.location.pathname : '',
-            referrer: typeof document !== 'undefined' ? document.referrer : '',
-            timestamp: new Date().toISOString(),
-        },
-        createdAt: new Date().toISOString(),
+    const createdAt = new Date().toISOString();
+    const metadata = {
+        ...data.metadata,
+        url: typeof window !== 'undefined' ? window.location.pathname : '',
+        referrer: typeof document !== 'undefined' ? document.referrer : '',
+        timestamp: createdAt,
     };
 
-    // Client-side instant buffer (non-authoritative)
-    saveLocalEvent(event);
-
-    // Primary: Persist to Supabase analytics_events table
     try {
-        const { error } = await supabase.from('analytics_events').insert({
-            event_type: event.eventType,
-            property_id: event.propertyId || null,
-            partner_id: event.partnerId || null,
+        const { error } = await dbClient.from('analytics_events').insert({
+            event_type: eventType,
+            property_id: data.propertyId || null,
+            partner_id: data.partnerId || null,
             session_id: sessionId,
-            metadata: event.metadata,
-            created_at: event.createdAt,
+            metadata,
+            created_at: createdAt,
         });
 
         if (error) {
@@ -117,31 +112,27 @@ export interface AnalyticsCounts {
     inquirySubmits: number;
 }
 
-export const getAnalyticsEventCounts = async (): Promise<AnalyticsCounts> => {
-    try {
-        const { data, error } = await supabase
-            .from('analytics_events')
-            .select('event_type');
+export const getAnalyticsEventCounts = async (
+    options: { client?: any } = {}
+): Promise<AnalyticsCounts> => {
+    requireAnyPermission([Permission.VIEW_ANALYTICS, Permission.VIEW_ADMIN_DASHBOARD]);
 
-        if (!error && Array.isArray(data)) {
-            return {
-                whatsAppClicks: data.filter(e => e.event_type === 'whatsapp_click').length,
-                callClicks: data.filter(e => e.event_type === 'call_click').length,
-                propertyViews: data.filter(e => e.event_type === 'property_view').length,
-                inquirySubmits: data.filter(e => e.event_type === 'inquiry_submit' || e.event_type === 'property_inquiry').length
-            };
-        }
-    } catch (err) {
-        console.warn('Failed to query analytics_events table:', err);
+    const dbClient = options.client || supabase;
+    const { data, error } = await dbClient
+        .from('analytics_events')
+        .select('event_type');
+
+    if (error) {
+        console.error('Failed to query analytics_events table:', error.message);
+        throw new Error(`Failed to load analytics counts: ${error.message}`);
     }
 
-    // Graceful fallback to client events buffer
-    const local = getLocalEvents();
+    const rows = Array.isArray(data) ? data : [];
     return {
-        whatsAppClicks: local.filter(e => e.eventType === 'whatsapp_click').length,
-        callClicks: local.filter(e => e.eventType === 'call_click').length,
-        propertyViews: local.filter(e => e.eventType === 'property_view').length,
-        inquirySubmits: local.filter(e => e.eventType === 'inquiry_submit').length
+        whatsAppClicks: rows.filter((e: any) => e.event_type === 'whatsapp_click').length,
+        callClicks: rows.filter((e: any) => e.event_type === 'call_click').length,
+        propertyViews: rows.filter((e: any) => e.event_type === 'property_view').length,
+        inquirySubmits: rows.filter((e: any) => e.event_type === 'inquiry_submit' || e.event_type === 'property_inquiry').length
     };
 };
 
@@ -159,33 +150,23 @@ export interface CommercialKPIs {
 }
 
 export const getCommercialKPIs = (
-    properties: any[] = [], 
-    leads: any[] = [], 
+    properties: any[] = [],
+    leads: any[] = [],
     partners: any[] = [],
     serverCounts?: AnalyticsCounts
 ): CommercialKPIs => {
-    const localEvents = getLocalEvents();
-    
-    // Server counts are authoritative if provided
-    const whatsAppClicks = serverCounts 
-        ? serverCounts.whatsAppClicks 
-        : localEvents.filter(e => e.eventType === 'whatsapp_click').length;
-        
-    const callClicks = serverCounts 
-        ? serverCounts.callClicks 
-        : localEvents.filter(e => e.eventType === 'call_click').length;
-        
-    const propertyViews = serverCounts 
-        ? serverCounts.propertyViews 
-        : localEvents.filter(e => e.eventType === 'property_view').length;
+    // Strictly use authoritative server counts (zero localStorage fallback)
+    const whatsAppClicks = serverCounts?.whatsAppClicks ?? 0;
+    const callClicks = serverCounts?.callClicks ?? 0;
+    const propertyViews = serverCounts?.propertyViews ?? 0;
 
     const totalListings = properties.length;
     const activeListings = properties.filter(p => p.listingStatus === 'active' || p.status?.en === 'For Sale' || p.status?.en === 'For Rent').length;
     const newLeadsCount = leads.length;
 
-    const contactedLeads = leads.filter(l => l.status === 'contacted' || l.status === 'site-visit' || l.status === 'quoted' || l.status === 'completed' || l.status === 'in-progress');
-    const viewingLeads = leads.filter(l => l.status === 'site-visit' || l.status === 'completed');
-    const wonLeads = leads.filter(l => l.status === 'completed' || l.status === 'closed' || (l as any).leadQuality === 'won');
+    const contactedLeads = leads.filter(l => ['contacted', 'site-visit', 'quoted', 'completed', 'in-progress'].includes(l.status));
+    const viewingLeads = leads.filter(l => ['site-visit', 'completed'].includes(l.status));
+    const wonLeads = leads.filter(l => ['completed', 'closed'].includes(l.status) || (l as any).leadQuality === 'won');
 
     const contactedRate = newLeadsCount > 0 ? Math.round((contactedLeads.length / newLeadsCount) * 100) : 0;
     const viewingRate = newLeadsCount > 0 ? Math.round((viewingLeads.length / newLeadsCount) * 100) : 0;

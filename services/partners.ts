@@ -284,10 +284,13 @@ export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
 
     const newId = authData.user.id;
 
+    const resolvedRole = mapPartnerTypeToRole(userData.type, userData.role || userData.type);
+
     const dbPayload = {
         id: newId,
         email: userData.email,
         type: userData.type,
+        role: resolvedRole,
         status: 'active',
         subscription_plan: 'basic',
         name_ar: userData.nameAr,
@@ -311,7 +314,12 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
     if (updates.status) dbUpdates.status = updates.status;
     if (updates.contactMethods) dbUpdates.contact_methods = updates.contactMethods;
     if (updates.email) dbUpdates.email = updates.email;
-    if (updates.type) dbUpdates.type = updates.type;
+    if (updates.type) {
+        dbUpdates.type = updates.type;
+        dbUpdates.role = mapPartnerTypeToRole(updates.type, updates.role || updates.type);
+    } else if (updates.role) {
+        dbUpdates.role = mapPartnerTypeToRole(undefined, updates.role);
+    }
 
     // Password management is handled strictly via dedicated credentials service and server-side APIs (Section 14)
 

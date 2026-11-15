@@ -1,7 +1,14 @@
-
 import { supabase } from '../lib/supabase';
-import type { Transaction, TransactionStatus, FinanceStats } from '../types';
+import { Permission, Role } from '../types';
+import type { Transaction, TransactionStatus, PaymentMethod, FinanceStats } from '../types';
 import { addNotification } from './notifications';
+import { requireAnyPermission } from './authGuard';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const VALID_METHODS: PaymentMethod[] = ['instapay', 'card', 'wallet'];
+const VALID_STATUSES: TransactionStatus[] = ['paid', 'pending', 'failed', 'refunded', 'reviewing'];
+
+const isValidUUID = (id?: string | null): boolean => !!id && UUID_REGEX.test(id);
 
 const mapTransactionFromDb = (row: any): Transaction => ({
     id: row.id,
@@ -19,8 +26,28 @@ const mapTransactionFromDb = (row: any): Transaction => ({
     receiptUrl: row.receipt_url,
 });
 
-export const getAllTransactions = async (): Promise<Transaction[]> => {
-    const { data, error } = await supabase
+const resolveFinanceAdminRecipientId = async (dbClient: any = supabase): Promise<string | null> => {
+    try {
+        const { data, error } = await dbClient
+            .from('partners')
+            .select('id')
+            .eq('status', 'active')
+            .eq('role', Role.SUPER_ADMIN)
+            .limit(1);
+
+        if (!error && Array.isArray(data) && data.length > 0 && data[0]?.id) {
+            return data[0].id;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+};
+
+export const getAllTransactions = async (dbClient: any = supabase): Promise<Transaction[]> => {
+    requireAnyPermission([Permission.VIEW_FINANCE, Permission.MANAGE_FINANCE]);
+
+    const { data, error } = await dbClient
         .from('transactions')
         .select('*')
         .order('created_at', { ascending: false });
@@ -32,8 +59,12 @@ export const getAllTransactions = async (): Promise<Transaction[]> => {
     return (data || []).map(mapTransactionFromDb);
 };
 
-export const getTransactionsByUserId = async (userId: string): Promise<Transaction[]> => {
-    const { data, error } = await supabase
+export const getTransactionsByUserId = async (userId: string, dbClient: any = supabase): Promise<Transaction[]> => {
+    if (!userId || !isValidUUID(userId)) {
+        return [];
+    }
+
+    const { data, error } = await dbClient
         .from('transactions')
         .select('*')
         .eq('user_id', userId)
@@ -46,9 +77,9 @@ export const getTransactionsByUserId = async (userId: string): Promise<Transacti
     return (data || []).map(mapTransactionFromDb);
 };
 
-export const getFinanceStats = async (): Promise<FinanceStats> => {
-    const transactions = await getAllTransactions();
-    
+export const getFinanceStats = async (dbClient: any = supabase): Promise<FinanceStats> => {
+    const transactions = await getAllTransactions(dbClient);
+
     return transactions.reduce((acc, curr) => {
         if (curr.status === 'paid') {
             acc.totalRevenue += curr.amount;
@@ -56,7 +87,7 @@ export const getFinanceStats = async (): Promise<FinanceStats> => {
         } else if (curr.status === 'reviewing' || curr.status === 'pending') {
             acc.pendingAmount += curr.amount;
         }
-        
+
         if (curr.status === 'reviewing') {
             acc.pendingReviews += 1;
         }
@@ -64,25 +95,55 @@ export const getFinanceStats = async (): Promise<FinanceStats> => {
     }, { totalRevenue: 0, pendingAmount: 0, successfulTransactions: 0, pendingReviews: 0 });
 };
 
-export const createTransaction = async (data: Omit<Transaction, 'id' | 'status' | 'createdAt' | 'updatedAt'>): Promise<Transaction> => {
-    const isValidUUID = (id?: string) => !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+export const createTransaction = async (
+    data: Omit<Transaction, 'id' | 'status' | 'createdAt' | 'updatedAt'>,
+    options: { client?: any } = {}
+): Promise<Transaction> => {
+    const dbClient = options.client || supabase;
+    const numericAmount = Number(data.amount);
+
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        throw new Error('Transaction amount must be a positive number.');
+    }
+
+    if (!data.method || !VALID_METHODS.includes(data.method)) {
+        throw new Error('Unsupported payment method.');
+    }
+
+    if (data.method === 'instapay' && !data.receiptUrl) {
+        throw new Error('InstaPay transfers require a receipt upload.');
+    }
+
+    // Derive authoritative authenticated user ID from active session when present
+    let authoritativeUserId: string | null = isValidUUID(data.userId) ? data.userId : null;
+    try {
+        const { data: sessionRes } = await dbClient.auth.getSession();
+        if (sessionRes?.session?.user?.id) {
+            authoritativeUserId = sessionRes.session.user.id;
+        }
+    } catch {
+        // Unauthenticated public submission falls back to validated UUID or null
+    }
+
+    // Never self-approve client card payments without verified server/gateway webhook confirmation
+    const initialStatus: TransactionStatus = data.method === 'instapay' ? 'reviewing' : 'pending';
 
     const dbPayload: any = {
-        user_id: isValidUUID(data.userId) ? data.userId : null,
-        user_name: data.userName,
-        amount: data.amount,
+        user_id: authoritativeUserId,
+        user_name: (data.userName || 'Guest').trim(),
+        amount: numericAmount,
         currency: data.currency || 'EGP',
         type: data.type,
         description: data.description,
         method: data.method,
-        status: data.method === 'card' ? 'paid' : 'reviewing',
+        status: initialStatus,
         reference_number: data.referenceNumber,
         receipt_url: data.receiptUrl,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     };
 
-    const { data: newTxn, error } = await supabase
+    const { data: newTxn, error } = await dbClient
         .from('transactions')
         .insert(dbPayload)
         .select()
@@ -95,18 +156,20 @@ export const createTransaction = async (data: Omit<Transaction, 'id' | 'status' 
 
     const transaction = mapTransactionFromDb(newTxn);
 
-    // Notify Admin if review needed
-    if (transaction.status === 'reviewing') {
-        const SUPER_ADMIN_DEFAULT_ID = '3e554896-eee8-4545-9c7f-0a79a4c1a9f1';
+    // Notify dynamically resolved active Super Admin if review/confirmation is needed
+    if (transaction.status === 'reviewing' || transaction.status === 'pending') {
         try {
-            await addNotification({
-                userId: SUPER_ADMIN_DEFAULT_ID,
-                message: {
-                    ar: `إيصال دفع جديد للمراجعة من ${data.userName}`,
-                    en: `New payment receipt for review from ${data.userName}`,
-                },
-                link: '/admin/finance',
-            });
+            const adminRecipientId = await resolveFinanceAdminRecipientId(dbClient);
+            if (adminRecipientId) {
+                await addNotification({
+                    userId: adminRecipientId,
+                    message: {
+                        ar: `معاملة مالية جديدة (${transaction.status}) للمراجعة من ${dbPayload.user_name}`,
+                        en: `New payment transaction (${transaction.status}) for review from ${dbPayload.user_name}`,
+                    },
+                    link: '/admin/finance',
+                });
+            }
         } catch {
             // Non-blocking notification
         }
@@ -115,8 +178,23 @@ export const createTransaction = async (data: Omit<Transaction, 'id' | 'status' 
     return transaction;
 };
 
-export const updateTransactionStatus = async (id: string, status: TransactionStatus): Promise<Transaction> => {
-    const { data, error } = await supabase
+export const updateTransactionStatus = async (
+    id: string,
+    status: TransactionStatus,
+    options: { client?: any } = {}
+): Promise<Transaction> => {
+    requireAnyPermission([Permission.MANAGE_FINANCE, Permission.VIEW_FINANCE]);
+
+    if (!id) {
+        throw new Error('Transaction ID is required.');
+    }
+
+    if (!VALID_STATUSES.includes(status)) {
+        throw new Error(`Invalid transaction status: ${status}`);
+    }
+
+    const dbClient = options.client || supabase;
+    const { data, error } = await dbClient
         .from('transactions')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', id)
@@ -129,7 +207,7 @@ export const updateTransactionStatus = async (id: string, status: TransactionSta
     }
 
     const txn = mapTransactionFromDb(data);
-    
+
     // Notify User
     if (txn && txn.userId) {
         try {

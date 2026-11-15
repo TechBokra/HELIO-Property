@@ -410,6 +410,7 @@ export interface OperationalMetrics {
     agedRisk: number;
     highPriority: number;
     resolvedToday: number;
+    recentlyUpdated?: number;
 }
 
 export interface Lead {

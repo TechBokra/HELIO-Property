@@ -166,23 +166,24 @@ const PaymentPage: React.FC = () => {
     };
 
     if (isSuccess) {
+        const isPaid = method === 'card' && contextData?.verifiedPaid === true;
         return (
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
                 <Card className="max-w-md w-full text-center p-8 animate-fadeIn shadow-xl border-t-4 border-t-green-500">
-                    <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${method === 'card' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
-                        {method === 'card' ? <CheckCircleIcon className="w-10 h-10" /> : <ClockIcon className="w-10 h-10" />}
+                    <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${isPaid ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
+                        {isPaid ? <CheckCircleIcon className="w-10 h-10" /> : <ClockIcon className="w-10 h-10" />}
                     </div>
                     
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                        {method === 'card' 
+                        {isPaid
                             ? (language === 'ar' ? 'تم الدفع بنجاح!' : 'Payment Successful!') 
-                            : (language === 'ar' ? 'تم إرسال الطلب للمراجعة' : 'Payment Submitted for Review')}
+                            : (language === 'ar' ? 'تم إرسال الطلب للمراجعة والتأكيد' : 'Payment Submitted for Verification')}
                     </h2>
                     
                     <p className="text-gray-600 dark:text-gray-300 mb-6">
-                        {method === 'card'
+                        {isPaid
                             ? (language === 'ar' ? 'تمت عملية الدفع بنجاح وتأكيد طلبك.' : 'Your payment was processed successfully and your request is confirmed.')
-                            : (language === 'ar' ? 'تم استلام إيصال التحويل. سيقوم فريقنا بمراجعة الطلب وتفعيله في أقرب وقت.' : 'Receipt received. Our team will review the transaction and activate your request shortly.')}
+                            : (language === 'ar' ? 'تم تسجيل طلب الدفع بنجاح. سيتم التفعيل فور مراجعة وتأكيد العملية من الإدارة أو بوابة الدفع.' : 'Your payment request has been recorded and will be activated once verified by our finance team or payment gateway.')}
                     </p>
 
                     <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-8 text-sm text-left">

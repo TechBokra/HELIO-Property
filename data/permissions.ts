@@ -216,11 +216,10 @@ export const mapPartnerTypeToRole = (type?: PartnerType | string, role?: string)
     const cleanType = (type || '').trim().toLowerCase();
 
     // 1. Direct database role string matching (Primary Authority)
+    // Authoritative Super Admin strictly requires canonical 'super_admin' role.
     if (cleanRole) {
         switch (cleanRole) {
             case 'super_admin':
-            case 'system_admin':
-            case 'admin':
                 return Role.SUPER_ADMIN;
             case 'developer_partner':
             case 'developer':
@@ -244,15 +243,14 @@ export const mapPartnerTypeToRole = (type?: PartnerType | string, role?: string)
             case 'customer':
             case 'user':
             case 'client':
+            default:
+                // Never fall back to type escalation when explicit unrecognized/generic role (e.g. 'admin', 'system_admin') is set
                 return Role.CUSTOMER;
         }
     }
 
-    // 2. Fallback strictly to account Type
+    // 2. Fallback strictly to non-privileged account Type (never promote 'admin' or 'system' to SUPER_ADMIN)
     switch (cleanType) {
-        case 'admin':
-        case 'system':
-            return Role.SUPER_ADMIN;
         case 'developer': return Role.DEVELOPER_PARTNER;
         case 'finishing': return Role.FINISHING_PARTNER;
         case 'agency': return Role.AGENCY_PARTNER;
@@ -268,7 +266,7 @@ export const mapPartnerTypeToRole = (type?: PartnerType | string, role?: string)
         case 'listings_manager': return Role.LISTINGS_MANAGER;
         case 'customer':
         case 'individual':
+        default:
             return Role.CUSTOMER;
-        default: return Role.CUSTOMER; 
     }
 };

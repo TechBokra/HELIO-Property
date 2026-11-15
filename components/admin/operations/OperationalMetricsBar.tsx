@@ -7,7 +7,8 @@ import {
     InboxIcon, 
     SparklesIcon, 
     CheckCircleIcon,
-    UsersIcon
+    UsersIcon,
+    ArrowPathIcon
 } from '../../ui/Icons';
 
 interface OperationalMetricsBarProps {
@@ -85,6 +86,15 @@ export const OperationalMetricsBar: React.FC<OperationalMetricsBarProps> = ({
             alert: metrics.highPriority > 0,
         },
         {
+            id: 'recently_updated',
+            label: isAr ? 'محدثة مؤخراً (< 24 ساعة)' : 'Recently Updated',
+            count: metrics.recentlyUpdated || 0,
+            icon: ArrowPathIcon,
+            color: 'text-cyan-800 bg-cyan-50/30 border-cyan-200',
+            activeColor: 'ring-2 ring-cyan-500 bg-cyan-50/60 border-cyan-300',
+            badgeColor: 'bg-cyan-100 text-cyan-800 font-bold',
+        },
+        {
             id: 'resolved',
             label: isAr ? 'مكتملة ومغلقة' : 'Resolved & Closed',
             count: metrics.resolvedToday,
@@ -96,7 +106,7 @@ export const OperationalMetricsBar: React.FC<OperationalMetricsBarProps> = ({
     ];
 
     return (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
             {cards.map(card => {
                 const Icon = card.icon;
                 const isActive = activeView === card.id;

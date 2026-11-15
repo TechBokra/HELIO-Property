@@ -40,7 +40,7 @@ export const useAdminAnalytics = () => {
 
         const filteredRequests = requests.filter(l => {
             const reqDateTs = new Date(l.createdAt).getTime();
-            return reqDateTs >= rangeStart.getTime() && reqDateTs <= rangeEnd.getTime();
+            return Number.isFinite(reqDateTs) && reqDateTs >= rangeStart.getTime() && reqDateTs <= rangeEnd.getTime();
         });
 
         const allLeads = requests.filter(r => r.type === 'LEAD');
@@ -49,7 +49,7 @@ export const useAdminAnalytics = () => {
         
         const leadsByProperty = allLeads.reduce((acc, lead) => {
             const propertyId = (lead.payload as any).propertyId;
-            if(propertyId) acc[propertyId] = (acc[propertyId] || 0) + 1;
+            if (propertyId) acc[propertyId] = (acc[propertyId] || 0) + 1;
             return acc;
         }, {} as Record<string, number>);
 
@@ -60,8 +60,10 @@ export const useAdminAnalytics = () => {
             .filter(p => p.property);
 
         const leadsByPartner = allLeads.reduce((acc, lead) => {
-            const partnerId = (lead.payload as any).partnerId;
-            acc[partnerId] = (acc[partnerId] || 0) + 1;
+            const partnerId = (lead.payload as any).partnerId || lead.assignedTo;
+            if (partnerId) {
+                acc[partnerId] = (acc[partnerId] || 0) + 1;
+            }
             return acc;
         }, {} as Record<string, number>);
 
@@ -77,6 +79,7 @@ export const useAdminAnalytics = () => {
 
             leadsInPeriod.forEach(lead => {
                 const date = new Date(lead.createdAt);
+                if (!Number.isFinite(date.getTime())) return;
                 const key = timePeriod === 'year'
                     ? `${date.getFullYear()}-${String(date.getMonth()).padStart(2, '0')}`
                     : date.toISOString().split('T')[0];

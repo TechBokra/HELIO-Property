@@ -72,8 +72,7 @@ const RoutingRuleFormModal: React.FC<RoutingRuleFormModalProps> = ({ ruleToEdit,
     // Filter only internal managers and admins for assignment
     const managers = (partners || []).filter(p => 
         (p.role as string).includes('_manager') || 
-        p.role === Role.SUPER_ADMIN ||
-        p.type === 'admin'
+        p.role === Role.SUPER_ADMIN
     );
 
     return (

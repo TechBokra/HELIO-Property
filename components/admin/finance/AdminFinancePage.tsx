@@ -90,6 +90,9 @@ const AdminFinancePage: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['allTransactions'] });
             queryClient.invalidateQueries({ queryKey: ['financeStats'] });
             setDetailsTxn(null);
+        },
+        onError: (err: any) => {
+            showToast(err?.message || (language === 'ar' ? 'تعذر تحديث المعاملة' : 'Failed to update transaction'), 'error');
         }
     });
 
@@ -115,11 +118,12 @@ const AdminFinancePage: React.FC = () => {
             method: (t, v) => t.method === v,
             dateRange: (t, _v) => {
                 if (!dateRange.start && !dateRange.end) return true;
-                const txnDate = new Date(t.createdAt);
-                const start = dateRange.start ? new Date(dateRange.start) : new Date('2000-01-01');
-                const end = dateRange.end ? new Date(dateRange.end) : new Date();
-                end.setHours(23, 59, 59);
-                return txnDate >= start && txnDate <= end;
+                const txnTs = new Date(t.createdAt).getTime();
+                if (!Number.isFinite(txnTs)) return false;
+                const startTs = dateRange.start ? new Date(dateRange.start).getTime() : 0;
+                const endDateObj = dateRange.end ? new Date(dateRange.end) : new Date();
+                endDateObj.setHours(23, 59, 59, 999);
+                return txnTs >= startTs && txnTs <= endDateObj.getTime();
             }
         }
     });
@@ -256,6 +260,7 @@ const AdminFinancePage: React.FC = () => {
                     <option value="reviewing">Reviewing</option>
                     <option value="pending">Pending</option>
                     <option value="failed">Failed</option>
+                    <option value="refunded">Refunded</option>
                 </Select>
             </div>
 

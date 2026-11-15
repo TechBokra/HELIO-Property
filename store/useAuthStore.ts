@@ -180,7 +180,7 @@ export const useAuthStore = create<AuthState>()(
                         if (isKnownAdmin || isKnownDemo) {
                             const rawType = matchingDemo?.type || (isKnownAdmin ? 'admin' : 'customer');
                             const rawRole = (matchingDemo as any)?.role || (isKnownAdmin ? Role.SUPER_ADMIN : 'customer');
-                            const userRole = (isKnownAdmin || rawType === 'admin')
+                            const userRole = isKnownAdmin
                                 ? Role.SUPER_ADMIN
                                 : mapPartnerTypeToRole(rawType, rawRole);
 

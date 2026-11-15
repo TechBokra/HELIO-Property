@@ -342,9 +342,9 @@ export const updateRequest = async (id: string, updates: Partial<Request>): Prom
     ]);
 
     const dbUpdates: any = {};
-    if (updates.status) dbUpdates.status = updates.status;
-    if (updates.assignedTo) dbUpdates.assigned_to = updates.assignedTo;
-    if (updates.payload) dbUpdates.payload = updates.payload;
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo;
+    if (updates.payload !== undefined) dbUpdates.payload = updates.payload;
     
     dbUpdates.updated_at = new Date().toISOString();
 
@@ -395,9 +395,8 @@ export const getRequestMessages = async (requestId: string, viewerRole?: string)
         .eq('request_id', requestId);
 
     // Section 8: Internal operational notes are strictly isolated to internal staff
-    const isInternalStaff = viewerRole === Role.SUPER_ADMIN || 
-        String(viewerRole || '').toLowerCase().includes('manager') || 
-        String(viewerRole || '').toLowerCase() === 'admin';
+    const normalizedViewerRole = String(viewerRole || '').trim().toLowerCase();
+    const isInternalStaff = normalizedViewerRole === Role.SUPER_ADMIN || normalizedViewerRole.includes('_manager');
 
     if (!isInternalStaff) {
         query = query.eq('type', 'message');
@@ -426,11 +425,24 @@ export const getRequestMessages = async (requestId: string, viewerRole?: string)
  * ============================================================================
  */
 
+const RESOLVED_DB_STATUSES = ['completed', 'approved', 'verified', 'won', 'resolved'] as const;
+const CLOSED_DB_STATUSES = ['closed', 'lost'] as const;
+const REJECTED_DB_STATUSES = ['rejected', 'cancelled', 'declined'] as const;
+const ALL_TERMINAL_DB_STATUSES = [...RESOLVED_DB_STATUSES, ...CLOSED_DB_STATUSES, ...REJECTED_DB_STATUSES] as const;
+const TERMINAL_DB_STATUS_IN = `(${ALL_TERMINAL_DB_STATUSES.join(',')})`;
+const TERMINAL_OP_STATUS_IN = '(RESOLVED,CLOSED,REJECTED)';
+
+export const parseValidDateMs = (dateStr?: string | null): number | null => {
+    if (!dateStr) return null;
+    const ms = new Date(dateStr).getTime();
+    return Number.isFinite(ms) ? ms : null;
+};
+
 export const mapDomainStatusToOperational = (status?: string, assignedTo?: string): OperationalStatus => {
     const s = String(status || '').toLowerCase().trim();
-    if (['completed', 'approved', 'verified', 'won'].includes(s)) return OperationalStatus.RESOLVED;
-    if (['closed', 'lost'].includes(s)) return OperationalStatus.CLOSED;
-    if (['rejected', 'cancelled', 'declined'].includes(s)) return OperationalStatus.REJECTED;
+    if ((RESOLVED_DB_STATUSES as readonly string[]).includes(s)) return OperationalStatus.RESOLVED;
+    if ((CLOSED_DB_STATUSES as readonly string[]).includes(s)) return OperationalStatus.CLOSED;
+    if ((REJECTED_DB_STATUSES as readonly string[]).includes(s)) return OperationalStatus.REJECTED;
     if (['quoted', 'waiting', 'viewing'].includes(s)) return OperationalStatus.WAITING;
     if (['contacted', 'site-visit', 'in-progress', 'qualified'].includes(s)) return OperationalStatus.IN_PROGRESS;
     if (['assigned'].includes(s)) return OperationalStatus.ASSIGNED;
@@ -440,21 +452,65 @@ export const mapDomainStatusToOperational = (status?: string, assignedTo?: strin
     return assignedTo ? OperationalStatus.ASSIGNED : OperationalStatus.NEW;
 };
 
+export const resolveOperationalStatus = (
+    req: { status?: string; assignedTo?: string | null },
+    payload: any = {}
+): OperationalStatus => {
+    const domainStatus = String(payload?.status || req.status || 'new');
+    const domainMapped = mapDomainStatusToOperational(domainStatus, req.assignedTo || undefined);
+    if ([OperationalStatus.RESOLVED, OperationalStatus.CLOSED, OperationalStatus.REJECTED].includes(domainMapped)) {
+        return domainMapped;
+    }
+    const explicitOp = payload?.operationalStatus;
+    if (explicitOp && Object.values(OperationalStatus).includes(explicitOp as OperationalStatus)) {
+        return explicitOp as OperationalStatus;
+    }
+    return domainMapped;
+};
+
+export const resolveOperationalDomain = (type: RequestType, payload: any = {}): OperationalDomain => {
+    switch (type) {
+        case RequestType.PARTNER_APPLICATION:
+            return 'partners';
+        case RequestType.PROPERTY_LISTING_REQUEST:
+        case RequestType.PROPERTY_INQUIRY:
+            return 'real_estate';
+        case RequestType.CONTACT_MESSAGE:
+            return 'customer_care';
+        case RequestType.LEAD:
+        default: {
+            const serviceType = String(payload?.serviceType || '').trim().toLowerCase();
+            if (serviceType === 'finishing') return 'finishing';
+            if (serviceType === 'decorations' || serviceType === 'decoration') return 'decorations';
+            if (
+                serviceType === 'property' ||
+                serviceType === 'property_search' ||
+                payload?.propertyId ||
+                payload?.propertyTitle
+            ) {
+                return 'real_estate';
+            }
+            return 'commercial';
+        }
+    }
+};
+
 export const deriveRequestPriority = (
     req: { type?: string; assignedTo?: string | null; createdAt?: string; status?: string },
-    payload: any = {}
+    payload: any = {},
+    nowMs: number = Date.now()
 ): 'high' | 'medium' | 'low' => {
-    const domainStatus = String(payload.status || req.status || 'new');
-    const operationalStatus = mapDomainStatusToOperational(domainStatus, req.assignedTo || undefined);
+    const operationalStatus = resolveOperationalStatus(req, payload);
     const isClosedOrResolved = [OperationalStatus.RESOLVED, OperationalStatus.CLOSED, OperationalStatus.REJECTED].includes(operationalStatus);
     if (isClosedOrResolved) return 'low';
 
-    const createdDate = new Date(req.createdAt || Date.now());
-    const ageHours = Math.max(0, Math.round((Date.now() - createdDate.getTime()) / (1000 * 60 * 60)));
-    const isAged = ageHours > 48;
+    const createdMs = parseValidDateMs(req.createdAt);
+    const elapsedMs = createdMs !== null ? Math.max(0, nowMs - createdMs) : 0;
+    const isOver24h = elapsedMs > 24 * 60 * 60 * 1000;
+    const isAged = elapsedMs > 48 * 60 * 60 * 1000;
 
     if (payload.priority === 'high') return 'high';
-    if (!req.assignedTo && ageHours > 24) return 'high';
+    if (!req.assignedTo && isOver24h) return 'high';
     if (isAged) return 'high';
     if (req.type === RequestType.PARTNER_APPLICATION) return 'high';
     if (payload.estimatedCost && Number(payload.estimatedCost) > 1000000) return 'high';
@@ -463,53 +519,52 @@ export const deriveRequestPriority = (
     return 'medium';
 };
 
-export const mapRequestToUnified = (req: Request, partnersMap?: Map<string, string>): UnifiedRequest => {
+export const mapRequestToUnified = (
+    req: Request,
+    partnersMap?: Map<string, string>,
+    nowMs: number = Date.now()
+): UnifiedRequest => {
     const payload = req.payload || {};
-    const createdDate = new Date(req.createdAt || Date.now());
-    const ageHours = Math.max(0, Math.round((Date.now() - createdDate.getTime()) / (1000 * 60 * 60)));
-    
+    const createdMs = parseValidDateMs(req.createdAt);
+    const updatedMs = parseValidDateMs(req.updatedAt);
+    const ageHours = createdMs !== null ? Math.max(0, Math.round((nowMs - createdMs) / (1000 * 60 * 60))) : 0;
+    const safeCreatedAt = createdMs !== null ? new Date(createdMs).toISOString() : new Date(nowMs).toISOString();
+    const safeUpdatedAt = updatedMs !== null ? new Date(updatedMs).toISOString() : safeCreatedAt;
+
     // Domain determination
-    let domain: OperationalDomain = 'commercial';
+    const domain = resolveOperationalDomain(req.type, payload);
     let typeLabel = { en: 'Lead', ar: 'طلب عميل' };
     let domainLabel = { en: 'Commercial', ar: 'القطاع التجاري' };
 
     switch (req.type) {
         case RequestType.PARTNER_APPLICATION:
-            domain = 'partners';
             typeLabel = { en: 'Partner Application', ar: 'طلب انضمام شريك' };
             domainLabel = { en: 'Partners', ar: 'الشركاء' };
             break;
         case RequestType.PROPERTY_LISTING_REQUEST:
-            domain = 'real_estate';
             typeLabel = { en: 'Property Listing Request', ar: 'طلب إضافة عقار' };
             domainLabel = { en: 'Real Estate', ar: 'العقارات' };
             break;
         case RequestType.PROPERTY_INQUIRY:
-            domain = 'real_estate';
             typeLabel = { en: 'Property Search Inquiry', ar: 'استفسار طلب عقار' };
             domainLabel = { en: 'Real Estate', ar: 'العقارات' };
             break;
         case RequestType.CONTACT_MESSAGE:
-            domain = 'customer_care';
             typeLabel = { en: 'Contact Message', ar: 'رسالة اتصل بنا' };
             domainLabel = { en: 'Customer Care', ar: 'خدمة العملاء' };
             break;
         case RequestType.LEAD:
         default:
-            if (payload.serviceType === 'finishing') {
-                domain = 'finishing';
+            if (domain === 'finishing') {
                 typeLabel = { en: 'Finishing Request', ar: 'طلب تشطيب' };
                 domainLabel = { en: 'Finishing', ar: 'التشطيبات' };
-            } else if (payload.serviceType === 'decorations') {
-                domain = 'decorations';
+            } else if (domain === 'decorations') {
                 typeLabel = { en: 'Decoration Request', ar: 'طلب ديكور وتصميم' };
                 domainLabel = { en: 'Decorations', ar: 'الديكور' };
-            } else if (payload.propertyId || payload.propertyTitle) {
-                domain = 'real_estate';
+            } else if (domain === 'real_estate') {
                 typeLabel = { en: 'Property Inquiry Lead', ar: 'عميل استفسار عقار' };
                 domainLabel = { en: 'Real Estate', ar: 'العقارات' };
             } else {
-                domain = 'commercial';
                 typeLabel = { en: 'Commercial Lead', ar: 'عميل محتمل' };
                 domainLabel = { en: 'Commercial', ar: 'القطاع التجاري' };
             }
@@ -517,11 +572,12 @@ export const mapRequestToUnified = (req: Request, partnersMap?: Map<string, stri
     }
 
     const domainStatus = String(payload.status || req.status || 'new');
-    const operationalStatus = mapDomainStatusToOperational(domainStatus, req.assignedTo);
+    const operationalStatus = resolveOperationalStatus(req, payload);
     const isClosedOrResolved = [OperationalStatus.RESOLVED, OperationalStatus.CLOSED, OperationalStatus.REJECTED].includes(operationalStatus);
-    const isAged = ageHours > 48 && !isClosedOrResolved;
+    const elapsedMs = createdMs !== null ? Math.max(0, nowMs - createdMs) : 0;
+    const isAged = elapsedMs > 48 * 60 * 60 * 1000 && !isClosedOrResolved;
     // Priority derivation using authoritative logic (P1.5)
-    const priority = deriveRequestPriority(req, payload);
+    const priority = deriveRequestPriority(req, payload, nowMs);
 
     // Next action recommendation
     let nextAction = { en: 'Initial client contact', ar: 'التواصل الأولي مع العميل' };
@@ -557,9 +613,9 @@ export const mapRequestToUnified = (req: Request, partnersMap?: Map<string, stri
         detailRoute = `/admin/properties/search-requests?highlight=${req.id}`;
     } else if (req.type === RequestType.CONTACT_MESSAGE) {
         detailRoute = `/admin/contact-requests?highlight=${req.id}`;
-    } else if (payload.serviceType === 'finishing') {
+    } else if (domain === 'finishing') {
         detailRoute = `/admin/platform-finishing/requests/${req.id}`;
-    } else if (payload.serviceType === 'decorations') {
+    } else if (domain === 'decorations') {
         detailRoute = `/admin/platform-decorations/requests/${req.id}`;
     } else if (req.type === RequestType.LEAD) {
         detailRoute = `/admin/leads?highlight=${req.id}`;
@@ -573,8 +629,8 @@ export const mapRequestToUnified = (req: Request, partnersMap?: Map<string, stri
         typeLabel,
         domain,
         domainLabel,
-        createdAt: req.createdAt || new Date().toISOString(),
-        updatedAt: req.updatedAt || req.createdAt || new Date().toISOString(),
+        createdAt: safeCreatedAt,
+        updatedAt: safeUpdatedAt,
         ageHours,
         isAged,
         requester: {
@@ -603,7 +659,7 @@ export const mapRequestToUnified = (req: Request, partnersMap?: Map<string, stri
         priority,
         assignedTo: req.assignedTo,
         assignedToName,
-        lastActivity: req.updatedAt || req.createdAt || new Date().toISOString(),
+        lastActivity: safeUpdatedAt,
         nextAction,
         detailRoute,
         rawPayload: payload,
@@ -628,6 +684,116 @@ export interface UnifiedRequestsResponse {
     totalCount: number;
     metrics: OperationalMetrics;
 }
+
+export const computeDateRangeBounds = (
+    dateRange?: UnifiedRequestsFilter['dateRange'] | string,
+    now: Date = new Date()
+): { gteIso?: string; ltIso?: string; isValid: boolean } => {
+    const nowMs = now.getTime();
+    if (!Number.isFinite(nowMs)) return { isValid: false };
+
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const sevenDaysAgo = new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const thirtyDaysAgo = new Date(nowMs - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    switch (dateRange) {
+        case 'today':
+            return { gteIso: todayMidnight, isValid: true };
+        case 'last7days':
+            return { gteIso: sevenDaysAgo, isValid: true };
+        case 'last30days':
+            return { gteIso: thirtyDaysAgo, isValid: true };
+        case 'older':
+            return { ltIso: thirtyDaysAgo, isValid: true };
+        case 'all':
+        case undefined:
+            return { isValid: true };
+        default:
+            return { isValid: false };
+    }
+};
+
+export const matchesUnifiedRequestFilter = (
+    req: UnifiedRequest,
+    filter: UnifiedRequestsFilter = {},
+    now: Date = new Date()
+): boolean => {
+    const nowMs = now.getTime();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const twoDaysMs = 48 * 60 * 60 * 1000;
+
+    if (filter.type && filter.type !== 'all' && req.type !== filter.type) {
+        return false;
+    }
+
+    if ((!filter.type || filter.type === 'all') && filter.domain && filter.domain !== 'all') {
+        if (req.domain !== filter.domain) return false;
+    }
+
+    if (filter.dateRange && filter.dateRange !== 'all') {
+        const bounds = computeDateRangeBounds(filter.dateRange, now);
+        if (bounds.isValid) {
+            const createdMs = parseValidDateMs(req.createdAt);
+            if (createdMs === null) return false;
+            if (bounds.gteIso && createdMs < new Date(bounds.gteIso).getTime()) return false;
+            if (bounds.ltIso && createdMs >= new Date(bounds.ltIso).getTime()) return false;
+        }
+    }
+
+    if (filter.operationalStatus && filter.operationalStatus !== 'all') {
+        if (req.operationalStatus !== filter.operationalStatus) return false;
+    }
+
+    if (filter.assignedTo && filter.assignedTo !== 'all') {
+        if (filter.assignedTo === 'unassigned') {
+            if (req.assignedTo) return false;
+        } else if (req.assignedTo !== filter.assignedTo) {
+            return false;
+        }
+    }
+
+    if (filter.triageView && filter.triageView !== 'all') {
+        const createdMs = parseValidDateMs(req.createdAt);
+        const updatedMs = parseValidDateMs(req.updatedAt);
+        const isTerminal = [OperationalStatus.RESOLVED, OperationalStatus.CLOSED, OperationalStatus.REJECTED].includes(req.operationalStatus);
+
+        switch (filter.triageView) {
+            case 'unassigned':
+                if (req.assignedTo) return false;
+                break;
+            case 'new':
+                if (req.operationalStatus !== OperationalStatus.NEW) return false;
+                break;
+            case 'waiting':
+                if (req.operationalStatus !== OperationalStatus.WAITING) return false;
+                break;
+            case 'resolved':
+                if (req.operationalStatus !== OperationalStatus.RESOLVED) return false;
+                break;
+            case 'aged':
+                if (isTerminal || createdMs === null || createdMs >= nowMs - twoDaysMs) return false;
+                break;
+            case 'recently_updated':
+                if (updatedMs === null || updatedMs < nowMs - oneDayMs) return false;
+                break;
+            case 'high_priority':
+                if (req.priority !== 'high') return false;
+                break;
+        }
+    }
+
+    if (filter.priority && filter.priority !== 'all') {
+        if (req.priority !== filter.priority) return false;
+    }
+
+    if (filter.searchTerm && filter.searchTerm.trim()) {
+        const term = filter.searchTerm.trim().toLowerCase();
+        const haystacks = [req.requester.name, req.requester.phone, req.requester.email].filter(Boolean).map(v => String(v).toLowerCase());
+        if (!haystacks.some(h => h.includes(term))) return false;
+    }
+
+    return true;
+};
 
 /**
  * Dynamically resolves an active eligible manager from the database
@@ -707,8 +873,8 @@ export const validateAssigneeEligibility = async (
     const role = String(partner.role || '').toLowerCase();
     const type = String(partner.type || '').toLowerCase();
 
-    // Super Admin can be assigned any request
-    if (role === 'super_admin' || role === 'admin' || type === 'admin') {
+    // Only canonical Super Admin can be assigned any request
+    if (role === Role.SUPER_ADMIN) {
         return { eligible: true, assignee: partner };
     }
 
@@ -775,16 +941,15 @@ export const getUnifiedRequestById = async (id: string): Promise<UnifiedRequest 
  * Section 4: Operations Center — True Server-Side Data Handling
  * Server-backed pagination, filtering, search, sorting, and metrics calculation
  */
-export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Promise<UnifiedRequestsResponse> => {
-    // 1. Fetch active partners for label hydration
-    const partners = await getAllPartnersForAdmin().catch(() => []);
-    const managersMap = new Map<string, string>();
-    (partners || []).forEach(p => {
-        managersMap.set(p.id, p.name || p.email);
-    });
-
-    // 2. Build authoritative server-side Supabase query
-    let query = supabase.from('requests').select('*', { count: 'exact' });
+export const applyUnifiedRequestsQueryFilters = (
+    initialQuery: any,
+    filter: UnifiedRequestsFilter = {},
+    now: Date = new Date()
+) => {
+    let query = initialQuery;
+    const nowMs = now.getTime();
+    const oneDayAgo = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+    const twoDaysAgo = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString();
 
     // Server-side Domain / Type filter
     if (filter.type && filter.type !== 'all') {
@@ -795,7 +960,9 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
                 query = query.eq('type', RequestType.PARTNER_APPLICATION);
                 break;
             case 'real_estate':
-                query = query.in('type', [RequestType.PROPERTY_LISTING_REQUEST, RequestType.PROPERTY_INQUIRY]);
+                query = query.or(
+                    `type.in.(${RequestType.PROPERTY_LISTING_REQUEST},${RequestType.PROPERTY_INQUIRY}),and(type.eq.${RequestType.LEAD},or(payload->>serviceType.eq.property,payload->>serviceType.eq.property_search,payload->>propertyId.not.is.null,payload->>propertyTitle.not.is.null))`
+                );
                 break;
             case 'customer_care':
                 query = query.eq('type', RequestType.CONTACT_MESSAGE);
@@ -804,61 +971,63 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
                 query = query.eq('type', RequestType.LEAD).filter('payload->>serviceType', 'eq', 'finishing');
                 break;
             case 'decorations':
-                query = query.eq('type', RequestType.LEAD).filter('payload->>serviceType', 'eq', 'decorations');
+                query = query.eq('type', RequestType.LEAD).or('payload->>serviceType.eq.decorations,payload->>serviceType.eq.decoration');
                 break;
             case 'commercial':
-                // Exclude finishing and decorations leads (P1.3)
-                query = query.eq('type', RequestType.LEAD).not('payload->>serviceType', 'in', '(finishing,decorations)');
+                // Exclude finishing, decorations, and real estate property leads while preserving NULL serviceType leads (P1.3)
+                query = query
+                    .eq('type', RequestType.LEAD)
+                    .or('payload->>serviceType.is.null,payload->>serviceType.not.in.(finishing,decorations,decoration,property,property_search)')
+                    .is('payload->>propertyId', null)
+                    .is('payload->>propertyTitle', null);
                 break;
         }
     }
 
     // Server-side Date Range filter (P1.1)
     if (filter.dateRange && filter.dateRange !== 'all') {
-        const now = new Date();
-        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-        switch (filter.dateRange) {
-            case 'today':
-                query = query.gte('created_at', todayMidnight);
-                break;
-            case 'last7days':
-                query = query.gte('created_at', sevenDaysAgo);
-                break;
-            case 'last30days':
-                query = query.gte('created_at', thirtyDaysAgo);
-                break;
-            case 'older':
-                query = query.lt('created_at', thirtyDaysAgo);
-                break;
+        const bounds = computeDateRangeBounds(filter.dateRange, now);
+        if (bounds.isValid) {
+            if (bounds.gteIso) {
+                query = query.gte('created_at', bounds.gteIso);
+            }
+            if (bounds.ltIso) {
+                query = query.lt('created_at', bounds.ltIso);
+            }
         }
     }
 
-    // Server-side Operational Status filter aligned with canonical mapping (P1.4)
+    // Server-side Operational Status filter aligned with canonical mapping & terminal precedence (P1.4)
     if (filter.operationalStatus && filter.operationalStatus !== 'all') {
         switch (filter.operationalStatus) {
             case OperationalStatus.RESOLVED:
-                query = query.or('payload->>operationalStatus.eq.RESOLVED,status.in.(completed,approved,verified,won,resolved)');
+                query = query.or(`status.in.(${RESOLVED_DB_STATUSES.join(',')}),and(status.not.in.${TERMINAL_DB_STATUS_IN},payload->>operationalStatus.eq.RESOLVED)`);
                 break;
             case OperationalStatus.CLOSED:
-                query = query.or('payload->>operationalStatus.eq.CLOSED,status.in.(closed,lost)');
+                query = query.or(`status.in.(${CLOSED_DB_STATUSES.join(',')}),and(status.not.in.${TERMINAL_DB_STATUS_IN},payload->>operationalStatus.eq.CLOSED)`);
                 break;
             case OperationalStatus.REJECTED:
-                query = query.or('payload->>operationalStatus.eq.REJECTED,status.in.(rejected,cancelled,declined)');
+                query = query.or(`status.in.(${REJECTED_DB_STATUSES.join(',')}),and(status.not.in.${TERMINAL_DB_STATUS_IN},payload->>operationalStatus.eq.REJECTED)`);
                 break;
             case OperationalStatus.WAITING:
-                query = query.or('payload->>operationalStatus.eq.WAITING,status.in.(quoted,waiting,viewing)');
+                query = query
+                    .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                    .or('payload->>operationalStatus.eq.WAITING,and(payload->>operationalStatus.is.null,status.in.(quoted,waiting,viewing))');
                 break;
             case OperationalStatus.IN_PROGRESS:
-                query = query.or('payload->>operationalStatus.eq.IN_PROGRESS,status.in.(contacted,site-visit,in-progress,qualified)');
+                query = query
+                    .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                    .or('payload->>operationalStatus.eq.IN_PROGRESS,and(payload->>operationalStatus.is.null,status.in.(contacted,site-visit,in-progress,qualified))');
                 break;
             case OperationalStatus.NEW:
-                query = query.or('payload->>operationalStatus.eq.NEW,and(status.in.(new,pending),assigned_to.is.null)');
+                query = query
+                    .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                    .or('payload->>operationalStatus.eq.NEW,and(payload->>operationalStatus.is.null,status.in.(new,pending),assigned_to.is.null)');
                 break;
             case OperationalStatus.ASSIGNED:
-                query = query.or('payload->>operationalStatus.eq.ASSIGNED,status.eq.assigned,and(status.in.(new,pending),assigned_to.not.is.null)');
+                query = query
+                    .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                    .or('payload->>operationalStatus.eq.ASSIGNED,and(payload->>operationalStatus.is.null,or(status.eq.assigned,and(status.in.(new,pending),assigned_to.not.is.null)))');
                 break;
             default:
                 query = query.or(`payload->>operationalStatus.eq.${filter.operationalStatus},status.eq.${String(filter.operationalStatus).toLowerCase()}`);
@@ -882,32 +1051,35 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
                 query = query.is('assigned_to', null);
                 break;
             case 'new':
-                query = query.or('payload->>operationalStatus.eq.NEW,and(status.in.(new,pending),assigned_to.is.null)');
+                query = query
+                    .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                    .or('payload->>operationalStatus.eq.NEW,and(payload->>operationalStatus.is.null,status.in.(new,pending),assigned_to.is.null)');
                 break;
             case 'waiting':
-                query = query.or('payload->>operationalStatus.eq.WAITING,status.in.(quoted,waiting,viewing)');
+                query = query
+                    .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                    .or('payload->>operationalStatus.eq.WAITING,and(payload->>operationalStatus.is.null,status.in.(quoted,waiting,viewing))');
                 break;
             case 'resolved':
-                query = query.or('payload->>operationalStatus.eq.RESOLVED,status.in.(completed,approved,verified,won,resolved)');
+                query = query.or(`status.in.(${RESOLVED_DB_STATUSES.join(',')}),and(status.not.in.${TERMINAL_DB_STATUS_IN},payload->>operationalStatus.eq.RESOLVED)`);
                 break;
-            case 'high_priority': {
-                const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-                query = query.or(
-                    `payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo}`
-                ).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)');
+            case 'high_priority':
+                query = query
+                    .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                    .or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`)
+                    .or(
+                        `payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo},payload->estimatedCost.gt.1000000`
+                    );
                 break;
-            }
-            case 'aged': {
-                const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-                query = query.lt('created_at', twoDaysAgo).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)');
+            case 'aged':
+                query = query
+                    .lt('created_at', twoDaysAgo)
+                    .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                    .or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`);
                 break;
-            }
-            case 'recently_updated': {
-                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                query = query.gte('updated_at', twentyFourHoursAgo);
+            case 'recently_updated':
+                query = query.gte('updated_at', oneDayAgo);
                 break;
-            }
         }
     }
 
@@ -920,17 +1092,53 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
     // Server-side Priority filter aligned with authoritative derivation (P1.5)
     if (filter.priority && filter.priority !== 'all') {
         if (filter.priority === 'high') {
-            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-            const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-            query = query.or(
-                `payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo}`
-            ).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)');
+            query = query
+                .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                .or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`)
+                .or(
+                    `payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo},payload->estimatedCost.gt.1000000`
+                );
         } else if (filter.priority === 'low') {
-            query = query.or('payload->>priority.eq.low,status.in.(completed,approved,verified,won,closed,lost,rejected,cancelled,declined)');
+            query = query.or(
+                `status.in.${TERMINAL_DB_STATUS_IN},payload->>operationalStatus.in.${TERMINAL_OP_STATUS_IN},and(payload->>priority.eq.low,type.neq.${RequestType.PARTNER_APPLICATION},created_at.gte.${twoDaysAgo},or(assigned_to.not.is.null,created_at.gte.${oneDayAgo}),or(payload->>estimatedCost.is.null,payload->estimatedCost.lte.1000000))`
+            );
         } else if (filter.priority === 'medium') {
-            query = query.or('payload->>priority.eq.medium,and(payload->>priority.is.null,type.neq.PARTNER_APPLICATION,status.not.in.(completed,approved,verified,won,closed,lost,rejected,cancelled,declined))');
+            query = query
+                .not('status', 'in', TERMINAL_DB_STATUS_IN)
+                .or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`)
+                .neq('type', RequestType.PARTNER_APPLICATION)
+                .gte('created_at', twoDaysAgo)
+                .or(`assigned_to.not.is.null,created_at.gte.${oneDayAgo}`)
+                .or('payload->>estimatedCost.is.null,payload->estimatedCost.lte.1000000')
+                .or('payload->>priority.is.null,payload->>priority.eq.medium');
         }
     }
+
+    return query;
+};
+
+/**
+ * Section 4: Operations Center — True Server-Side Data Handling
+ * Server-backed pagination, filtering, search, sorting, and metrics calculation
+ */
+export const getUnifiedRequests = async (
+    filter: UnifiedRequestsFilter = {},
+    options: { client?: any; partners?: Partner[]; now?: Date } = {}
+): Promise<UnifiedRequestsResponse> => {
+    const dbClient = options.client || supabase;
+    const now = options.now || new Date();
+    const nowMs = now.getTime();
+
+    // 1. Fetch active partners for label hydration
+    const partners = options.partners || await getAllPartnersForAdmin().catch(() => []);
+    const managersMap = new Map<string, string>();
+    (partners || []).forEach(p => {
+        managersMap.set(p.id, p.name || p.email);
+    });
+
+    // 2. Build authoritative server-side Supabase query
+    let query = dbClient.from('requests').select('*', { count: 'exact' });
+    query = applyUnifiedRequestsQueryFilters(query, filter, now);
 
     // Server-side Sorting
     query = query.order('created_at', { ascending: false });
@@ -948,13 +1156,12 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
         throw error;
     }
 
-    const mappedRequests = (rawRows || []).map(r => mapRequestToUnified(mapRequestFromDb(r), managersMap));
+    const mappedRequests = (rawRows || []).map((r: any) => mapRequestToUnified(mapRequestFromDb(r), managersMap, nowMs));
 
     // Calculate metrics via lightweight targeted counts aligned with canonical mappings
-    const now = new Date();
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-    const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+    const oneDayAgo = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+    const twoDaysAgo = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString();
 
     const [
         totalRes,
@@ -964,16 +1171,18 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
         waitingRes,
         agedRes,
         highPriorityRes,
-        resolvedTodayRes
+        resolvedTodayRes,
+        recentlyUpdatedRes
     ] = await Promise.all([
-        supabase.from('requests').select('*', { count: 'exact', head: true }),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).is('assigned_to', null),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.NEW,and(status.in.(new,pending),assigned_to.is.null)'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.IN_PROGRESS,status.in.(contacted,site-visit,in-progress,qualified)'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).or('payload->>operationalStatus.eq.WAITING,status.in.(quoted,waiting,viewing)'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).lt('created_at', twoDaysAgo).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).or(`payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo}`).not('status', 'in', '(completed,approved,closed,rejected,won,lost,cancelled,declined)'),
-        supabase.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', todayMidnight).or('status.in.(completed,approved,verified,won,resolved),payload->>operationalStatus.eq.RESOLVED')
+        dbClient.from('requests').select('*', { count: 'exact', head: true }),
+        dbClient.from('requests').select('*', { count: 'exact', head: true }).is('assigned_to', null),
+        dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.NEW,and(payload->>operationalStatus.is.null,status.in.(new,pending),assigned_to.is.null)'),
+        dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.IN_PROGRESS,and(payload->>operationalStatus.is.null,status.in.(contacted,site-visit,in-progress,qualified))'),
+        dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.WAITING,and(payload->>operationalStatus.is.null,status.in.(quoted,waiting,viewing))'),
+        dbClient.from('requests').select('*', { count: 'exact', head: true }).lt('created_at', twoDaysAgo).not('status', 'in', TERMINAL_DB_STATUS_IN).or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`),
+        dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`).or(`payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo},payload->estimatedCost.gt.1000000`),
+        dbClient.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', todayMidnight).or(`status.in.(${RESOLVED_DB_STATUSES.join(',')}),and(status.not.in.${TERMINAL_DB_STATUS_IN},payload->>operationalStatus.eq.RESOLVED)`),
+        dbClient.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', oneDayAgo)
     ]);
 
     const metrics: OperationalMetrics = {
@@ -984,7 +1193,8 @@ export const getUnifiedRequests = async (filter: UnifiedRequestsFilter = {}): Pr
         waiting: waitingRes.count || 0,
         agedRisk: agedRes.count || 0,
         highPriority: highPriorityRes.count || 0,
-        resolvedToday: resolvedTodayRes.count || 0
+        resolvedToday: resolvedTodayRes.count || 0,
+        recentlyUpdated: recentlyUpdatedRes.count || 0
     };
 
     return {
