@@ -408,7 +408,10 @@ export interface UnifiedRequest {
     };
     context: {
         propertyId?: string;
+        propertyReference?: string;
         propertyTitle?: string;
+        createdPropertyId?: string;
+        createdPropertyReference?: string;
         projectId?: string;
         projectTitle?: string;
         partnerId?: string;
@@ -449,6 +452,7 @@ export interface Lead {
     partnerId: string;
     managerId?: string;
     propertyId?: string;
+    propertyReference?: string;
     propertyTitle?: string;
     propertyArea?: number | string;
     serviceType: 'finishing' | 'decorations' | 'property' | 'general' | 'property_search' | string;
@@ -650,6 +654,59 @@ export interface IntegrationConfiguration {
     };
 }
 
+export interface NavigationLinkConfig {
+    id: string;
+    href: string;
+    label: { ar: string; en: string };
+    visible: boolean;
+    order: number;
+    icon?: string;
+    isEnd?: boolean;
+}
+
+export type HomeSectionId =
+    | 'hero'
+    | 'homeBanner'
+    | 'socialProof'
+    | 'services'
+    | 'whyNewHeliopolis'
+    | 'whyUs'
+    | 'homeListings'
+    | 'partners'
+    | 'testimonials'
+    | 'homeCTA';
+
+export interface HomeSectionConfig {
+    id: HomeSectionId;
+    label: { ar: string; en: string };
+    enabled: boolean;
+    order: number;
+}
+
+export interface ActionButtonConfig {
+    visible?: boolean;
+    text: { ar: string; en: string };
+    link: string;
+}
+
+export interface ContactPageLocaleContent {
+    title: string;
+    subtitle: string;
+    formTitle: string;
+    formDescription?: string;
+    contactInfoTitle: string;
+    contactInfoDescription?: string;
+    addressTitle: string;
+    phoneTitle: string;
+    emailTitle: string;
+    hoursTitle: string;
+}
+
+export interface ContactPageContent {
+    ar: ContactPageLocaleContent;
+    en: ContactPageLocaleContent;
+}
+
 export interface SiteContent {
     siteName?: { ar: string; en: string };
     logoUrl?: string;
@@ -658,6 +715,10 @@ export interface SiteContent {
         enabled: boolean;
         content: { ar: string; en: string };
     };
+    navigation?: NavigationLinkConfig[];
+    headerCta?: ActionButtonConfig;
+    homeSections?: HomeSectionConfig[];
+    contactPage?: ContactPageContent;
     contactConfiguration?: {
         routing: 'internal' | 'email' | 'both';
         targetEmail?: string;
@@ -665,20 +726,25 @@ export interface SiteContent {
     paymentConfiguration?: PaymentConfiguration;
     integrationConfiguration?: IntegrationConfiguration;
     hero: {
+        enabled?: boolean;
         ar: { title: string; subtitle: string };
         en: { title: string; subtitle: string };
         images: { src: string; alt: { ar: string; en: string } }[];
+        primaryButton?: ActionButtonConfig;
+        secondaryButton?: ActionButtonConfig;
     };
     homeCTA?: {
         enabled: boolean;
         ar: { title: string; subtitle: string; button: string; link: string };
         en: { title: string; subtitle: string; button: string; link: string };
+        secondaryButton?: ActionButtonConfig;
     };
     homeListings?: {
         enabled: boolean;
         count: number;
         ar: { title: string };
         en: { title: string };
+        viewAllButton?: ActionButtonConfig;
     };
     whyUs: any;
     services: any;

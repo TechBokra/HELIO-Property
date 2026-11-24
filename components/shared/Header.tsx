@@ -1,5 +1,5 @@
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import type { Partner } from '../../types';
 import { LightBulbIcon, HeartIcon, MenuIcon, GlobeAltIcon } from '../ui/Icons';
@@ -7,6 +7,9 @@ import { SiteIdentity } from './SiteIdentity';
 import { useLanguage } from './LanguageContext';
 import NotificationBell from './NotificationBell';
 import { useCityStore } from '../../store/useCityStore';
+import { useSiteContent } from '../../hooks/useSiteContent';
+import { resolveNavigationLinks } from '../../utils/siteContentHelpers';
+import SmartActionLink from './SmartActionLink';
 
 interface HeaderProps {
     onToggleQuietZone: () => void;
@@ -15,6 +18,7 @@ interface HeaderProps {
     dashboardPath: string;
     dashboardText: string;
     logout: () => void;
+    previewViewport?: 'desktop' | 'mobile';
 }
 
 export const Header = memo<HeaderProps>(({ 
@@ -23,10 +27,12 @@ export const Header = memo<HeaderProps>(({
     currentUser,
     dashboardPath,
     dashboardText,
-    logout
+    logout,
+    previewViewport,
 }) => {
     const { language, setLanguage, t } = useLanguage();
     const navigate = useNavigate();
+    const { data: siteContent } = useSiteContent();
     const cities = useCityStore((s) => s.cities);
     const portalMode = useCityStore((s) => s.portalMode);
     const activeCityId = useCityStore((s) => s.activeCityId);
@@ -45,14 +51,20 @@ export const Header = memo<HeaderProps>(({
         }
     };
 
-    const navLinks = [
-        { name: t.nav.home, href: '/' },
-        { name: t.nav.properties, href: '/properties' },
-        { name: t.nav.projects, href: '/projects' },
-        { name: t.nav.finishing, href: '/finishing' },
-        { name: t.nav.decorations, href: '/decorations' },
-        { name: t.nav.contact, href: '/contact' },
-    ];
+    const navLinks = useMemo(() => {
+        const resolved = resolveNavigationLinks(siteContent);
+        return resolved.map((item) => ({
+            id: item.id,
+            name: item.label?.[language] || item.label?.ar || item.label?.en || item.href,
+            href: item.href,
+            isEnd: item.isEnd ?? (item.href === '/'),
+        }));
+    }, [siteContent, language]);
+
+    const headerCta = siteContent?.headerCta;
+    const showHeaderCta = headerCta?.visible ?? true;
+    const headerCtaLabel = headerCta?.text?.[language] || t.joinAsPartner;
+    const headerCtaLink = headerCta?.link || '/register';
 
     const activeLinkClass = 'text-amber-500 font-semibold';
     const inactiveLinkClass = 'text-gray-600 hover:text-amber-500';
@@ -77,23 +89,56 @@ export const Header = memo<HeaderProps>(({
         }
     };
 
+    const isForcedMobile = previewViewport === 'mobile';
+    const isForcedDesktop = previewViewport === 'desktop';
+
+    const desktopNavVisibilityClass = isForcedMobile
+        ? 'hidden'
+        : isForcedDesktop
+            ? 'flex items-center gap-6 text-sm xl:text-base'
+            : 'hidden xl:flex items-center gap-7 text-base';
+
+    const desktopUtilityClass = isForcedMobile
+        ? 'hidden'
+        : isForcedDesktop
+            ? 'block'
+            : 'hidden lg:block';
+
+    const desktopLangClass = isForcedMobile
+        ? 'hidden'
+        : isForcedDesktop
+            ? 'flex items-center justify-center h-10 w-10 rounded-full border border-gray-300 text-gray-600 font-semibold text-lg hover:border-amber-500 hover:text-amber-500 transition-colors'
+            : 'hidden lg:flex items-center justify-center h-10 w-10 rounded-full border border-gray-300 text-gray-600 font-semibold text-lg hover:border-amber-500 hover:text-amber-500 transition-colors';
+
+    const desktopAuthClass = isForcedMobile
+        ? 'hidden'
+        : isForcedDesktop
+            ? 'flex items-center gap-2 border-l border-gray-200 pl-4'
+            : 'hidden lg:flex items-center gap-2 border-l border-gray-200 pl-4';
+
+    const mobileTriggerClass = isForcedMobile
+        ? 'block'
+        : isForcedDesktop
+            ? 'hidden'
+            : 'lg:hidden';
+
     return (
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm border-b border-gray-200">
-            <div className="container mx-auto px-6">
+            <div className="container mx-auto px-4 sm:px-6">
                 <div className="flex justify-between items-center h-16 lg:h-20">
-                    <div className="flex items-center gap-4">
-                        <Link to="/" target="_self" className="text-amber-500 hover:opacity-80 transition-opacity" title={language === 'ar' ? 'الرئيسية' : 'Home'}>
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                        <Link to="/" target="_self" className="text-amber-500 hover:opacity-80 transition-opacity shrink-0" title={language === 'ar' ? 'الرئيسية' : 'Home'}>
                             <SiteIdentity />
                         </Link>
 
                         {/* Multi-City & Root Hub Subdomain Switcher */}
-                        <div className="flex items-center gap-1.5 bg-gray-100/90 border border-gray-200 rounded-lg px-2.5 py-1.5">
+                        <div className="flex items-center gap-1.5 bg-gray-100/90 border border-gray-200 rounded-lg px-2 py-1.5 max-w-[170px] sm:max-w-none">
                             <GlobeAltIcon className="w-4 h-4 text-amber-600 shrink-0" />
                             <select
                                 aria-label={language === 'ar' ? 'تبديل موقع المدينة' : 'Switch City Portal'}
                                 value={currentSelectorValue}
                                 onChange={(e) => handlePortalSwitch(e.target.value)}
-                                className="bg-transparent text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none cursor-pointer"
+                                className="bg-transparent text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none cursor-pointer truncate"
                             >
                                 <option value="hub">
                                     {language === 'ar' ? '🌐 البوابة الأم (Only Property)' : '🌐 Root Hub (Only Property)'}
@@ -107,16 +152,16 @@ export const Header = memo<HeaderProps>(({
                         </div>
                     </div>
 
-                    <nav className="hidden xl:flex items-center gap-7 text-base">
+                    <nav className={desktopNavVisibilityClass}>
                         {navLinks.map((link) => (
                             <NavLink
-                                key={link.href}
+                                key={link.id || link.href}
                                 to={link.href}
-                                end={link.href === '/'}
+                                end={link.isEnd}
                                 onMouseEnter={() => prefetchRoute(link.href)}
                                 onFocus={() => prefetchRoute(link.href)}
                                 className={({ isActive }) =>
-                                    `${isActive ? activeLinkClass : inactiveLinkClass} transition-colors duration-200`
+                                    `${isActive ? activeLinkClass : inactiveLinkClass} transition-colors duration-200 whitespace-nowrap`
                                 }
                             >
                                 {link.name}
@@ -124,70 +169,77 @@ export const Header = memo<HeaderProps>(({
                         ))}
                     </nav>
 
-                    <div className="flex items-center gap-2 md:gap-4">
-                        {currentUser && (
+                    <div className="flex items-center gap-2 md:gap-4 shrink-0">
+                        {currentUser && !previewViewport && (
                             <div className="flex items-center justify-center">
                                 <NotificationBell />
                             </div>
                         )}
                         <Link
                             to="/favorites"
-                            className="hidden lg:block text-gray-500 hover:text-amber-500 transition-colors"
+                            className={`${desktopUtilityClass} text-gray-500 hover:text-amber-500 transition-colors`}
                             aria-label="Favorites"
                         >
                             <HeartIcon className="h-6 w-6" />
                         </Link>
                         <button
+                            type="button"
                             onClick={onToggleQuietZone}
-                            className="hidden lg:block text-gray-500 hover:text-amber-500 transition-colors"
+                            className={`${desktopUtilityClass} text-gray-500 hover:text-amber-500 transition-colors`}
                             aria-label="Quiet Zone"
                         >
                             <LightBulbIcon className="h-6 w-6" />
                         </button>
                         <button
+                            type="button"
                             onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
-                            className="hidden lg:flex items-center justify-center h-10 w-10 rounded-full border border-gray-300 text-gray-600 font-semibold text-lg hover:border-amber-500 hover:text-amber-500 transition-colors"
+                            className={desktopLangClass}
                             aria-label="Toggle language"
                         >
                             {language === 'en' ? 'ع' : 'En'}
                         </button>
-                        <div className="hidden lg:flex items-center gap-2 border-l border-gray-200 pl-4">
-                            {currentUser ? (
+                        <div className={desktopAuthClass}>
+                            {currentUser && !previewViewport ? (
                                 <>
                                     <Link
                                         to={dashboardPath}
-                                        className="text-gray-700 font-semibold hover:text-amber-500 transition-colors"
+                                        className="text-gray-700 font-semibold hover:text-amber-500 transition-colors whitespace-nowrap"
                                     >
                                         {dashboardText}
                                     </Link>
                                     <button
+                                        type="button"
                                         onClick={logout}
-                                        className="text-gray-500 hover:text-red-500 transition-colors"
+                                        className="text-gray-500 hover:text-red-500 transition-colors whitespace-nowrap"
                                     >
                                         {t.auth.logout}
                                     </button>
                                 </>
                             ) : (
                                 <>
-                                    <Link
-                                        to="/register"
-                                        className="text-gray-600 hover:text-amber-600 font-medium transition-colors"
-                                    >
-                                        {t.joinAsPartner}
-                                    </Link>
+                                    {showHeaderCta && (
+                                        <SmartActionLink
+                                            to={headerCtaLink}
+                                            fallback="/register"
+                                            className="text-gray-600 hover:text-amber-600 font-medium transition-colors whitespace-nowrap"
+                                        >
+                                            {headerCtaLabel}
+                                        </SmartActionLink>
+                                    )}
                                     <Link
                                         to="/login"
-                                        className="bg-amber-500 text-gray-900 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-amber-600 transition-colors"
+                                        className="bg-amber-500 text-gray-900 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-amber-600 transition-colors whitespace-nowrap"
                                     >
                                         {t.auth.login}
                                     </Link>
                                 </>
                             )}
                         </div>
-                        <div className="lg:hidden">
+                        <div className={mobileTriggerClass}>
                             <button
+                                type="button"
                                 onClick={onOpenMobileNav}
-                                className="text-gray-600"
+                                className="text-gray-600 p-1 rounded-md hover:bg-gray-100"
                                 aria-label="Open menu"
                                 aria-controls="mobile-nav-menu"
                             >

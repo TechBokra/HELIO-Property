@@ -1,8 +1,49 @@
-
 import { supabase, supabasePublic } from '../lib/supabase';
 import { Permission, type Project } from '../types';
 import { projectsData } from '../data/projects';
 import { requireAnyPermission } from './authGuard';
+import { isDemoModeEnabled } from '../utils/demoMode';
+import { useAuthStore } from '../store/useAuthStore';
+
+export interface ProjectQueryOptions {
+    cityId?: string;
+    forceRefresh?: boolean;
+    client?: any;
+}
+
+const getReadClient = (overrideClient?: any) => {
+    if (overrideClient) return overrideClient;
+    try {
+        const user = useAuthStore.getState().currentUser;
+        if (user && !user.isDemo) {
+            return supabase;
+        }
+    } catch {
+        // Ignore store access issues outside browser context
+    }
+    return supabasePublic;
+};
+
+const parseProjectQueryOptions = (cityIdOrContext?: string | ProjectQueryOptions | unknown): ProjectQueryOptions => {
+    if (typeof cityIdOrContext === 'string') {
+        return { cityId: cityIdOrContext };
+    }
+    if (
+        cityIdOrContext &&
+        typeof cityIdOrContext === 'object' &&
+        ('cityId' in cityIdOrContext || 'forceRefresh' in cityIdOrContext || 'client' in cityIdOrContext)
+    ) {
+        return cityIdOrContext as ProjectQueryOptions;
+    }
+    return {};
+};
+
+const isMissingCityIdColumnError = (error: any): boolean => {
+    if (!error) return false;
+    const code = String(error.code || '');
+    const msg = String(error.message || '').toLowerCase();
+    return (code === '42703' || code === 'PGRST204') && msg.includes('city_id');
+};
 
 const FEATURE_TRANSLATIONS: Record<string, { ar: string; en: string }> = {
     'pool': { ar: 'حمام سباحة', en: 'Swimming Pool' },
@@ -48,7 +89,7 @@ const getIconForFeature = (text: string): string => {
     return 'BuildingIcon';
 };
 
-const mapProjectFromDb = (row: any): Project => {
+export const mapProjectFromDb = (row: any): Project => {
     let rawFeatures: any[] = [];
     if (typeof row.features === 'string') {
         try {
@@ -115,104 +156,144 @@ export const invalidateProjectsCache = () => {
     inFlightProjectsPromise = null;
 };
 
-export const getAllProjects = async (cityIdOrContext?: string | unknown): Promise<Project[]> => {
-    const cityId = typeof cityIdOrContext === 'string' ? cityIdOrContext : undefined;
+export const getAllProjects = async (cityIdOrOptions?: string | ProjectQueryOptions | unknown): Promise<Project[]> => {
+    const opts = parseProjectQueryOptions(cityIdOrOptions);
+    const cityId = opts.cityId;
+
+    if (isDemoModeEnabled() && !opts.client) {
+        return filterProjectsByCity(projectsData, cityId);
+    }
+
+    const useCache = !opts.client && !opts.forceRefresh;
     const now = Date.now();
-    if (cachedProjects && (now - cachedProjects.timestamp) < CACHE_TTL_MS) {
+    if (useCache && cachedProjects && (now - cachedProjects.timestamp) < CACHE_TTL_MS) {
         return filterProjectsByCity(cachedProjects.data, cityId);
     }
 
-    if (inFlightProjectsPromise) {
-        const list = await inFlightProjectsPromise;
-        return filterProjectsByCity(list, cityId);
+    const executeFetch = async (): Promise<Project[]> => {
+        const dbClient = getReadClient(opts.client);
+        const { data, error } = await dbClient
+            .from('projects')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            throw new Error(error.message || 'Failed to fetch projects from database.');
+        }
+
+        const mapped = (data || []).map(mapProjectFromDb);
+        if (!opts.client) {
+            cachedProjects = { data: mapped, timestamp: Date.now() };
+        }
+        return mapped;
+    };
+
+    if (!opts.client && !opts.forceRefresh) {
+        if (inFlightProjectsPromise) {
+            const list = await inFlightProjectsPromise;
+            return filterProjectsByCity(list, cityId);
+        }
+
+        inFlightProjectsPromise = executeFetch().finally(() => {
+            inFlightProjectsPromise = null;
+        });
+
+        const result = await inFlightProjectsPromise;
+        return filterProjectsByCity(result, cityId);
     }
 
-    inFlightProjectsPromise = (async () => {
-        try {
-            const { data, error } = await supabasePublic
-                .from('projects')
-                .select('*')
-                .order('created_at', { ascending: false });
-            
-            if (error) {
-                console.warn("Supabase error fetching projects, using fallback:", error.message);
-                const fallback = cachedProjects ? cachedProjects.data : projectsData;
-                return fallback;
-            }
-
-            if (!data || data.length === 0) {
-                return projectsData;
-            }
-
-            const mapped = data.map(mapProjectFromDb);
-            const dbIds = new Set(mapped.map((p) => p.id));
-            const merged = [...mapped, ...projectsData.filter((p) => !dbIds.has(p.id) && p.cityId && p.cityId !== 'heliopolis')];
-            cachedProjects = { data: merged, timestamp: Date.now() };
-            return merged;
-        } catch (e) {
-            console.warn("Exception fetching projects, using fallback:", e);
-            return cachedProjects ? cachedProjects.data : projectsData;
-        } finally {
-            inFlightProjectsPromise = null;
-        }
-    })();
-
-    const result = await inFlightProjectsPromise;
+    const result = await executeFetch();
     return filterProjectsByCity(result, cityId);
 };
 
-export const getProjectById = async (id: string): Promise<Project | undefined> => {
-    try {
-        const { data, error } = await supabasePublic.from('projects').select('*').eq('id', id).maybeSingle();
-        if (!error && data) {
-            return mapProjectFromDb(data);
-        }
-    } catch {
-        // Fall through to cache/static data
+export const getProjectById = async (id: string, options?: { client?: any }): Promise<Project | undefined> => {
+    if (!id) return undefined;
+
+    if (isDemoModeEnabled() && !options?.client) {
+        return projectsData.find(p => p.id === id);
     }
-    
-    // Check cached or fallback data
-    if (cachedProjects?.data) {
-        const found = cachedProjects.data.find(p => p.id === id);
-        if (found) return found;
+
+    const dbClient = getReadClient(options?.client);
+    const { data, error } = await dbClient
+        .from('projects')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error(error.message || 'Failed to fetch project from database.');
     }
-    return projectsData.find(p => p.id === id);
+
+    if (!data) {
+        return undefined;
+    }
+
+    return mapProjectFromDb(data);
 };
 
-export const getProjectsByPartnerId = async (partnerId: string): Promise<Project[]> => {
-    try {
-        const { data, error } = await supabasePublic.from('projects').select('*').eq('partner_id', partnerId);
-        if (!error && data && data.length > 0) {
-            return data.map(mapProjectFromDb);
-        }
-    } catch {}
-    return projectsData.filter(p => p.partnerId === partnerId);
+export const getProjectsByPartnerId = async (partnerId: string, options?: { client?: any }): Promise<Project[]> => {
+    if (!partnerId) return [];
+
+    if (isDemoModeEnabled() && !options?.client) {
+        return projectsData.filter(p => p.partnerId === partnerId);
+    }
+
+    const dbClient = getReadClient(options?.client);
+    const { data, error } = await dbClient
+        .from('projects')
+        .select('*')
+        .eq('partner_id', partnerId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        throw new Error(error.message || 'Failed to fetch partner projects from database.');
+    }
+
+    return (data || []).map(mapProjectFromDb);
 };
 
-export const addProject = async (project: Omit<Project, 'id' | 'createdAt'>): Promise<Project> => {
+export const addProject = async (
+    project: Omit<Project, 'id' | 'createdAt'>,
+    options?: { client?: any }
+): Promise<Project> => {
     requireAnyPermission([Permission.MANAGE_ALL_PROJECTS, Permission.MANAGE_OWN_PROJECTS]);
 
-    const dbPayload = {
+    const dbClient = options?.client || supabase;
+    const dbPayload: Record<string, any> = {
         partner_id: project.partnerId,
         name_ar: project.name.ar,
         name_en: project.name.en,
         description_ar: project.description.ar,
         description_en: project.description.en,
         image_url: project.imageUrl,
-        features: JSON.stringify(project.features)
+        features: JSON.stringify(project.features || []),
+        city_id: project.cityId || 'heliopolis',
     };
-    
-    const { data, error } = await supabase.from('projects').insert(dbPayload).select().single();
+
+    let { data, error } = await dbClient.from('projects').insert(dbPayload).select().single();
+    if (error && isMissingCityIdColumnError(error)) {
+        const { city_id: _ignored, ...legacyPayload } = dbPayload;
+        const retry = await dbClient.from('projects').insert(legacyPayload).select().single();
+        data = retry.data;
+        error = retry.error;
+    }
+
     if (error) throw error;
     invalidateProjectsCache();
     const mapped = mapProjectFromDb(data);
     return { ...mapped, cityId: project.cityId || mapped.cityId || 'heliopolis' };
 };
 
-export const updateProject = async (projectId: string, updates: Partial<Project>): Promise<Project | undefined> => {
+export const updateProject = async (
+    projectId: string,
+    updates: Partial<Project>,
+    options?: { client?: any }
+): Promise<Project | undefined> => {
     requireAnyPermission([Permission.MANAGE_ALL_PROJECTS, Permission.MANAGE_OWN_PROJECTS]);
 
-    const dbUpdates: any = {};
+    const dbClient = options?.client || supabase;
+    const dbUpdates: Record<string, any> = {};
+    if (updates.partnerId) dbUpdates.partner_id = updates.partnerId;
     if (updates.name) {
         dbUpdates.name_ar = updates.name.ar;
         dbUpdates.name_en = updates.name.en;
@@ -221,20 +302,32 @@ export const updateProject = async (projectId: string, updates: Partial<Project>
         dbUpdates.description_ar = updates.description.ar;
         dbUpdates.description_en = updates.description.en;
     }
-    if (updates.imageUrl) dbUpdates.image_url = updates.imageUrl;
+    if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
     if (updates.features) dbUpdates.features = JSON.stringify(updates.features);
+    if (updates.cityId) dbUpdates.city_id = updates.cityId;
 
-    const { data, error } = await supabase.from('projects').update(dbUpdates).eq('id', projectId).select().single();
-    if (error) return undefined;
+    let { data, error } = await dbClient.from('projects').update(dbUpdates).eq('id', projectId).select().single();
+    if (error && isMissingCityIdColumnError(error)) {
+        const { city_id: _ignored, ...legacyUpdates } = dbUpdates;
+        const retry = await dbClient.from('projects').update(legacyUpdates).eq('id', projectId).select().single();
+        data = retry.data;
+        error = retry.error;
+    }
+
+    if (error) throw error;
     invalidateProjectsCache();
     const mapped = mapProjectFromDb(data);
     return { ...mapped, cityId: updates.cityId || mapped.cityId || 'heliopolis' };
 };
 
-export const deleteProject = async (projectId: string): Promise<boolean> => {
+export const deleteProject = async (projectId: string, options?: { client?: any }): Promise<boolean> => {
     requireAnyPermission([Permission.MANAGE_ALL_PROJECTS, Permission.MANAGE_OWN_PROJECTS]);
 
-    const { error } = await supabase.from('projects').delete().eq('id', projectId);
-    if (!error) invalidateProjectsCache();
-    return !error;
+    const dbClient = options?.client || supabase;
+    const { error } = await dbClient.from('projects').delete().eq('id', projectId);
+    if (error) {
+        throw error;
+    }
+    invalidateProjectsCache();
+    return true;
 };

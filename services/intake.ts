@@ -13,6 +13,7 @@ import { addNotification } from './notifications';
 import { uploadFile } from './upload';
 import { getAttribution } from '../utils/attribution';
 import { resolveEligibleManager } from './requests';
+import { resolvePropertyReferenceCode } from '../utils/propertyFormShared';
 
 export class IntakeValidationError extends Error {
     public errors: Record<string, { ar: string; en: string }>;
@@ -324,9 +325,23 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
         }
     });
 
+    const resolvedPropertyId = formData.propertyId || contextData.propertyId;
+    const resolvedPropertyReference =
+        formData.propertyReference ||
+        contextData.propertyReference ||
+        (resolvedPropertyId ? resolvePropertyReferenceCode(resolvedPropertyId) : undefined);
+    const resolvedCityId =
+        contextData.cityId ||
+        formData.cityId ||
+        contextData.propertyDetails?.cityId ||
+        'heliopolis';
+
     const payload: Record<string, any> = {
         ...sanitizedFormData,
         ...contextData,
+        cityId: resolvedCityId,
+        ...(resolvedPropertyId ? { propertyId: resolvedPropertyId } : {}),
+        ...(resolvedPropertyReference ? { propertyReference: resolvedPropertyReference } : {}),
         formSlug: formSlug || 'direct_intake',
         formVersion: formDef?.version || 1,
         domain,

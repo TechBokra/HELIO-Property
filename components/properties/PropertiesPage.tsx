@@ -18,6 +18,7 @@ import { getPaginatedProperties } from '../../services/properties';
 import { usePropertyFilters } from '../../hooks/usePropertyFilters';
 import Pagination from '../shared/Pagination';
 import { useCityStore } from '../../store/useCityStore';
+import ErrorState from '../shared/ErrorState';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -154,20 +155,13 @@ const PropertiesPage: React.FC = () => {
                         {Array.from({ length: 6 }).map((_, i) => filterControls.view === 'list' ? <PropertyListItemSkeleton key={i} /> : <PropertyCardSkeleton key={i} />)}
                     </div>
                 ) : isPropsError ? (
-                    <div className="max-w-lg mx-auto text-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-8">
-                        <p className="text-gray-800 dark:text-gray-200 font-semibold mb-2">
-                            {language === 'ar' ? 'حدث خطأ أثناء تحميل العقارات' : 'Failed to load properties'}
-                        </p>
-                        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-                            {language === 'ar' ? 'يرجى التحقق من اتصالك بالإنترنت ثم إعادة المحاولة.' : 'Please check your connection and try again.'}
-                        </p>
-                        <button
-                            onClick={() => refetchProps()}
-                            className="px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
-                        >
-                            {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
-                        </button>
-                    </div>
+                    <ErrorState
+                        title={language === 'ar' ? 'حدث خطأ أثناء تحميل العقارات' : 'Failed to load properties'}
+                        message={language === 'ar' ? 'يرجى التحقق من اتصالك بقاعدة البيانات ثم إعادة المحاولة.' : 'Please check your connection and try again.'}
+                        retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                        onRetry={() => refetchProps()}
+                        className="max-w-lg mx-auto py-12"
+                    />
                 ) : (
                     <>
                         {properties.length > 0 ? (

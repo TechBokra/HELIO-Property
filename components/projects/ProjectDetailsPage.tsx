@@ -4,7 +4,7 @@ import { BedIcon, BathIcon, AreaIcon, CheckBadgeIcon, ShareIcon, HeartIcon, Hear
 import type { Property, Language } from '../../types';
 import { useFavorites } from '../shared/FavoritesContext';
 import Lightbox from '../shared/Lightbox';
-import { isCommercial } from '../../utils/propertyUtils';
+import { isCommercial, isPropertyPubliclyVisible } from '../../utils/propertyUtils';
 import BannerDisplay from '../shared/BannerDisplay';
 import { getPropertiesByProjectId } from '../../services/properties';
 import { useQuery } from '@tanstack/react-query';
@@ -18,7 +18,9 @@ import { getAllAmenities } from '../../services/filters';
 import { getPartnerById } from '../../services/partners';
 import { useLanguage } from '../shared/LanguageContext';
 import PropertyCard from '../properties/PropertyCard';
+import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
 import ProjectDetailsSkeleton from '../shared/ProjectDetailsSkeleton';
+import ErrorState from '../shared/ErrorState';
 import { Button } from '../ui/Button';
 
 
@@ -39,28 +41,43 @@ const ProjectDetailsPage: React.FC = () => {
     const { showToast } = useToast();
 
     const fetchProject = useCallback(() => getProjectById(projectId!), [projectId]);
-    const { data: project, isLoading: isLoadingProjs } = useQuery({ 
-        queryKey: [`project-${projectId}`], 
-        queryFn: fetchProject, 
-        enabled: !!projectId,
-        staleTime: 1000 * 60 * 5
-    });
-    
-    const { data: projectProperties = [], isLoading: isLoadingProps } = useQuery({
-        queryKey: [`project-properties-${projectId}`],
-        queryFn: () => getPropertiesByProjectId(projectId!),
+    const {
+        data: project,
+        isLoading: isLoadingProjs,
+        isError: isErrorProject,
+        refetch: refetchProject
+    } = useQuery({
+        queryKey: ['project', projectId],
+        queryFn: fetchProject,
         enabled: !!projectId,
         staleTime: 1000 * 60 * 5
     });
 
+    const {
+        data: rawProjectProperties = [],
+        isLoading: isLoadingProps,
+        isError: isErrorProps,
+        refetch: refetchProps
+    } = useQuery({
+        queryKey: ['project-properties', projectId],
+        queryFn: () => getPropertiesByProjectId(projectId!, { publicOnly: true }),
+        enabled: !!projectId,
+        staleTime: 1000 * 60 * 2
+    });
+
     const { data: developer } = useQuery({
-        queryKey: [`partner-${project?.partnerId}`],
+        queryKey: ['partner', project?.partnerId],
         queryFn: () => getPartnerById(project!.partnerId),
         enabled: !!project?.partnerId,
         staleTime: 1000 * 60 * 5
     });
 
-    const isLoading = isLoadingProjs && !project;
+    const isLoading = isLoadingProjs;
+
+    const projectProperties = useMemo(
+        () => (rawProjectProperties || []).filter((p) => isPropertyPubliclyVisible(p, { includeSold: true })),
+        [rawProjectProperties]
+    );
 
     const [activeType, setActiveType] = useState('all');
     const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -70,7 +87,7 @@ const ProjectDetailsPage: React.FC = () => {
         const types = new Set(projectProperties.map(p => p.type?.en).filter(Boolean));
         return ['all', ...Array.from(types)];
     }, [projectProperties]);
-    
+
     const filteredProperties = useMemo(() => {
         if (!projectProperties) return [];
         if (activeType === 'all') return projectProperties;
@@ -104,13 +121,34 @@ const ProjectDetailsPage: React.FC = () => {
         return <ProjectDetailsSkeleton />;
     }
 
+    if (isErrorProject) {
+        return (
+            <div className="py-20 container mx-auto px-6">
+                <ErrorState
+                    title={language === 'ar' ? 'تعذر تحميل بيانات المشروع' : 'Failed to load project'}
+                    message={language === 'ar' ? 'حدث خطأ أثناء الاتصال بقاعدة البيانات. يرجى المحاولة مرة أخرى.' : 'A database error occurred. Please try again.'}
+                    retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Try Again'}
+                    onRetry={() => refetchProject()}
+                    className="max-w-lg mx-auto py-12"
+                />
+            </div>
+        );
+    }
+
     if (!project) {
         return (
-            <div className="text-center py-20 container mx-auto">
-                <SEO title="Project Not Found | ONLY HELIO" description="Sorry, we couldn't find the project you're looking for." />
-                <h1 className="text-4xl font-bold">Project Not Found</h1>
-                <p className="mt-4 text-gray-500">Sorry, we couldn't find the project you're looking for.</p>
-                <Link to="/" className="mt-8 inline-block bg-amber-500 text-gray-900 font-semibold px-6 py-3 rounded-lg">Back to Home</Link>
+            <div className="text-center py-20 container mx-auto px-6">
+                <SEO
+                    title={language === 'ar' ? 'المشروع غير موجود | ONLY HELIO' : 'Project Not Found | ONLY HELIO'}
+                    description={language === 'ar' ? 'عذراً، لم نتمكن من العثور على المشروع المطلوب.' : "Sorry, we couldn't find the project you're looking for."}
+                />
+                <h1 className="text-4xl font-bold">{language === 'ar' ? 'المشروع غير موجود' : 'Project Not Found'}</h1>
+                <p className="mt-4 text-gray-500">
+                    {language === 'ar' ? 'عذراً، لم نتمكن من العثور على المشروع المطلوب.' : "Sorry, we couldn't find the project you're looking for."}
+                </p>
+                <Link to="/projects" className="mt-8 inline-block bg-amber-500 text-gray-900 font-semibold px-6 py-3 rounded-lg">
+                    {language === 'ar' ? 'العودة إلى المشروعات' : 'Back to Projects'}
+                </Link>
             </div>
         );
     }
@@ -243,12 +281,20 @@ const ProjectDetailsPage: React.FC = () => {
                             })}
                         </div>
                     )}
-                    {isLoadingProps && (!projectProperties || projectProperties.length === 0) ? (
+                    {isLoadingProps ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                             {Array.from({ length: 3 }).map((_, i) => (
-                                <div key={i} className="h-72 bg-gray-200 animate-pulse rounded-xl" />
+                                <PropertyCardSkeleton key={i} />
                             ))}
                         </div>
+                    ) : isErrorProps ? (
+                        <ErrorState
+                            title={language === 'ar' ? 'تعذر تحميل وحدات المشروع' : 'Failed to load project units'}
+                            message={language === 'ar' ? 'حدث خطأ أثناء جلب الوحدات. يرجى إعادة المحاولة.' : 'An error occurred while loading units. Please retry.'}
+                            retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                            onRetry={() => refetchProps()}
+                            className="max-w-lg mx-auto py-12"
+                        />
                     ) : filteredProperties.length > 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                             {filteredProperties.map(prop => (
@@ -256,7 +302,7 @@ const ProjectDetailsPage: React.FC = () => {
                             ))}
                         </div>
                     ) : (
-                        <div className="text-center py-12 bg-white rounded-lg shadow-sm">
+                        <div className="text-center py-12 bg-white rounded-lg shadow-sm border border-dashed border-gray-200">
                             <p className="text-xl text-gray-500">
                                 {language === 'ar' ? 'لا توجد وحدات متاحة حاليًا في هذا المشروع.' : 'There are currently no available units in this project.'}
                             </p>

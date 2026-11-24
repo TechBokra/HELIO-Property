@@ -13,6 +13,57 @@ export let siteContentData: SiteContent = {
         en: 'Beta Version - We welcome your feedback to improve the user experience.'
     }
   },
+  navigation: [
+    { id: 'nav-home', href: '/', label: { ar: 'الرئيسية', en: 'Home' }, visible: true, order: 1, icon: 'HomeIcon', isEnd: true },
+    { id: 'nav-properties', href: '/properties', label: { ar: 'العقارات', en: 'Properties' }, visible: true, order: 2, icon: 'BuildingIcon' },
+    { id: 'nav-projects', href: '/projects', label: { ar: 'المشاريع', en: 'Projects' }, visible: true, order: 3, icon: 'CubeIcon' },
+    { id: 'nav-finishing', href: '/finishing', label: { ar: 'التشطيبات', en: 'Finishing' }, visible: true, order: 4, icon: 'WrenchScrewdriverIcon' },
+    { id: 'nav-decorations', href: '/decorations', label: { ar: 'الديكورات', en: 'Decorations' }, visible: true, order: 5, icon: 'SparklesIcon' },
+    { id: 'nav-contact', href: '/contact', label: { ar: 'تواصل معنا', en: 'Contact Us' }, visible: true, order: 6, icon: 'PhoneIcon' },
+  ],
+  headerCta: {
+    visible: true,
+    text: { ar: 'انضم كشريك', en: 'Join as Partner' },
+    link: '/register',
+  },
+  homeSections: [
+    { id: 'hero', label: { ar: 'القسم الرئيسي (Hero)', en: 'Hero Section' }, enabled: true, order: 1 },
+    { id: 'homeBanner', label: { ar: 'البانرات الإعلانية', en: 'Promotional Banners' }, enabled: true, order: 2 },
+    { id: 'socialProof', label: { ar: 'الإثبات الاجتماعي والأرقام', en: 'Social Proof Stats' }, enabled: true, order: 3 },
+    { id: 'services', label: { ar: 'خدماتنا', en: 'Services Overview' }, enabled: true, order: 4 },
+    { id: 'whyNewHeliopolis', label: { ar: 'لماذا هليوبوليس الجديدة', en: 'Why New Heliopolis' }, enabled: true, order: 5 },
+    { id: 'whyUs', label: { ar: 'لماذا تختارنا', en: 'Why Choose Us' }, enabled: true, order: 6 },
+    { id: 'homeListings', label: { ar: 'أحدث العقارات', en: 'Latest Properties' }, enabled: true, order: 7 },
+    { id: 'partners', label: { ar: 'الشركاء والمطورون', en: 'Partners & Developers' }, enabled: true, order: 8 },
+    { id: 'testimonials', label: { ar: 'آراء العملاء', en: 'Testimonials' }, enabled: true, order: 9 },
+    { id: 'homeCTA', label: { ar: 'الدعوة لاتخاذ إجراء (CTA)', en: 'Call to Action (CTA)' }, enabled: true, order: 10 },
+  ],
+  contactPage: {
+    ar: {
+      title: 'تواصل',
+      subtitle: 'نحن هنا لمساعدتك. إذا كان لديك استفسار حول خدماتنا وعقاراتنا داخل هليوبوليس الجديدة، أو ترغب في بدء مشروع، لا تتردد في التواصل معنا.',
+      formTitle: 'أرسل لنا رسالة',
+      formDescription: '',
+      contactInfoTitle: 'معلومات الاتصال',
+      contactInfoDescription: '',
+      addressTitle: 'العنوان',
+      phoneTitle: 'الهاتف',
+      emailTitle: 'البريد الإلكتروني',
+      hoursTitle: 'ساعات العمل',
+    },
+    en: {
+      title: 'Contact Us',
+      subtitle: 'We are here to help. If you have any questions about our services and properties in New Heliopolis, or wish to start a project, feel free to contact us.',
+      formTitle: 'Send us a message',
+      formDescription: '',
+      contactInfoTitle: 'Contact Information',
+      contactInfoDescription: '',
+      addressTitle: 'Address',
+      phoneTitle: 'Phone',
+      emailTitle: 'Email',
+      hoursTitle: 'Working Hours',
+    },
+  },
   contactConfiguration: {
     routing: 'internal',
     targetEmail: 'admin@onlyhelio.com',
@@ -53,23 +104,44 @@ export let siteContentData: SiteContent = {
       }
   },
   hero: {
+      enabled: true,
       ar: { title: 'اكتشف هليوبوليس الجديدة', subtitle: 'استمتع بأسلوب حياة عصري ومتميز في قلب المدينة.' },
       en: { title: 'Discover New Heliopolis', subtitle: 'Experience a modern lifestyle in the heart of the city.' },
       images: [
           { src: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?q=80&w=2070&auto=format&fit=crop', alt: { ar: 'فيلا حديثة', en: 'Modern Villa' } },
           { src: 'https://images.unsplash.com/photo-1600596542815-27bfefd0c3c6?q=80&w=2070&auto=format&fit=crop', alt: { ar: 'تصميم داخلي', en: 'Interior Design' } }
-      ]
+      ],
+      primaryButton: {
+          visible: true,
+          text: { ar: 'تصفح العقارات', en: 'Browse Properties' },
+          link: '/properties',
+      },
+      secondaryButton: {
+          visible: true,
+          text: { ar: 'أضف عقارك', en: 'List Your Property' },
+          link: '/add-property',
+      },
   },
   homeCTA: {
       enabled: true,
       ar: { title: 'جاهز لامتلاك منزلك؟', subtitle: 'تصفح العقارات المتاحة الآن.', button: 'تصفح الآن', link: '/properties' },
-      en: { title: 'Ready to own your home?', subtitle: 'Browse available properties now.', button: 'Browse Now', link: '/properties' }
+      en: { title: 'Ready to own your home?', subtitle: 'Browse available properties now.', button: 'Browse Now', link: '/properties' },
+      secondaryButton: {
+          visible: true,
+          text: { ar: 'انضم كشريك', en: 'Join as Partner' },
+          link: '/register',
+      },
   },
   homeListings: {
       enabled: true,
       count: 4,
       ar: { title: 'أحدث العقارات' },
-      en: { title: 'Latest Properties' }
+      en: { title: 'Latest Properties' },
+      viewAllButton: {
+          visible: true,
+          text: { ar: 'عرض الكل', en: 'View All' },
+          link: '/properties',
+      },
   },
   whyUs: {
       ar: {
@@ -309,5 +381,58 @@ export let siteContentData: SiteContent = {
               { ar: "التزام صارم بالجدول الزمني وغرامة تأخير", en: "Strict schedule commitment with penalty clauses", included: true }
           ]
       }
-    ]
+    ],
+  finishingPage: {
+      heroButtonLink: '/request-service',
+      ctaLink: '/request-service',
+      ar: {
+          heroTitle: 'تشطيب وتصميم داخلي في هليوبوليس الجديدة',
+          heroSubtitle: 'نقدم خدمات تشطيب وتصميم داخلي مخصصة لمشاريعكم في مدينة هليوبوليس الجديدة، ونحول رؤيتكم إلى واقع ملموس.',
+          heroButton: 'تواصل مع مدير التشطيبات',
+          servicesTitle: 'ابدأ التخطيط لمشروعك معنا',
+          servicesSubtitle: 'اختر الباقة التي تناسب احتياجاتك الحالية، سواء كنت في مرحلة التخطيط أو جاهزًا للتنفيذ.',
+          servicesIntro: 'نقدم من خلال فريقنا المختص خدمات الاستشارة والتصميم لمساعدتك في التخطيط لمشروعك. أما إذا كنت تبحث عن التنفيذ، فيمكنك استعراض شركائنا الموثوقين أدناه.',
+          partnerCompaniesTitle: 'اختر إحدى شركات التنفيذ',
+          partnerCompaniesSubtitle: 'تصفح شبكتنا من شركات التشطيب والتصميم الموثوقين التي لها ملفات تعريفية وأعمال سابقة.',
+          serviceProvidersTitle: 'أو تواصل مع مقدمي الخدمة مباشرة',
+          serviceProvidersSubtitle: 'قائمة بمقدمي خدمات التشطيب المسجلين في الباقة المجانية. يمكنك طلب خدمتهم مباشرة.',
+          ctaTitle: 'هل لديك مشروع في هليوبوليس الجديدة؟',
+          ctaSubtitle: 'إذا كنت تملك وحدة في هليوبوليس الجديدة وترغب في تشطيبها بأعلى جودة، تواصل معنا اليوم للحصول على استشارة مجانية.',
+          ctaButton: 'ابدأ مشروعك الآن',
+      },
+      en: {
+          heroTitle: 'Finishing & Interior Design in New Heliopolis',
+          heroSubtitle: 'We offer custom finishing and interior design services for your projects in New Heliopolis, turning your vision into a tangible reality.',
+          heroButton: 'Contact Finishing Manager',
+          servicesTitle: 'Start Planning Your Project with Us',
+          servicesSubtitle: "Choose the package that fits your current needs, whether you're in the planning phase or ready for execution.",
+          servicesIntro: "Through our specialized team, we offer consultation and design services to help you plan your project. If you're looking for execution, you can browse our trusted partners below.",
+          partnerCompaniesTitle: 'Choose an Execution Partner Company',
+          partnerCompaniesSubtitle: 'Browse our network of trusted finishing and design companies with profiles and portfolios.',
+          serviceProvidersTitle: 'Or Contact a Service Provider Directly',
+          serviceProvidersSubtitle: 'A list of finishing service providers on our free plan. You can request their service directly.',
+          ctaTitle: 'Do you have a project in New Heliopolis?',
+          ctaSubtitle: 'If you own a unit in New Heliopolis and want to finish it to the highest quality, contact us today for a free consultation.',
+          ctaButton: 'Start Your Project Now',
+      }
+  },
+  decorationsPage: {
+      customRequestLink: '/request-service',
+      ar: {
+          heroTitle: 'إبداعات فنية تزين جدرانك',
+          heroSubtitle: 'نصمم وننفذ منحوتات فنية مباشرة على الجدران لتحويلها إلى قطعة فنية فريدة. استلهم من أعمالنا أو زودنا بفكرتك الخاصة لنحولها إلى واقع.',
+          sculptures_desc: 'نصمم وننفذ منحوتات فنية مباشرة على الجدران لتحويلها إلى قطعة فنية فريدة. استلهم من أعمالنا أو زودنا بفكرتك الخاصة لنحولها إلى واقع.',
+          paintings_desc: 'مجموعة فريدة من اللوحات الفنية التي تناسب جميع الأذواق والمساحات، منفذة بأيدي فنانين محترفين.',
+          antiques_desc: 'تشكيلة مختارة من التحف وقطع الديكور التي تضيف لمسة من الأناقة والفخامة لمساحتك.',
+          customRequestButton: 'اطلب تصميم خاص',
+      },
+      en: {
+          heroTitle: 'Artistic Creations to Adorn Your Walls',
+          heroSubtitle: 'We design and create art sculptures directly on walls to turn them into unique masterpieces. Get inspired by our work or provide your own idea to bring it to life.',
+          sculptures_desc: 'We design and execute art sculptures directly on walls to transform them into unique masterpieces. Get inspired by our work or provide your own idea to bring it to life.',
+          paintings_desc: 'A unique collection of art paintings to suit all tastes and spaces, created by professional artists.',
+          antiques_desc: 'A curated selection of antiques and decor pieces that add a touch of elegance and luxury to your space.',
+          customRequestButton: 'Request Custom Design',
+      }
+  }
 };

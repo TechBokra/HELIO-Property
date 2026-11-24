@@ -7,6 +7,7 @@ import { requireAnyPermission } from './authGuard';
 import { getPartnerById, getAllPartnersForAdmin, mapPartnerFromDb } from './partners';
 import { addLead } from './leads';
 import { evaluateRoutingRules } from './routingRules';
+import { resolvePropertyReferenceCode } from '../utils/propertyFormShared';
 
 export const isValidUUID = (id?: string): boolean => {
     if (!id) return false;
@@ -128,9 +129,13 @@ export const getRequestHistory = async (requestId: string): Promise<RequestHisto
     }));
 };
 
-export const getRequestById = async (id: string): Promise<Request | undefined> => {
+export const getRequestById = async (
+    id: string,
+    options?: { client?: any }
+): Promise<Request | undefined> => {
     try {
-        const { data, error } = await supabase
+        const dbClient = options?.client || supabase;
+        const { data, error } = await dbClient
             .from('requests')
             .select('*')
             .eq('id', id)
@@ -230,13 +235,20 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
         customerId: customerId
     };
 
+    const resolvedCityId = (data as any).cityId || (finalPayload as any)?.cityId || (finalPayload as any)?.propertyDetails?.cityId || 'heliopolis';
+    const resolvedPropId = (finalPayload as any)?.propertyId;
     const enrichedPayload = {
         ...(finalPayload || {}),
+        cityId: resolvedCityId,
+        ...(resolvedPropId && !(finalPayload as any)?.propertyReference
+            ? { propertyReference: resolvePropertyReferenceCode(resolvedPropId) }
+            : {}),
         requesterInfo: enrichedRequesterInfo
     };
 
     // Prepare payload for DB
     const dbPayload: any = {
+        city_id: resolvedCityId,
         type,
         status: 'new',
         customer_id: customerId || null,
@@ -327,7 +339,11 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
     return request;
 };
 
-export const updateRequest = async (id: string, updates: Partial<Request>): Promise<Request | undefined> => {
+export const updateRequest = async (
+    id: string,
+    updates: Partial<Request>,
+    options?: { client?: any }
+): Promise<Request | undefined> => {
     requireAnyPermission([
         Permission.MANAGE_REQUESTS, 
         Permission.MANAGE_LEADS, 
@@ -342,19 +358,28 @@ export const updateRequest = async (id: string, updates: Partial<Request>): Prom
         Permission.MANAGE_DECORATIONS_LEADS
     ]);
 
+    const dbClient = options?.client || supabase;
     const dbUpdates: any = {};
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo;
     if (updates.payload !== undefined) dbUpdates.payload = updates.payload;
+    if (updates.cityId !== undefined) dbUpdates.city_id = updates.cityId;
     
     dbUpdates.updated_at = new Date().toISOString();
 
-    const { data, error } = await supabase
+    let { data, error } = await dbClient
         .from('requests')
         .update(dbUpdates)
         .eq('id', id)
         .select()
         .single();
+
+    if (error && 'city_id' in dbUpdates && String(error.message || '').toLowerCase().includes('city_id')) {
+        const { city_id: _ignored, ...legacyUpdates } = dbUpdates;
+        const retry = await dbClient.from('requests').update(legacyUpdates).eq('id', id).select().single();
+        data = retry.data;
+        error = retry.error;
+    }
 
     if (error) {
         console.error('Error updating request in Supabase:', error);
@@ -623,6 +648,30 @@ export const mapRequestToUnified = (
     }
 
     const assignedToName = req.assignedTo && partnersMap?.get(req.assignedTo) ? partnersMap.get(req.assignedTo) : (req.assignedTo ? 'Team Member' : undefined);
+    const linkedPropertyId = payload.propertyId || undefined;
+    const linkedPropertyRef = linkedPropertyId
+        ? resolvePropertyReferenceCode(linkedPropertyId, payload.propertyReference)
+        : (payload.propertyReference || undefined);
+    const createdPropId = payload.createdPropertyId || undefined;
+    const createdPropRef = createdPropId
+        ? resolvePropertyReferenceCode(createdPropId, payload.createdPropertyReference)
+        : (payload.createdPropertyReference || undefined);
+
+    const contactSubject = payload.inquiryType
+        ? `${payload.inquiryType}${payload.companyName ? ` — ${payload.companyName}` : ''}`
+        : payload.companyName;
+    const inquirySubject = payload.propertyTitle
+        || (payload.propertyType || payload.purpose
+            ? [payload.propertyType, payload.purpose].filter(Boolean).join(' • ')
+            : undefined);
+
+    const resolvedServiceTitle =
+        payload.serviceTitle ||
+        (req.type === RequestType.CONTACT_MESSAGE ? contactSubject : undefined) ||
+        (req.type === RequestType.PROPERTY_INQUIRY ? inquirySubject : undefined) ||
+        payload.companyName ||
+        payload.propertyDetails?.title?.ar ||
+        payload.propertyDetails?.title?.en;
 
     return {
         id: req.id,
@@ -642,18 +691,21 @@ export const mapRequestToUnified = (
             customerId: req.customerId || req.requesterInfo?.customerId,
         },
         context: {
-            propertyId: payload.propertyId,
+            propertyId: linkedPropertyId,
+            propertyReference: linkedPropertyRef,
             propertyTitle: payload.propertyTitle || payload.propertyDetails?.title?.ar || payload.propertyDetails?.title?.en,
+            createdPropertyId: createdPropId,
+            createdPropertyReference: createdPropRef,
             projectId: payload.projectId,
             projectTitle: payload.projectName?.ar || payload.projectName?.en,
             partnerId: payload.partnerId,
             partnerName: payload.partnerName || payload.companyName,
             serviceType: payload.serviceType,
-            serviceTitle: payload.serviceTitle || payload.companyName || payload.propertyDetails?.title?.ar,
+            serviceTitle: resolvedServiceTitle,
             estimatedCost: payload.estimatedCost ? Number(payload.estimatedCost) : undefined,
             source: payload.source || 'web_form',
             utmSource: payload.utmSource || payload.utm_source,
-            details: payload.message || payload.details || payload.customerNotes || payload.description,
+            details: payload.message || payload.details || payload.customerNotes || (typeof payload.description === 'string' ? payload.description : (payload.description?.ar || payload.description?.en)),
             images: payload.images || (payload.referenceImage ? [payload.referenceImage] : []),
         },
         domainStatus,
@@ -796,7 +848,16 @@ export const matchesUnifiedRequestFilter = (
 
     if (filter.searchTerm && filter.searchTerm.trim()) {
         const term = filter.searchTerm.trim().toLowerCase();
-        const haystacks = [req.requester.name, req.requester.phone, req.requester.email].filter(Boolean).map(v => String(v).toLowerCase());
+        const haystacks = [
+            req.id,
+            req.requester.name,
+            req.requester.phone,
+            req.requester.email,
+            req.context.propertyReference,
+            req.context.propertyTitle,
+            req.context.createdPropertyReference,
+            req.context.serviceTitle,
+        ].filter(Boolean).map(v => String(v).toLowerCase());
         if (!haystacks.some(h => h.includes(term))) return false;
     }
 

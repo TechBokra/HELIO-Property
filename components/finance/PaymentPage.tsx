@@ -97,12 +97,14 @@ const PaymentPage: React.FC = () => {
                     } else if (type === 'listing_fee') {
                         const { requesterInfo, payload } = contextData;
                         await addRequest(RequestType.PROPERTY_LISTING_REQUEST, {
+                            cityId: payload?.cityId || payload?.propertyDetails?.cityId,
                             requesterInfo,
                             payload: { ...payload, paymentStatus: paymentStatus }
                         });
                     } else if (type === 'service_payment' || type === 'product_purchase') {
                         await addLead({
                             ...contextData,
+                            propertyReference: contextData.propertyReference,
                             customerNotes: `${contextData.customerNotes || ''}\n[Payment Transaction: ${transaction.id} - ${transaction.status.toUpperCase()}]`,
                             status: 'new'
                         });

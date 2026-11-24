@@ -18,12 +18,13 @@ import DetailSection from '../shared/DetailSection';
 import PropertyDetailsSkeleton from '../shared/PropertyDetailsSkeleton';
 import { getPartnerById } from '../../services/partners';
 import { useLanguage } from '../shared/LanguageContext';
-import { isCommercial } from '../../utils/propertyUtils';
+import { isCommercial, isPropertyPubliclyVisible, canReviewPropertyDraft } from '../../utils/propertyUtils';
 import { Button } from '../ui/Button';
 import StackedImageGallery from './StackedImageGallery';
 import UnifiedMap from '../shared/UnifiedMap';
 import { useAuth } from '../auth/AuthContext';
 import { trackPropertyView, trackWhatsAppClick, trackCallClick } from '../../services/analytics';
+import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
 
 const PropertyDetailsPage: React.FC = () => {
     const { propertyId } = useParams<{ propertyId: string }>();
@@ -41,13 +42,13 @@ const PropertyDetailsPage: React.FC = () => {
         isError: isPropError, 
         refetch: refetchProperty 
     } = useQuery({ 
-        queryKey: [`property-${propertyId}`], 
+        queryKey: ['property', propertyId], 
         queryFn: fetchProperty, 
         enabled: !!propertyId 
     });
     
     const { data: partner, isLoading: isLoadingPartner } = useQuery({
-        queryKey: [`partner-${property?.partnerId}`],
+        queryKey: ['partner', property?.partnerId],
         queryFn: () => getPartnerById(property!.partnerId),
         enabled: !!property?.partnerId,
     });
@@ -83,6 +84,8 @@ const PropertyDetailsPage: React.FC = () => {
         setShareModalState({ isOpen: false });
     };
 
+    const propReference = property ? resolvePropertyReferenceCode(property.id, property.referenceNumber) : undefined;
+
     const handleContact = useCallback(() => {
         if (!partner?.contactMethods) {
             navigate('/request-service', { 
@@ -90,6 +93,7 @@ const PropertyDetailsPage: React.FC = () => {
                     partnerId: property?.partnerId, 
                     serviceTitle: `${t_page.inquiryAbout} "${propTitle}"`,
                     propertyId: property?.id,
+                    propertyReference: propReference,
                     serviceType: 'property',
                     propertyTitle: propTitle
                 } 
@@ -104,6 +108,7 @@ const PropertyDetailsPage: React.FC = () => {
                     partnerId: property?.partnerId, 
                     serviceTitle: `${t_page.inquiryAbout} "${propTitle}"`,
                     propertyId: property?.id,
+                    propertyReference: propReference,
                     serviceType: 'property',
                     propertyTitle: propTitle
                 } 
@@ -111,7 +116,7 @@ const PropertyDetailsPage: React.FC = () => {
         } else {
             setContactModalOpen(true);
         }
-    }, [partner, property, propTitle, t_page.inquiryAbout, navigate]);
+    }, [partner, property, propTitle, propReference, t_page.inquiryAbout, navigate]);
 
     const handleImageClick = (index: number) => {
         setLightboxStartIndex(index);
@@ -222,24 +227,25 @@ const PropertyDetailsPage: React.FC = () => {
         );
     }
 
-    const isPublished = property.listingStatus === 'active' || property.listingStatus === 'sold' || property.publicationStatus === 'published';
-    const isOwner = !!(currentUser?.id && currentUser.id === property.partnerId);
-    const isAdmin = !!(currentUser?.role === 'super_admin' || currentUser?.role?.includes('_manager'));
-    const canView = isPublished || isOwner || isAdmin;
+    const isPublished = isPropertyPubliclyVisible(property, { includeSold: true });
+    const canView = isPublished || canReviewPropertyDraft(property, currentUser);
 
     if (!canView) {
         return (
             <div className="text-center py-20 container mx-auto px-4">
-                <SEO title="عقار قيد المراجعة | Property Under Review" description="This listing is under review and not published yet." />
+                <SEO
+                    title={language === 'ar' ? 'العقار غير متاح للعرض العام | ONLY HELIO' : 'Listing Not Publicly Available | ONLY HELIO'}
+                    description={language === 'ar' ? 'هذا العقار غير منشور حالياً.' : 'This listing is currently hidden or in draft.'}
+                />
                 <div className="max-w-md mx-auto bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-8">
                     <span className="text-3xl">🔒</span>
                     <h1 className="text-2xl font-bold mt-4 text-gray-900 dark:text-white">
                         {language === 'ar' ? 'العقار غير متاح للعرض العام حالياً' : 'Listing Not Publicly Available'}
                     </h1>
                     <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        {language === 'ar' 
-                            ? 'هذا العقار في مرحلة المسودة أو قيد المراجعة والتدقيق الإداري.' 
-                            : 'This listing is currently in draft or undergoing administrative review.'}
+                        {language === 'ar'
+                            ? 'هذا العقار مخفي حالياً أو في مرحلة المسودة والمراجعة الإدارية.'
+                            : 'This listing is currently hidden, in draft, or undergoing administrative review.'}
                     </p>
                     <Link to="/properties" className="mt-6 inline-block bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold px-6 py-2.5 rounded-lg transition-colors">
                         {t_page.backButton}
@@ -262,9 +268,9 @@ const PropertyDetailsPage: React.FC = () => {
             <div className="bg-amber-500 text-gray-950 font-bold text-center py-2.5 px-4 text-sm flex items-center justify-center gap-2 shadow-md">
                 <span>⚠️</span>
                 <span>
-                    {language === 'ar' 
-                        ? 'وضع المعاينة الإدارية: هذا العقار مسودة وغير منشور للمستخدمين في السوق العام بعد.' 
-                        : 'Preview Mode: This listing is currently a Draft and is not published to the public marketplace.'}
+                    {language === 'ar'
+                        ? `وضع المعاينة (${property.listingStatus === 'inactive' ? 'مخفي / مؤرشف' : 'مسودة'}): هذا العقار غير منشور للعامة حالياً.`
+                        : `Preview Mode (${property.listingStatus === 'inactive' ? 'Hidden / Archived' : 'Draft'}): This listing is not visible to the public.`}
                 </span>
             </div>
         )}
@@ -279,7 +285,10 @@ const PropertyDetailsPage: React.FC = () => {
                     state: { 
                         partnerId: property.partnerId, 
                         serviceTitle: `${t_page.inquiryAbout} "${propTitle}"`,
-                        propertyId: property.id
+                        propertyId: property.id,
+                        propertyReference: propReference,
+                        propertyTitle: propTitle,
+                        serviceType: 'property',
                     } 
                 })}
             />
@@ -405,20 +414,31 @@ const PropertyDetailsPage: React.FC = () => {
                             
                             {/* Contact Box with Instant High-Intent Direct Channels */}
                             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 space-y-4">
-                                {partner ? (
-                                    <div className="flex items-center gap-4">
-                                        <img src={partner.imageUrl} alt={partner.name} className="w-16 h-16 rounded-full object-cover"/>
+                                {isLoadingPartner ? (
+                                    <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                                ) : partner ? (
+                                    <Link to={`/partners/${partner.id}`} className="flex items-center gap-4 group">
+                                        <img src={partner.imageUrl} alt={(language === 'ar' && (partner as any).nameAr) ? (partner as any).nameAr : partner.name} className="w-16 h-16 rounded-full object-cover"/>
                                         <div>
                                             <p className="text-sm text-gray-500 dark:text-gray-400">{t.propertyCard.by}</p>
-                                            <p className="font-bold text-lg">{partner.name}</p>
+                                            <p className="font-bold text-lg group-hover:text-amber-500 transition-colors">
+                                                {(language === 'ar' && (partner as any).nameAr) ? (partner as any).nameAr : partner.name}
+                                            </p>
                                             {property.verificationStatus === 'verified' && (
                                                 <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
                                                     <CheckBadgeIcon className="w-4 h-4" /> {language === 'ar' ? 'شريك ومُطوّر معتمد' : 'Verified Partner'}
                                                 </span>
                                             )}
                                         </div>
+                                    </Link>
+                                ) : property.partnerName ? (
+                                    <div className="flex items-center gap-4">
+                                        <div>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">{t.propertyCard.by}</p>
+                                            <p className="font-bold text-lg">{property.partnerName}</p>
+                                        </div>
                                     </div>
-                                ) : <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>}
+                                ) : null}
 
                                 {/* High-Intent Direct Action CTAs */}
                                 <div className="space-y-2 pt-2">
@@ -460,16 +480,24 @@ const PropertyDetailsPage: React.FC = () => {
                                 <div className="text-xs space-y-2 text-gray-600 dark:text-gray-300">
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">{language === 'ar' ? 'حالة التوثيق:' : 'Verification:'}</span>
-                                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">{language === 'ar' ? 'عقار معتمد ومفحوص' : 'Verified Listing'}</span>
+                                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                            {property.verificationStatus === 'verified'
+                                                ? (language === 'ar' ? 'عقار معتمد ومفحوص' : 'Verified Listing')
+                                                : (language === 'ar' ? 'قيد المراجعة' : 'Pending Review')}
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">{language === 'ar' ? 'تاريخ التحقق:' : 'Last Verified:'}</span>
-                                        <span className="font-medium text-gray-800 dark:text-gray-200">{property.verifiedAt || '2024-09-20'}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">{language === 'ar' ? 'آخر تحديث للسعر:' : 'Price Updated:'}</span>
-                                        <span className="font-medium text-gray-800 dark:text-gray-200">{property.priceUpdatedAt || '2024-09-25'}</span>
-                                    </div>
+                                    {property.verifiedAt && (
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">{language === 'ar' ? 'تاريخ التحقق:' : 'Last Verified:'}</span>
+                                            <span className="font-medium text-gray-800 dark:text-gray-200">{new Date(property.verifiedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</span>
+                                        </div>
+                                    )}
+                                    {property.priceUpdatedAt && (
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">{language === 'ar' ? 'آخر تحديث للسعر:' : 'Price Updated:'}</span>
+                                            <span className="font-medium text-gray-800 dark:text-gray-200">{new Date(property.priceUpdatedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">{language === 'ar' ? 'حالة التوفر:' : 'Availability:'}</span>
                                         <span className="font-semibold text-emerald-600 dark:text-emerald-400">{property.availabilityStatus === 'sold' ? (language === 'ar' ? 'تم البيع' : 'Sold') : (language === 'ar' ? 'متاح للتعاقد' : 'Available')}</span>
@@ -498,8 +526,10 @@ const PropertyDetailsPage: React.FC = () => {
                                             onClick={() => navigate('/finishing', {
                                                 state: {
                                                     propertyId: property.id,
-                                                    propertyTitle: property.title[language],
-                                                    propertyArea: property.area
+                                                    propertyReference: propReference,
+                                                    propertyTitle: propTitle,
+                                                    propertyArea: property.area,
+                                                    propertyType: property.type?.en,
                                                 }
                                             })}
                                             className="px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold text-xs shadow-sm transition-colors whitespace-nowrap"

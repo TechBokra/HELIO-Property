@@ -109,47 +109,57 @@ export const invalidatePartnersCache = () => {
     inFlightPartnersPromise = null;
 };
 
-export const getAllPartners = async (): Promise<Partner[]> => {
+export const getAllPartners = async (options?: { client?: any }): Promise<Partner[]> => {
+    const useCache = !options?.client;
     const now = Date.now();
-    if (cachedPartners && (now - cachedPartners.timestamp) < CACHE_TTL_MS) {
+    if (useCache && cachedPartners && (now - cachedPartners.timestamp) < CACHE_TTL_MS) {
         return cachedPartners.data;
     }
 
-    if (inFlightPartnersPromise) {
+    if (useCache && inFlightPartnersPromise) {
         return inFlightPartnersPromise;
     }
 
-    inFlightPartnersPromise = (async (): Promise<Partner[]> => {
+    const fetchPromise = (async (): Promise<Partner[]> => {
         try {
-            const { data, error } = await supabasePublic
+            const client = options?.client || supabasePublic;
+            const { data, error } = await client
                 .from('partners')
                 .select('*')
                 .order('created_at', { ascending: false });
 
             if (error) {
                 console.warn('Notice fetching partners from Supabase, using fallback:', error.message || error);
-                const fallback = cachedPartners ? cachedPartners.data : getFallbackPartners();
+                const fallback = useCache && cachedPartners ? cachedPartners.data : getFallbackPartners();
                 return fallback;
             }
 
             if (!data || data.length === 0) {
-                const fallback = cachedPartners ? cachedPartners.data : getFallbackPartners();
+                const fallback = useCache && cachedPartners ? cachedPartners.data : getFallbackPartners();
                 return fallback;
             }
 
             const mapped = (data || []).map(mapPartnerFromDb);
-            cachedPartners = { data: mapped, timestamp: Date.now() };
+            if (useCache) {
+                cachedPartners = { data: mapped, timestamp: Date.now() };
+            }
             return mapped;
         } catch (err: any) {
             console.warn('Network or fetch error fetching partners, using fallback:', err?.message || err);
-            const fallback = cachedPartners ? cachedPartners.data : getFallbackPartners();
+            const fallback = useCache && cachedPartners ? cachedPartners.data : getFallbackPartners();
             return fallback;
         } finally {
-            inFlightPartnersPromise = null;
+            if (useCache) {
+                inFlightPartnersPromise = null;
+            }
         }
     })();
 
-    return inFlightPartnersPromise;
+    if (useCache) {
+        inFlightPartnersPromise = fetchPromise;
+    }
+
+    return fetchPromise;
 };
 
 export const getAllPartnersForAdmin = async (): Promise<AdminPartner[]> => {
@@ -157,9 +167,10 @@ export const getAllPartnersForAdmin = async (): Promise<AdminPartner[]> => {
     return partners as AdminPartner[];
 };
 
-export const getPartnerById = async (id: string): Promise<Partner | undefined> => {
+export const getPartnerById = async (id: string, options?: { client?: any }): Promise<Partner | undefined> => {
     try {
-        const { data, error } = await supabasePublic
+        const client = options?.client || supabasePublic;
+        const { data, error } = await client
             .from('partners')
             .select('*')
             .eq('id', id)

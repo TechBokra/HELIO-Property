@@ -12,6 +12,7 @@ import { useToast } from '../shared/ToastContext';
 import { HeartIcon, HeartIconSolid, ShareIcon, WhatsAppIcon, ShoppingCartIcon, SparklesIcon } from '../ui/Icons';
 import { Button } from '../ui/Button';
 import { useSiteContent } from '../../hooks/useSiteContent';
+import { isExternalUrl, normalizeActionTarget } from '../../utils/siteContentHelpers';
 
 const DecorationsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -92,7 +93,19 @@ const DecorationsPage: React.FC = () => {
         });
     };
     
+    const customRequestLabel = siteContent?.decorationsPage?.[language]?.customRequestButton || t_decor_page.requestCustomDesign;
+    const customRequestLink = siteContent?.decorationsPage?.customRequestLink || '/request-service';
+
     const openCustomRequestPage = () => {
+        const normalized = normalizeActionTarget(customRequestLink, '/request-service');
+        if (normalized !== '/request-service') {
+            if (isExternalUrl(normalized)) {
+                window.open(normalized, '_blank', 'noopener,noreferrer');
+            } else {
+                navigate(normalized);
+            }
+            return;
+        }
         const serviceTitle = `${t_custom_decor_modal.serviceTitle}: ${activeTabInfo?.name || ''}`;
         navigate('/request-service', {
             state: {
@@ -196,7 +209,7 @@ const DecorationsPage: React.FC = () => {
                             onClick={openCustomRequestPage}
                             className="mt-6 bg-amber-500 text-gray-900 font-bold px-8 py-3 rounded-full hover:bg-amber-600 transition-colors duration-200 shadow-lg hover:shadow-amber-500/20 transform hover:-translate-y-1"
                         >
-                            {t_decor_page.requestCustomDesign}
+                            {customRequestLabel}
                         </button>
                     </div>
 

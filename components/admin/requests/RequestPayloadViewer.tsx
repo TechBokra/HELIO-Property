@@ -1,8 +1,10 @@
 
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Request, RequestType } from '../../../types';
 import DetailItem from '../../shared/DetailItem';
 import { useLanguage } from '../../shared/LanguageContext';
+import { normalizeBilingualText, resolvePropertyReferenceCode } from '../../../utils/propertyFormShared';
 
 interface RequestPayloadViewerProps {
     request: Request;
@@ -56,20 +58,38 @@ const RequestPayloadViewer: React.FC<RequestPayloadViewerProps> = ({ request }) 
             const pd = r.propertyDetails;
             
             if (!pd) return <div className="text-red-500">Missing property details</div>;
+            const descObj = normalizeBilingualText(pd.description);
+            const addressObj = normalizeBilingualText(pd.address);
 
             return (
                 <div className="space-y-6 animate-fadeIn">
+                    {r.createdPropertyId && (
+                        <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-xs font-semibold text-amber-900 dark:text-amber-300">
+                                {language === 'ar' ? 'مسودة العقار المرتبطة:' : 'Linked Draft Property:'}{' '}
+                                <span className="font-mono font-bold">
+                                    {resolvePropertyReferenceCode(r.createdPropertyId, r.createdPropertyReference)}
+                                </span>
+                            </div>
+                            <Link
+                                to={`/admin/properties/edit/${r.createdPropertyId}`}
+                                className="text-xs font-bold text-amber-700 dark:text-amber-400 hover:underline"
+                            >
+                                {language === 'ar' ? 'فتح المسودة ←' : 'Open Draft →'}
+                            </Link>
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <DetailItem label="Property Type" value={pd.propertyType?.[language] || 'N/A'} />
-                        <DetailItem label="Purpose" value={pd.purpose?.[language] || 'N/A'} />
-                        <DetailItem label="Area" value={`${pd.area} m²`} />
-                        <DetailItem label="Price" value={`EGP ${pd.price?.toLocaleString()}`} />
-                        <DetailItem label="Finishing" value={pd.finishingStatus?.[language] || 'N/A'} />
+                        <DetailItem label="Property Type" value={pd.propertyType?.[language] || pd.propertyType?.en || pd.propertyType || 'N/A'} />
+                        <DetailItem label="Purpose" value={pd.purpose?.[language] || pd.purpose?.en || 'N/A'} />
+                        <DetailItem label="Area" value={`${pd.area || 0} m²`} />
+                        <DetailItem label="Price" value={`EGP ${Number(pd.price || 0).toLocaleString()}`} />
+                        <DetailItem label="Finishing" value={pd.finishingStatus?.[language] || pd.finishingStatus?.en || pd.finishingStatus || 'N/A'} />
                         <DetailItem label="Cooperation" value={r.cooperationType} />
                     </div>
                     
-                    <DetailItem label="Address" value={pd.address} />
-                    <DetailItem label="Description" value={<p className="whitespace-pre-line text-sm">{pd.description}</p>} />
+                    <DetailItem label="Address" value={addressObj[language] || addressObj.ar || addressObj.en || 'N/A'} />
+                    <DetailItem label="Description" value={<p className="whitespace-pre-line text-sm">{descObj[language] || descObj.ar || descObj.en || '—'}</p>} />
 
                     {r.images && r.images.length > 0 && (
                         <div>

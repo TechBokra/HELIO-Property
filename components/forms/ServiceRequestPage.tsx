@@ -14,6 +14,7 @@ import DynamicForm from '../shared/DynamicForm';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { getAttribution } from '../../utils/attribution';
 import { PLATFORM_FINISHING_MANAGER_ID } from '../../services/finishing';
+import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
 
 const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
 
@@ -34,6 +35,7 @@ const ServiceRequestPage: React.FC = () => {
         serviceTitle, 
         partnerId: rawPartnerId, 
         propertyId, 
+        propertyReference: rawPropertyReference,
         propertyTitle,
         workItem, 
         isCustom, 
@@ -44,12 +46,16 @@ const ServiceRequestPage: React.FC = () => {
         categoryName 
     } = location.state || {};
 
-    const effectiveServiceType = serviceType || (categoryName?.toLowerCase().includes('finish') ? 'finishing' : 'finishing');
+    const effectiveServiceType = serviceType || (categoryName?.toLowerCase().includes('finish') ? 'finishing' : propertyId ? 'property' : 'finishing');
+    const propertyReference = propertyId
+        ? resolvePropertyReferenceCode(propertyId, rawPropertyReference)
+        : rawPropertyReference;
 
-    // Route finishing without specific partner or with mock ID directly to Platform Finishing Manager
+    // Route finishing without specific partner directly to Platform Finishing Manager; keep real-estate property partner or resolve eligible manager dynamically
     const partnerId = useMemo(() => {
         if (!rawPartnerId || rawPartnerId === 'admin-user' || rawPartnerId === 'platform-finishing-manager-1') {
             if (effectiveServiceType === 'decorations') return DECORATION_MANAGER_ID;
+            if (effectiveServiceType === 'property') return undefined;
             return PLATFORM_FINISHING_MANAGER_ID;
         }
         return rawPartnerId;
@@ -151,11 +157,12 @@ const ServiceRequestPage: React.FC = () => {
                     userName: formData.customerName,
                     data: {
                         ...submissionData,
-                        serviceType: serviceType || 'finishing',
+                        serviceType: effectiveServiceType,
                         serviceTitle: bookingTitle,
                         partnerId: partnerId,
                         managerId: PLATFORM_FINISHING_MANAGER_ID,
                         propertyId: propertyId,
+                        propertyReference: propertyReference,
                         propertyTitle: propertyTitle,
                         tierDetails: tier,
                         pricingModel: tier?.priceModel || 'fixed_package',
@@ -186,11 +193,18 @@ const ServiceRequestPage: React.FC = () => {
                 }
             });
         } else {
+            const targetDomain =
+                effectiveServiceType === 'decorations'
+                    ? 'decorations'
+                    : effectiveServiceType === 'property'
+                        ? 'real_estate'
+                        : 'finishing';
+
             // Standard Lead Submission via Canonical Intake Pipeline
             submitIntake({
                 formSlug,
                 requestType: RequestType.LEAD,
-                domain: (effectiveServiceType === 'decorations' ? 'decorations' : 'finishing') as any,
+                domain: targetDomain as any,
                 formData: {
                     ...formData,
                     customerNotes: finalNotes,
@@ -200,6 +214,7 @@ const ServiceRequestPage: React.FC = () => {
                     serviceTitle,
                     managerId: managerId || (effectiveServiceType === 'finishing' ? PLATFORM_FINISHING_MANAGER_ID : (effectiveServiceType === 'decorations' ? DECORATION_MANAGER_ID : undefined)),
                     propertyId,
+                    propertyReference,
                     propertyTitle,
                     serviceType: effectiveServiceType,
                     tierDetails: tier,
@@ -220,6 +235,29 @@ const ServiceRequestPage: React.FC = () => {
 
     const headerContent = (
         <>
+             {(propertyId || propertyReference) && (
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-blue-900 dark:text-blue-200">
+                            {language === 'ar' ? 'مرجع العقار المرتبط:' : 'Linked Property:'}
+                        </span>
+                        {propertyReference && (
+                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300">
+                                {propertyReference}
+                            </span>
+                        )}
+                        {propertyTitle && (
+                            <span className="font-semibold text-gray-800 dark:text-gray-200">{propertyTitle}</span>
+                        )}
+                    </div>
+                    {propertyId && (
+                        <Link to={`/properties/${propertyId}`} className="text-xs font-bold text-blue-700 dark:text-blue-300 hover:underline">
+                            {language === 'ar' ? 'عرض العقار ↗' : 'View Property ↗'}
+                        </Link>
+                    )}
+                </div>
+             )}
+
              {workItem && (
                 <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <p className="text-sm text-gray-600 mb-2">{isPurchase ? (language === 'ar' ? 'المنتج' : 'Product') : t_decor_modal.reference}</p>

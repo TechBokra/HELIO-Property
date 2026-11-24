@@ -8,16 +8,16 @@ import ProjectCardSkeleton from '../shared/ProjectCardSkeleton';
 import ProjectListItem from '../shared/ProjectListItem';
 import ProjectListItemSkeleton from '../shared/ProjectListItemSkeleton';
 import { useQuery } from '@tanstack/react-query';
-import { getAllProjects } from '../../services/projects';
+import { getAllProjects, filterProjectsByCity } from '../../services/projects';
 import { getAllPartnersForAdmin } from '../../services/partners';
-import { getAllProperties } from '../../services/properties';
+import { getProperties } from '../../services/properties';
 import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardContent } from '../ui/Card';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { getResponsiveImageSources } from '../../utils/imageUtils';
-import { projectsData } from '../../data/projects';
 import { useCityStore } from '../../store/useCityStore';
-import { filterProjectsByCity } from '../../services/projects';
+import { isPropertyPubliclyVisible } from '../../utils/propertyUtils';
+import ErrorState from '../shared/ErrorState';
 
 interface ProjectCardProps {
     project: Project; 
@@ -91,43 +91,44 @@ const ProjectsPage: React.FC = () => {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const activeCityId = useCityStore((s) => s.activeCityId);
   const activeCity = useCityStore((s) => s.getActiveCity());
-  const cityProjectsFallback = useMemo(() => filterProjectsByCity(projectsData, activeCityId), [activeCityId]);
-  
+
   const { data: siteContent } = useSiteContent();
-  const { 
-    data: projects = cityProjectsFallback, 
-    isLoading: isLoadingProjs, 
-    isError: isProjectsError, 
-    refetch: refetchProjects 
-  } = useQuery<Project[]>({ 
-    queryKey: ['allProjects', activeCityId], 
+  const {
+    data: projects,
+    isLoading: isLoadingProjs,
+    isError: isProjectsError,
+    refetch: refetchProjects
+  } = useQuery<Project[]>({
+    queryKey: ['allProjects', activeCityId],
     queryFn: () => getAllProjects(activeCityId),
-    placeholderData: cityProjectsFallback,
-    staleTime: 1000 * 60 * 5 
+    staleTime: 1000 * 60 * 5
   });
-  const { data: partners } = useQuery<Partner[]>({ 
-    queryKey: ['allPartnersAdmin'], 
+  const { data: partners } = useQuery<Partner[]>({
+    queryKey: ['allPartnersAdmin'],
     queryFn: getAllPartnersForAdmin,
-    staleTime: 1000 * 60 * 5 
+    staleTime: 1000 * 60 * 5
   });
-  const { data: properties } = useQuery<Property[]>({ 
-    queryKey: ['allProperties', activeCityId], 
-    queryFn: () => getAllProperties(activeCityId),
-    staleTime: 1000 * 60 * 5 
+  const { data: properties } = useQuery<Property[]>({
+    queryKey: ['properties', activeCityId],
+    queryFn: () => getProperties(activeCityId),
+    staleTime: 1000 * 60 * 5
   });
-  
+
   const isLoading = isLoadingProjs;
-  
-  // Use dynamic content if available, fallback to translation file
+
   const content = siteContent?.projectsPage?.[language] || t.projectsPage;
-  
-  const projectsList = Array.isArray(projects) ? filterProjectsByCity(projects, activeCityId) : cityProjectsFallback;
+
+  const projectsList = useMemo(
+    () => (Array.isArray(projects) ? filterProjectsByCity(projects, activeCityId) : []),
+    [projects, activeCityId]
+  );
 
   const projectsWithDetails = useMemo(() => {
+    const publicProperties = (properties || []).filter((p) => isPropertyPubliclyVisible(p, { includeSold: true }));
     return projectsList.map(project => {
-        const developer = (partners || []).find(p => p.id === project.partnerId);
-        const unitsCount = (properties || []).filter(p => p.projectId === project.id).length;
-        return { project, developer, unitsCount };
+      const developer = (partners || []).find(p => p.id === project.partnerId);
+      const unitsCount = publicProperties.filter(p => p.projectId === project.id).length;
+      return { project, developer, unitsCount };
     });
   }, [projectsList, partners, properties]);
 
@@ -170,7 +171,7 @@ const ProjectsPage: React.FC = () => {
             </div>
         </div>
 
-        {isLoading && projectsList.length === 0 ? (
+        {isLoading ? (
             <div className="animate-fadeIn max-w-7xl mx-auto">
                 {view === 'grid' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -182,23 +183,16 @@ const ProjectsPage: React.FC = () => {
                     </div>
                 )}
             </div>
-        ) : isProjectsError && projectsList.length === 0 ? (
-            <div className="max-w-lg mx-auto text-center py-16 bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
-                <p className="text-gray-800 font-semibold mb-2">
-                    {language === 'ar' ? 'تعذر تحميل المشروعات حالياً' : 'Failed to load projects'}
-                </p>
-                <p className="text-gray-500 text-sm mb-6">
-                    {language === 'ar' ? 'يرجى التحقق من اتصالك بالإنترنت وإعادة المحاولة.' : 'Please check your connection and try again.'}
-                </p>
-                <button
-                    onClick={() => refetchProjects()}
-                    className="px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
-                >
-                    {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
-                </button>
-            </div>
+        ) : isProjectsError ? (
+            <ErrorState
+                title={language === 'ar' ? 'تعذر تحميل المشروعات حالياً' : 'Failed to load projects'}
+                message={language === 'ar' ? 'يرجى التحقق من اتصالك بقاعدة البيانات وإعادة المحاولة.' : 'Please check your database connection and try again.'}
+                retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                onRetry={() => refetchProjects()}
+                className="max-w-lg mx-auto py-12"
+            />
         ) : projectsWithDetails.length === 0 ? (
-            <div className="max-w-md mx-auto text-center py-16 bg-white rounded-2xl border border-gray-200 p-8 text-gray-500">
+            <div className="max-w-md mx-auto text-center py-16 bg-white rounded-2xl border border-dashed border-gray-300 p-8 text-gray-500">
                 {language === 'ar' ? 'لا توجد مشروعات متاحة حالياً.' : 'No projects available at the moment.'}
             </div>
         ) : (
@@ -225,12 +219,6 @@ const ProjectsPage: React.FC = () => {
                             />
                         ))}
                     </div>
-                )}
-                
-                {projectsWithDetails.length === 0 && (
-                     <div className="text-center py-20 bg-white rounded-lg shadow-sm border border-dashed border-gray-300">
-                         <p className="text-gray-500 text-lg">No projects found at the moment.</p>
-                     </div>
                 )}
             </div>
         )}

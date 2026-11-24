@@ -1,6 +1,7 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Property } from '../../types';
 import { Role } from '../../types';
 import { useAuth } from '../auth/AuthContext';
@@ -11,14 +12,18 @@ import ExportDropdown from '../shared/ExportDropdown';
 import { deleteProperty as apiDeleteProperty } from '../../services/properties';
 import { useSubscriptionUsage } from '../../hooks/useSubscriptionUsage';
 import { useLanguage } from '../shared/LanguageContext';
+import { useToast } from '../shared/ToastContext';
 import { Select } from '../ui/Select';
 import { Card, CardContent, CardFooter } from '../ui/Card';
 import ConfirmationModal from '../shared/ConfirmationModal';
 import ErrorState from '../shared/ErrorState';
 import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
+import { invalidateAllPropertyQueries } from '../../utils/queryInvalidation';
 
 const DashboardPropertiesPage: React.FC = () => {
     const { language, t } = useLanguage();
+    const { showToast } = useToast();
+    const queryClient = useQueryClient();
     const t_dash = t.dashboard;
     const { currentUser } = useAuth();
     const navigate = useNavigate();
@@ -58,9 +63,18 @@ const DashboardPropertiesPage: React.FC = () => {
 
     const handleDelete = async () => {
         if (!propertyToDelete) return;
-        await apiDeleteProperty(propertyToDelete);
-        setPropertyToDelete(null);
-        refetch();
+        try {
+            await apiDeleteProperty(propertyToDelete);
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: propertyToDelete,
+                partnerId: currentUser?.id,
+            });
+            showToast(language === 'ar' ? 'تم حذف العقار بنجاح' : 'Property deleted successfully', 'success');
+            setPropertyToDelete(null);
+            refetch();
+        } catch (err: any) {
+            showToast(err?.message || (language === 'ar' ? 'فشل حذف العقار' : 'Failed to delete property'), 'error');
+        }
     };
 
     const handleAddPropertyClick = () => {
@@ -180,11 +194,21 @@ const DashboardPropertiesPage: React.FC = () => {
                                             {refCode}
                                         </span>
                                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                            prop.listingStatus === 'active' 
+                                            prop.listingStatus === 'active'
                                                 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                                : prop.listingStatus === 'inactive'
+                                                ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                                : prop.listingStatus === 'sold'
+                                                ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
                                                 : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
                                         }`}>
-                                            {prop.listingStatus === 'active' ? (language === 'ar' ? 'منشور' : 'Published') : (language === 'ar' ? 'مسودة' : 'Draft')}
+                                            {prop.listingStatus === 'active'
+                                                ? (language === 'ar' ? 'منشور' : 'Published')
+                                                : prop.listingStatus === 'inactive'
+                                                ? (language === 'ar' ? 'مخفي / مؤرشف' : 'Hidden / Archived')
+                                                : prop.listingStatus === 'sold'
+                                                ? (language === 'ar' ? 'تم البيع' : 'Sold')
+                                                : (language === 'ar' ? 'مسودة' : 'Draft')}
                                         </span>
                                     </div>
                                     <h3 className="font-bold text-gray-900 dark:text-white truncate text-base" title={prop.title[language]}>

@@ -17,6 +17,7 @@ import { Card, CardContent } from '../../ui/Card';
 import { BuildingIcon } from '../../ui/Icons';
 import ErrorState from '../../shared/ErrorState';
 import { useCityStore } from '../../../store/useCityStore';
+import { invalidateAllProjectQueries, invalidateAllPropertyQueries } from '../../../utils/queryInvalidation';
 
 const AdminProjectsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -61,13 +62,11 @@ const AdminProjectsPage: React.FC = () => {
 
     const deleteMutation = useMutation({
         mutationFn: async (projectId: string) => {
-            const unitsToDelete = (properties || []).filter(p => p.projectId === projectId);
-            // In a real app, this would be a single transactional API call
             await apiDeleteProject(projectId);
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['allProjects'] });
-            queryClient.invalidateQueries({ queryKey: ['allProperties'] });
+        onSuccess: (_ok, projectId) => {
+            invalidateAllProjectQueries(queryClient, projectId);
+            invalidateAllPropertyQueries(queryClient, { projectId });
             setProjectToDelete(null);
         }
     });
@@ -161,8 +160,15 @@ const AdminProjectsPage: React.FC = () => {
                     message={t_admin.projects.confirmDelete}
                 />
             )}
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t_admin.projects.title}</h1>
-            <p className="text-gray-500 dark:text-gray-400 mb-8">{t_admin.projects.subtitle}</p>
+            <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t_admin.projects.title}</h1>
+                    <p className="text-gray-500 dark:text-gray-400">{t_admin.projects.subtitle}</p>
+                </div>
+                <Link to="/admin/projects/new">
+                    <Button>{t.projectDashboard?.addProject || (language === 'ar' ? 'إضافة مشروع' : 'Add Project')}</Button>
+                </Link>
+            </div>
 
             <div className="mb-4">
                  <Input placeholder={t_admin.filter.search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm"/>

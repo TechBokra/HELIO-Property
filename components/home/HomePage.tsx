@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import Hero from './Hero';
 import Services from './Services';
 import Partners from './Partners';
@@ -14,6 +14,8 @@ import SocialProof from './SocialProof';
 import Testimonial from './Testimonial';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { useCityStore } from '../../store/useCityStore';
+import { resolveHomeSections } from '../../utils/siteContentHelpers';
+import type { HomeSectionId } from '../../types';
 
 const HomePage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -28,19 +30,39 @@ const HomePage: React.FC = () => {
                 ? 'بوابتك الحصرية لأرقى العقارات والخدمات في هليوبوليس الجديدة. اكتشف روائع معمارية وخدمات تشطيب وديكور متكاملة.'
                 : 'Your exclusive gateway to the finest properties and services in New Heliopolis. Discover architectural masterpieces and integrated finishing and decoration services.';
 
+    const orderedSections = useMemo(() => resolveHomeSections(siteContent), [siteContent]);
+
+    const renderSection = (sectionId: HomeSectionId) => {
+        switch (sectionId) {
+            case 'hero':
+                return <Hero key="hero" />;
+            case 'homeBanner':
+                return <BannerDisplay key="homeBanner" location="home" />;
+            case 'socialProof':
+                return <SocialProof key="socialProof" />;
+            case 'services':
+                return <Services key="services" />;
+            case 'whyNewHeliopolis':
+                return <AboutCity key="whyNewHeliopolis" />;
+            case 'whyUs':
+                return <Integrations key="whyUs" />;
+            case 'homeListings':
+                return <LatestProperties key="homeListings" />;
+            case 'partners':
+                return <Partners key="partners" />;
+            case 'testimonials':
+                return <Testimonial key="testimonials" />;
+            case 'homeCTA':
+                return <CTA key="homeCTA" />;
+            default:
+                return null;
+        }
+    };
+
     return (
         <>
             <SEO title={pageTitle} description={pageDescription} />
-            <Hero />
-            <BannerDisplay location="home" />
-            {(siteContent?.socialProof?.enabled ?? true) && <SocialProof />}
-            {(siteContent?.services?.enabled ?? true) && <Services />}
-            {(siteContent?.whyNewHeliopolis?.enabled ?? true) && <AboutCity />}
-            {(siteContent?.whyUs?.enabled ?? true) && <Integrations />}
-            <LatestProperties />
-            {(siteContent?.partners?.enabled ?? true) && <Partners />}
-            {(siteContent?.testimonials?.enabled ?? true) && <Testimonial />}
-            <CTA />
+            {orderedSections.map((section) => renderSection(section.id))}
         </>
     );
 };

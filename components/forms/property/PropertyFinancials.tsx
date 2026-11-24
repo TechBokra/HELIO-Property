@@ -3,9 +3,10 @@ import { useFormContext } from 'react-hook-form';
 import { useLanguage } from '../../shared/LanguageContext';
 import FormField, { inputClasses } from '../../ui/FormField';
 import { RadioGroup, RadioGroupItem } from '../../ui/RadioGroup';
+import { PROPERTY_VALIDATION_RULES } from '../../../utils/propertyFormShared';
 
 const PropertyFinancials: React.FC = () => {
-    const { register, watch } = useFormContext();
+    const { register, watch, formState: { errors } } = useFormContext<any>();
     const { language, t } = useLanguage();
     const td = t.dashboard.propertyForm;
 
@@ -27,8 +28,23 @@ const PropertyFinancials: React.FC = () => {
             </h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <FormField label="Price" id="priceNumeric">
-                    <input type="number" {...register("priceNumeric", { required: true, valueAsNumber: true })} className={inputClasses} />
+                 <FormField label={language === 'ar' ? 'السعر (ج.م)' : 'Price'} id="priceNumeric" error={typeof errors?.priceNumeric?.message === 'string' ? errors.priceNumeric.message : undefined}>
+                    <input
+                        type="number"
+                        {...register("priceNumeric", {
+                            required: language === 'ar' ? 'السعر مطلوب' : 'Price is required',
+                            valueAsNumber: true,
+                            min: {
+                                value: PROPERTY_VALIDATION_RULES.MIN_PRICE,
+                                message: language === 'ar' ? 'يجب أن يكون السعر أكبر من صفر' : 'Price must be greater than zero',
+                            },
+                            max: {
+                                value: PROPERTY_VALIDATION_RULES.MAX_PRICE,
+                                message: language === 'ar' ? 'قيمة السعر تتجاوز الحد الأقصى' : 'Price exceeds maximum limit',
+                            },
+                        })}
+                        className={inputClasses}
+                    />
                 </FormField>
                 {watchStatus?.en === 'For Sale' && (
                      <FormField label={td.pricePerMeter} id="pricePerMeter">

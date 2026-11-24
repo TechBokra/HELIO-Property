@@ -1,33 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useOutletContext, Link } from 'react-router-dom';
 import { useForm, UseFormReturn } from 'react-hook-form';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getContent, updateContent } from '../../../services/content';
+import { buildContentPatch, getContent, updateContent } from '../../../services/content';
 import { useToast } from '../../shared/ToastContext';
 import { useLanguage } from '../../shared/LanguageContext';
 import { Button } from '../../ui/Button';
 import type { SiteContent } from '../../../types';
-import { 
-    PhotoIcon, 
-    SparklesIcon, 
-    CheckCircleIcon, 
-    UsersIcon, 
-    QuoteIcon, 
-    ChartBarIcon, 
-    LocationMarkerIcon, 
-    PhoneIcon, 
+import {
+    PhotoIcon,
+    SparklesIcon,
+    CheckCircleIcon,
+    UsersIcon,
+    QuoteIcon,
+    ChartBarIcon,
+    LocationMarkerIcon,
+    PhoneIcon,
     GlobeAltIcon,
     CubeIcon,
     WrenchScrewdriverIcon,
     MegaphoneIcon,
     HomeIcon,
     ShieldCheckIcon,
-    ChevronDownIcon
 } from '../../ui/Icons';
 
 export type ContentFormContext = UseFormReturn<SiteContent>;
 export function useContentFormContext() {
-  return useOutletContext<ContentFormContext>();
+    return useOutletContext<ContentFormContext>();
 }
 
 const AdminContentLayout: React.FC = () => {
@@ -35,33 +34,74 @@ const AdminContentLayout: React.FC = () => {
     const t_content = t.adminDashboard.contentManagement;
     const { showToast } = useToast();
     const queryClient = useQueryClient();
-    const { data: initialContent, isLoading, refetch } = useQuery({ queryKey: ['siteContent'], queryFn: getContent });
-    
+
+    const { data: initialContent, isLoading } = useQuery({
+        queryKey: ['siteContent'],
+        queryFn: () => getContent({ forceRefresh: true }),
+        staleTime: 0,
+        refetchOnMount: 'always',
+    });
+
     const formMethods = useForm<SiteContent>();
-    const { handleSubmit, reset, formState: { isSubmitting, isDirty } } = formMethods;
+    const {
+        handleSubmit,
+        reset,
+        formState: { isSubmitting, isDirty, dirtyFields },
+    } = formMethods;
+
+    const savedBaselineRef = useRef<SiteContent | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (initialContent) {
+        if (initialContent && (!savedBaselineRef.current || !isDirty)) {
+            savedBaselineRef.current = initialContent;
             reset(initialContent);
         }
-    }, [initialContent, reset]);
-    
+    }, [initialContent, isDirty, reset]);
+
+    const handleRestoreSaved = () => {
+        const baseline = savedBaselineRef.current || initialContent;
+        if (baseline) {
+            reset(baseline);
+        }
+        setSaveError(null);
+    };
+
     const onSubmit = async (data: SiteContent) => {
+        setSaveError(null);
+        const baseline = savedBaselineRef.current || initialContent;
+        const patch = baseline ? buildContentPatch(baseline, data, dirtyFields) : (data as Partial<SiteContent>);
+
+        if (Object.keys(patch).length === 0) {
+            if (baseline) {
+                reset(baseline);
+            }
+            return;
+        }
+
         try {
-            const updated = await updateContent(data as Partial<SiteContent>);
+            const updated = await updateContent(patch);
+            savedBaselineRef.current = updated;
             queryClient.setQueryData(['siteContent'], updated);
-            await queryClient.invalidateQueries({ queryKey: ['siteContent'] });
+            reset(updated);
             showToast(
-                language === 'ar' 
-                    ? 'تم حفظ المحتوى بنجاح في قاعدة البيانات وتحديث الموقع مباشرة!' 
-                    : 'Site content updated successfully and live on site!', 
+                language === 'ar'
+                    ? 'تم حفظ المحتوى بنجاح في قاعدة البيانات وتحديث الموقع مباشرة!'
+                    : 'Site content updated successfully and live on site!',
                 'success'
             );
-            await refetch();
-            reset(updated); 
         } catch (err: any) {
             console.error('Failed to update content:', err);
-            showToast(language === 'ar' ? 'حدث خطأ أثناء حفظ المحتوى' : 'Failed to save site content', 'error');
+            const detail = err?.message ? String(err.message) : '';
+            const fallbackMsg =
+                language === 'ar'
+                    ? 'حدث خطأ أثناء حفظ المحتوى في قاعدة البيانات. تم الاحتفاظ بالقيمة المحفوظة سابقًا.'
+                    : 'Failed to save site content to the database. Previously saved values have been preserved.';
+            setSaveError(detail ? `${fallbackMsg} (${detail})` : fallbackMsg);
+            showToast(
+                language === 'ar' ? 'فشل حفظ المحتوى — تم الاحتفاظ بالقيمة السابقة' : 'Failed to save site content — previous values preserved',
+                'error'
+            );
         }
     };
 
@@ -77,7 +117,7 @@ const AdminContentLayout: React.FC = () => {
                 { key: 'partners', href: 'partners', icon: UsersIcon, label: 'Partners' },
                 { key: 'testimonials', href: 'testimonials', icon: QuoteIcon, label: 'Testimonials' },
                 { key: 'cta', href: 'home-cta', icon: MegaphoneIcon, label: 'Call to Action' },
-            ]
+            ],
         },
         {
             title: 'Core Pages',
@@ -86,42 +126,46 @@ const AdminContentLayout: React.FC = () => {
                 { key: 'services', href: 'services', icon: SparklesIcon, label: 'Services Overview' },
                 { key: 'finishingPage', href: 'finishing-page', icon: WrenchScrewdriverIcon, label: 'Finishing Page' },
                 { key: 'decorationsPage', href: 'decorations-page', icon: SparklesIcon, label: 'Decorations Page' },
-            ]
+            ],
         },
         {
             title: 'Legal & Policies',
             links: [
                 { key: 'privacyPolicy', href: 'privacy-policy', icon: ShieldCheckIcon, label: 'Privacy Policy' },
                 { key: 'termsOfUse', href: 'terms-of-use', icon: ShieldCheckIcon, label: 'Terms of Use' },
-            ]
+            ],
         },
         {
             title: 'Global Elements',
             links: [
                 { key: 'quotes', href: 'quotes', icon: QuoteIcon, label: 'Wisdom Quotes' },
                 { key: 'footer', href: 'footer', icon: PhoneIcon, label: 'Footer & Contact' },
-            ]
-        }
+            ],
+        },
     ];
-    
-    const baseLinkClasses = "flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 group";
-    const activeLinkClasses = "bg-amber-50 text-gray-900 shadow-sm";
-    const inactiveLinkClasses = "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-amber-600 dark:hover:text-amber-400";
 
-    if (isLoading) {
-        return <div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div></div>;
+    const baseLinkClasses = 'flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 group';
+    const activeLinkClasses = 'bg-amber-50 text-gray-900 shadow-sm';
+    const inactiveLinkClasses = 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-amber-600 dark:hover:text-amber-400';
+
+    if (isLoading && !savedBaselineRef.current) {
+        return (
+            <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
+            </div>
+        );
     }
 
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col h-full">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 pb-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t_content.title}</h1>
                     <p className="text-gray-500 dark:text-gray-400">{t_content.subtitle}</p>
                 </div>
                 <div className="flex items-center gap-4 mt-4 sm:mt-0">
-                     <Link 
-                        to="/" 
+                    <Link
+                        to="/"
                         target="_self"
                         className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-amber-600 transition-colors"
                         title={language === 'ar' ? 'عرض الموقع في نفس الصفحة' : 'View Live Site'}
@@ -131,15 +175,37 @@ const AdminContentLayout: React.FC = () => {
                     </Link>
                     {isDirty && (
                         <div className="flex items-center gap-4 bg-yellow-50 dark:bg-yellow-900/30 px-4 py-2 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                            <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400 animate-pulse">{t_content.unsavedChanges}</span>
-                            <Button type="submit" isLoading={isSubmitting} disabled={!isDirty} size="sm">
+                            <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400 animate-pulse">
+                                {t_content.unsavedChanges}
+                            </span>
+                            <Button type="submit" isLoading={isSubmitting} disabled={!isDirty || isSubmitting} size="sm">
                                 {isSubmitting ? t_content.saving : t_content.saveChanges}
                             </Button>
                         </div>
                     )}
                 </div>
             </div>
-            
+
+            {saveError && (
+                <div
+                    role="alert"
+                    dir={language === 'ar' ? 'rtl' : 'ltr'}
+                    className="mb-6 p-4 rounded-xl border border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-800 text-red-800 dark:text-red-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                    <div className="space-y-1">
+                        <p className="font-bold text-sm">
+                            {language === 'ar' ? 'فشل حفظ المحتوى' : 'Content Save Failed'}
+                        </p>
+                        <p className="text-sm">{saveError}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Button type="button" variant="secondary" size="sm" onClick={handleRestoreSaved}>
+                            {language === 'ar' ? 'استعادة القيم المحفوظة' : 'Restore Saved Values'}
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col lg:flex-row gap-8 items-start">
                 <nav className="w-full lg:w-64 flex-shrink-0 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden sticky top-24 max-h-[calc(100vh-150px)] overflow-y-auto">
                     {navGroups.map((group) => (
@@ -148,16 +214,17 @@ const AdminContentLayout: React.FC = () => {
                                 {group.title}
                             </div>
                             <ul className="p-2 space-y-1">
-                                {group.links.map(link => {
+                                {group.links.map((link) => {
                                     const Icon = link.icon;
                                     return (
                                         <li key={link.key}>
                                             <NavLink
                                                 to={link.href}
-                                                className={({ isActive }) => `${baseLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`}
+                                                className={({ isActive }) =>
+                                                    `${baseLinkClasses} ${isActive ? activeLinkClasses : inactiveLinkClasses}`
+                                                }
                                             >
                                                 <Icon className={`w-4 h-4 ${language === 'ar' ? 'ml-1' : 'mr-1'}`} />
-                                                {/* Fallback to label if translation key doesn't exist in t_content.tabs */}
                                                 {t_content.tabs[link.key] || link.label}
                                             </NavLink>
                                         </li>
@@ -167,7 +234,7 @@ const AdminContentLayout: React.FC = () => {
                         </div>
                     ))}
                 </nav>
-                
+
                 <main className="flex-1 min-w-0 w-full bg-white dark:bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
                     <Outlet context={formMethods} />
                 </main>

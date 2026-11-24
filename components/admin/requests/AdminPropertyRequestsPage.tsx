@@ -69,8 +69,16 @@ const AdminPropertyRequestsPage: React.FC = () => {
                             <TableCell>{new Date(req.createdAt).toLocaleDateString(language)}</TableCell>
                             <TableCell>
                                 <span className="px-2 py-1 text-xs font-medium rounded-full capitalize">
-                                    {t_admin.requestStatus[req.status as keyof typeof t_admin.requestStatus]}
+                                    {t_admin.requestStatus[req.status as keyof typeof t_admin.requestStatus] || req.status}
                                 </span>
+                                {(req as any).payload?.createdPropertyId && (
+                                    <Link
+                                        to={`/admin/properties/edit/${(req as any).payload.createdPropertyId}`}
+                                        className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 hover:underline"
+                                    >
+                                        {(req as any).payload?.createdPropertyReference || `#${String((req as any).payload.createdPropertyId).slice(0, 8)}`}
+                                    </Link>
+                                )}
                             </TableCell>
                             <TableCell>
                                 <Link to={`/admin/properties/listing-requests/${req.id}`}>
@@ -104,6 +112,16 @@ const AdminPropertyRequestsPage: React.FC = () => {
                          <span>{req.propertyDetails?.area} m²</span>
                          <span>{new Intl.NumberFormat(language === 'ar' ? 'ar-EG' : 'en-US', { style: 'currency', currency: 'EGP', minimumFractionDigits: 0 }).format(req.propertyDetails?.price || 0)}</span>
                     </div>
+                    {(req as any).payload?.createdPropertyId && (
+                        <div className="mt-2">
+                            <Link
+                                to={`/admin/properties/edit/${(req as any).payload.createdPropertyId}`}
+                                className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 hover:underline"
+                            >
+                                {(req as any).payload?.createdPropertyReference || `#${String((req as any).payload.createdPropertyId).slice(0, 8)}`}
+                            </Link>
+                        </div>
+                    )}
                 </div>
                 <p className="text-xs text-gray-400 text-right">{new Date(req.createdAt).toLocaleDateString(language)}</p>
             </CardContent>

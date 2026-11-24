@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useIsSiteContentPreview } from '../../hooks/useSiteContent';
 
 interface SEOProps {
   title: string;
@@ -17,7 +18,10 @@ const SEO: React.FC<SEOProps> = ({
   canonicalUrl, 
   structuredData 
 }) => {
+  const isPreview = useIsSiteContentPreview();
+
   useEffect(() => {
+    if (isPreview) return;
     // Set document title
     document.title = title;
 
@@ -79,7 +83,7 @@ const SEO: React.FC<SEOProps> = ({
       scriptElement.remove();
     }
 
-  }, [title, description, imageUrl, url, canonicalUrl, structuredData]);
+  }, [isPreview, title, description, imageUrl, url, canonicalUrl, structuredData]);
 
   return null;
 };

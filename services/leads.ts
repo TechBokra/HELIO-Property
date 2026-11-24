@@ -5,6 +5,7 @@ import { addNotification } from './notifications';
 import { getAttribution } from '../utils/attribution';
 import { evaluateRoutingRules } from './routingRules';
 import { resolveEligibleManager } from './requests';
+import { resolvePropertyReferenceCode } from '../utils/propertyFormShared';
 
 const normalizeLeadStatus = (rawStatus: any): LeadStatus => {
     if (rawStatus === 'in_progress') return 'in-progress';
@@ -24,6 +25,7 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
         partnerId: payload.partnerId || row.assigned_to,
         managerId: payload.managerId,
         propertyId: payload.propertyId,
+        propertyReference: payload.propertyReference || (payload.propertyId ? resolvePropertyReferenceCode(payload.propertyId) : undefined),
         propertyTitle: payload.propertyTitle,
         propertyArea: normalizedArea,
         tierDetails: payload.tierDetails,
@@ -201,7 +203,12 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
         pageOrigin: leadData.pageOrigin,
     });
 
+    const resolvedPropertyReference =
+        leadData.propertyReference ||
+        (leadData.propertyId ? resolvePropertyReferenceCode(leadData.propertyId) : undefined);
+
     const payloadObj: any = {
+        cityId: (leadData as any).cityId || 'heliopolis',
         serviceType: leadData.serviceType || 'property',
         serviceTitle: leadData.serviceTitle,
         contactTime: leadData.contactTime,
@@ -209,7 +216,9 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
         partnerId: routedPartner,
         managerId: leadData.managerId,
         propertyId: leadData.propertyId,
+        propertyReference: resolvedPropertyReference,
         propertyTitle: leadData.propertyTitle,
+        propertyArea: (leadData as any).propertyArea ?? (leadData as any).unitArea,
         tierDetails: (leadData as any).tierDetails,
         pricingModel: (leadData as any).pricingModel,
         estimatedCost: (leadData as any).estimatedCost,
@@ -267,6 +276,7 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
 
     const dbPayload: any = {
         id: leadId,
+        city_id: payloadObj.cityId,
         type: 'LEAD',
         status: 'new',
         customer_id: customerId,
@@ -294,6 +304,7 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
         partnerId: dbAssignedTo || routedPartner || '',
         managerId: leadData.managerId,
         propertyId: leadData.propertyId,
+        propertyReference: resolvedPropertyReference,
         propertyTitle: leadData.propertyTitle,
         propertyArea: (leadData as any).propertyArea ?? (leadData as any).unitArea,
         tierDetails: (leadData as any).tierDetails,

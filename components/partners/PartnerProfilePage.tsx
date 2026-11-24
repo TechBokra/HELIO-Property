@@ -5,13 +5,16 @@ import type { PortfolioItem, AdminPartner } from '../../types';
 import Lightbox from '../shared/Lightbox';
 import PropertyCard from '../properties/PropertyCard';
 import { getPortfolioByPartnerId } from '../../services/portfolio';
-import { getPropertiesByPartnerId } from '../../services/properties';
+import { getPublicPropertiesByPartnerId } from '../../services/properties';
 import { useQuery } from '@tanstack/react-query';
 import { getPartnerById } from '../../services/partners';
 import { useLanguage } from '../shared/LanguageContext';
 import { WhatsAppIcon, ShareIcon, PhoneIcon } from '../ui/Icons';
 import { useToast } from '../shared/ToastContext';
 import { Button } from '../ui/Button';
+import ErrorState from '../shared/ErrorState';
+import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
+import { isPropertyPubliclyVisible } from '../../utils/propertyUtils';
 
 
 const PartnerProfileSkeleton: React.FC = () => (
@@ -45,27 +48,47 @@ const PartnerProfilePage: React.FC = () => {
     const { showToast } = useToast();
 
     // Fetch partner data from DB
-    const { data: partnerInfo, isLoading: isLoadingPartner } = useQuery({ 
-        queryKey: [`partner-${partnerId}`], 
-        queryFn: () => getPartnerById(partnerId!), 
-        enabled: !!partnerId 
+    const {
+        data: partnerInfo,
+        isLoading: isLoadingPartner,
+        isError: isErrorPartner,
+        refetch: refetchPartner
+    } = useQuery({
+        queryKey: ['partner', partnerId],
+        queryFn: () => getPartnerById(partnerId!),
+        enabled: !!partnerId
     });
 
     // Fetch portfolio (for finishing partners)
-    const { data: partnerPortfolio, isLoading: isLoadingPortfolio } = useQuery({ 
-        queryKey: [`partnerPortfolio-${partnerId}`], 
-        queryFn: () => getPortfolioByPartnerId(partnerId!), 
-        enabled: !!partnerId 
+    const {
+        data: partnerPortfolio,
+        isLoading: isLoadingPortfolio,
+        isError: isErrorPortfolio,
+        refetch: refetchPortfolio
+    } = useQuery({
+        queryKey: ['partnerPortfolio', partnerId],
+        queryFn: () => getPortfolioByPartnerId(partnerId!),
+        enabled: !!partnerId && partnerInfo?.type === 'finishing'
     });
 
-    // Fetch properties (for developers/agencies)
-    const { data: partnerProperties, isLoading: isLoadingProperties } = useQuery({ 
-        queryKey: [`partnerProperties-${partnerId}`], 
-        queryFn: () => getPropertiesByPartnerId(partnerId!), 
-        enabled: !!partnerId 
+    // Fetch strictly publicly visible properties (for developers/agencies)
+    const {
+        data: rawPartnerProperties,
+        isLoading: isLoadingProperties,
+        isError: isErrorProperties,
+        refetch: refetchProperties
+    } = useQuery({
+        queryKey: ['partnerProperties', partnerId, 'public'],
+        queryFn: () => getPublicPropertiesByPartnerId(partnerId!),
+        enabled: !!partnerId && (!partnerInfo || partnerInfo.type === 'developer' || partnerInfo.type === 'agency')
     });
 
-    const loading = isLoadingPartner || isLoadingPortfolio || isLoadingProperties;
+    const partnerProperties = useMemo(
+        () => (rawPartnerProperties || []).filter((p) => isPropertyPubliclyVisible(p, { includeSold: true })),
+        [rawPartnerProperties]
+    );
+
+    const loading = isLoadingPartner;
 
     const displayPartner = useMemo(() => {
         if (!partnerInfo) return null;
@@ -133,6 +156,20 @@ const PartnerProfilePage: React.FC = () => {
 
     if (loading) {
         return <PartnerProfileSkeleton />;
+    }
+
+    if (isErrorPartner) {
+        return (
+            <div className="py-20 container mx-auto px-6">
+                <ErrorState
+                    title={language === 'ar' ? 'تعذر تحميل بيانات الشريك' : 'Failed to load partner profile'}
+                    message={language === 'ar' ? 'حدث خطأ أثناء الاتصال بقاعدة البيانات. يرجى إعادة المحاولة.' : 'A connection error occurred. Please try again.'}
+                    retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Try Again'}
+                    onRetry={() => refetchPartner()}
+                    className="max-w-lg mx-auto py-12"
+                />
+            </div>
+        );
     }
 
     if (!partnerInfo || !displayPartner) {
@@ -217,7 +254,21 @@ const PartnerProfilePage: React.FC = () => {
                         <div className="text-center mb-12">
                             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">{t.partnerProfilePage.galleryTitle}</h2>
                         </div>
-                        {(partnerPortfolio && partnerPortfolio.length > 0) ? (
+                        {isLoadingPortfolio ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                {Array.from({ length: 4 }).map((_, i) => (
+                                    <div key={i} className="h-80 bg-gray-200 dark:bg-gray-800 rounded-lg animate-pulse" />
+                                ))}
+                            </div>
+                        ) : isErrorPortfolio ? (
+                            <ErrorState
+                                title={language === 'ar' ? 'تعذر تحميل معرض الأعمال' : 'Failed to load portfolio'}
+                                message={language === 'ar' ? 'يرجى إعادة المحاولة.' : 'Please try again.'}
+                                retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                                onRetry={() => refetchPortfolio()}
+                                className="max-w-lg mx-auto"
+                            />
+                        ) : (partnerPortfolio && partnerPortfolio.length > 0) ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                 {partnerPortfolio.map((img, index) => (
                                     <div key={index} className="group relative overflow-hidden rounded-lg shadow-lg aspect-w-1 aspect-h-1 bg-gray-100 dark:bg-gray-800 hover:shadow-xl transition-all">
@@ -249,13 +300,25 @@ const PartnerProfilePage: React.FC = () => {
                 </section>
             )}
 
-            {(partnerInfo.type === 'developer' || partnerInfo.type === 'agency') && (
+            {(partnerInfo.type === 'developer' || partnerInfo.type === 'agency' || partnerProperties.length > 0) && (
                  <section className="py-20">
                     <div className="container mx-auto px-6">
                         <div className="text-center mb-12">
                             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">{t.partnerProfilePage.ourListings}</h2>
                         </div>
-                         {(partnerProperties && partnerProperties.length > 0) ? (
+                        {isLoadingProperties ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                                {Array.from({ length: 4 }).map((_, index) => <PropertyCardSkeleton key={index} />)}
+                            </div>
+                        ) : isErrorProperties ? (
+                            <ErrorState
+                                title={language === 'ar' ? 'تعذر تحميل عقارات الشريك' : 'Failed to load partner properties'}
+                                message={language === 'ar' ? 'حدث خطأ أثناء تحميل القائمة. يرجى إعادة المحاولة.' : 'An error occurred while loading listings. Please try again.'}
+                                retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                                onRetry={() => refetchProperties()}
+                                className="max-w-lg mx-auto"
+                            />
+                        ) : partnerProperties.length > 0 ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                                 {partnerProperties.map((prop) => (
                                     <PropertyCard key={prop.id} {...prop} />
@@ -264,7 +327,7 @@ const PartnerProfilePage: React.FC = () => {
                         ) : (
                             <div className="text-center py-16 bg-gray-50 dark:bg-gray-800/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
                                 <p className="text-xl text-gray-500 dark:text-gray-400">
-                                    {language === 'ar' ? 'لم يقم هذا الشريك بإضافة أي عقارات بعد.' : 'This partner has not listed any properties yet.'}
+                                    {language === 'ar' ? 'لا توجد عقارات منشورة متاحة لهذا الشريك حالياً.' : 'No published properties available for this partner at the moment.'}
                                 </p>
                             </div>
                         )}

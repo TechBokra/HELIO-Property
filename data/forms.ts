@@ -1,5 +1,6 @@
 import type { FormDefinition } from '../types';
 import { RequestType } from '../types';
+import { PROPERTY_VALIDATION_RULES } from '../utils/propertyFormShared';
 
 export let formsData: FormDefinition[] = [
     {
@@ -193,11 +194,11 @@ export let formsData: FormDefinition[] = [
             { id: 'ap3', key: 'contactTime', type: 'select', label: { ar: 'الوقت المناسب للتواصل', en: 'Best time to contact' }, required: true, width: 'full', order: 3, options: 'morning,afternoon,evening' },
             { id: 'ap6', key: 'address', type: 'text', label: { ar: 'العنوان التفصيلي في هليوبوليس الجديدة', en: 'Detailed Address in New Heliopolis' }, required: true, width: 'full', order: 4 },
             { id: 'ap7', key: 'propertyType', type: 'select', label: { ar: 'نوع العقار', en: 'Property Type' }, required: true, width: 'third', order: 5, options: 'apartment,villa,commercial,land' },
-            { id: 'ap8', key: 'area', type: 'number', label: { ar: 'المساحة الإجمالية (م٢)', en: 'Total Area (m2)' }, required: true, width: 'third', order: 6 },
-            { id: 'ap9', key: 'price', type: 'number', label: { ar: 'السعر المطلوب (ج.م)', en: 'Asking Price (EGP)' }, required: true, width: 'third', order: 7 },
-            { id: 'ap13', key: 'beds', type: 'number', label: { ar: 'عدد الغرف', en: 'Bedrooms' }, required: true, width: 'third', order: 8 },
-            { id: 'ap14', key: 'baths', type: 'number', label: { ar: 'عدد الحمامات', en: 'Bathrooms' }, required: true, width: 'third', order: 9 },
-            { id: 'ap15', key: 'floor', type: 'number', label: { ar: 'الدور / الطابق', en: 'Floor Level' }, required: true, width: 'third', order: 10 },
+            { id: 'ap8', key: 'area', type: 'number', label: { ar: 'المساحة الإجمالية (م٢)', en: 'Total Area (m2)' }, required: true, width: 'third', order: 6, validation: { type: 'number', min: PROPERTY_VALIDATION_RULES.MIN_AREA, max: PROPERTY_VALIDATION_RULES.MAX_AREA } },
+            { id: 'ap9', key: 'price', type: 'number', label: { ar: 'السعر المطلوب (ج.م)', en: 'Asking Price (EGP)' }, required: true, width: 'third', order: 7, validation: { type: 'number', min: PROPERTY_VALIDATION_RULES.MIN_PRICE, max: PROPERTY_VALIDATION_RULES.MAX_PRICE } },
+            { id: 'ap13', key: 'beds', type: 'number', label: { ar: 'عدد الغرف', en: 'Bedrooms' }, required: true, width: 'third', order: 8, validation: { type: 'number', min: PROPERTY_VALIDATION_RULES.MIN_COUNT, max: PROPERTY_VALIDATION_RULES.MAX_COUNT } },
+            { id: 'ap14', key: 'baths', type: 'number', label: { ar: 'عدد الحمامات', en: 'Bathrooms' }, required: true, width: 'third', order: 9, validation: { type: 'number', min: PROPERTY_VALIDATION_RULES.MIN_COUNT, max: PROPERTY_VALIDATION_RULES.MAX_COUNT } },
+            { id: 'ap15', key: 'floor', type: 'number', label: { ar: 'الدور / الطابق', en: 'Floor Level' }, required: true, width: 'third', order: 10, validation: { type: 'number', min: PROPERTY_VALIDATION_RULES.MIN_FLOOR, max: PROPERTY_VALIDATION_RULES.MAX_FLOOR } },
             { id: 'ap10', key: 'finishingStatus', type: 'select', label: { ar: 'حالة التشطيب الحالية', en: 'Finishing Status' }, required: true, width: 'half', order: 11, options: 'core_shell,semi_finished,fully_finished,luxury' },
             { id: 'ap16', key: 'isInCompound', type: 'select', label: { ar: 'داخل كومبوند مغلق؟', en: 'In Gated Compound?' }, required: true, width: 'half', order: 12, options: 'yes,no' },
             { id: 'ap17', key: 'hasInstallments', type: 'select', label: { ar: 'متاح تقسيط؟', en: 'Installments Available?' }, required: true, width: 'half', order: 13, options: 'yes,no' },

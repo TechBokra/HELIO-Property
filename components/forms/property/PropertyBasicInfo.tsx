@@ -1,28 +1,29 @@
-
 import React from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useLanguage } from '../../shared/LanguageContext';
 import FormField, { inputClasses, selectClasses } from '../../ui/FormField';
 import { Role } from '../../../types';
 import { useAuth } from '../../auth/AuthContext';
-import type { Project } from '../../../types';
+import type { Partner, Project } from '../../../types';
 import { useCityStore } from '../../../store/useCityStore';
 
 interface PropertyBasicInfoProps {
     projects: Project[];
     partnerProjects: Project[];
     isAdmin: boolean;
+    partners?: Partner[];
 }
 
-const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partnerProjects, isAdmin }) => {
-    const { register } = useFormContext();
+const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partnerProjects, isAdmin, partners = [] }) => {
+    const { register, formState: { errors } } = useFormContext<any>();
     const { language, t } = useLanguage();
     const td = t.dashboard.propertyForm;
     const { currentUser } = useAuth();
     const cities = useCityStore((s) => s.cities);
+    const reqMsg = language === 'ar' ? 'هذا الحقل مطلوب' : 'This field is required';
 
     const availableProjects = isAdmin ? projects : partnerProjects;
-    const showProjectSelector = currentUser && (currentUser.role === Role.DEVELOPER_PARTNER || currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.LISTINGS_MANAGER);
+    const showProjectSelector = currentUser && (currentUser.role === Role.DEVELOPER_PARTNER || currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.LISTINGS_MANAGER || isAdmin);
 
     return (
         <div className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
@@ -41,12 +42,24 @@ const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partner
                     </select>
                 </FormField>
 
+                {isAdmin && (
+                    <FormField label={language === 'ar' ? 'الشريك / المطور العقاري' : 'Partner / Owner'} id="partnerId">
+                        <select {...register("partnerId")} className={selectClasses}>
+                            {partners.map(partner => (
+                                <option key={partner.id} value={partner.id}>
+                                    {language === 'ar' ? (partner.nameAr || partner.name) : (partner.name || partner.nameAr)} ({partner.type})
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
+                )}
+
                 {showProjectSelector && (
                     <FormField label={language === 'ar' ? 'المشروع (اختياري)' : 'Project (Optional)'} id="projectId">
                         <select {...register("projectId")} className={selectClasses}>
                             <option value="">{language === 'ar' ? 'اختر مشروعاً...' : 'Select a project...'}</option>
                             {availableProjects?.map(proj => (
-                                <option key={proj.id} value={proj.id}>{proj.name[language]}</option>
+                                <option key={proj.id} value={proj.id}>{proj.name?.[language] || proj.name?.en || proj.name?.ar || ''}</option>
                             ))}
                         </select>
                     </FormField>
@@ -54,18 +67,18 @@ const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partner
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField label={td.propertyTitleAr} id="title.ar">
-                    <input type="text" {...register("title.ar", { required: true })} className={inputClasses} placeholder="مثال: شقة فاخرة في التجمع" />
+                <FormField label={td.propertyTitleAr} id="title.ar" error={(errors?.title as any)?.ar?.message as string | undefined}>
+                    <input type="text" {...register("title.ar", { required: reqMsg })} className={inputClasses} placeholder="مثال: شقة فاخرة في التجمع" />
                 </FormField>
-                <FormField label={td.propertyTitleEn} id="title.en">
-                    <input type="text" {...register("title.en", { required: true })} className={inputClasses} placeholder="e.g. Luxury Apartment in New Cairo" />
+                <FormField label={td.propertyTitleEn} id="title.en" error={(errors?.title as any)?.en?.message as string | undefined}>
+                    <input type="text" {...register("title.en", { required: reqMsg })} className={inputClasses} placeholder="e.g. Luxury Apartment in New Cairo" />
                 </FormField>
                 
-                <FormField label={td.addressAr} id="address.ar">
-                    <input type="text" {...register("address.ar", { required: true })} className={inputClasses} />
+                <FormField label={td.addressAr} id="address.ar" error={(errors?.address as any)?.ar?.message as string | undefined}>
+                    <input type="text" {...register("address.ar", { required: reqMsg })} className={inputClasses} />
                 </FormField>
-                <FormField label={td.addressEn} id="address.en">
-                    <input type="text" {...register("address.en", { required: true })} className={inputClasses} />
+                <FormField label={td.addressEn} id="address.en" error={(errors?.address as any)?.en?.message as string | undefined}>
+                    <input type="text" {...register("address.en", { required: reqMsg })} className={inputClasses} />
                 </FormField>
 
                 <div className="md:col-span-2">

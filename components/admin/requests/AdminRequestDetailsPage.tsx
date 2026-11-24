@@ -4,7 +4,9 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getRequestById, updateRequest, addMessageToLead } from '../../../services/requests';
 import { getAllPartnersForAdmin, addPartner } from '../../../services/partners';
-import { addProperty } from '../../../services/properties';
+import { approvePropertyListingRequest } from '../../../services/propertyRequests';
+import { invalidateAllPropertyQueries } from '../../../utils/queryInvalidation';
+import { resolvePropertyReferenceCode } from '../../../utils/propertyFormShared';
 import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
 import { useAuth } from '../../auth/AuthContext';
@@ -108,96 +110,36 @@ const AdminRequestDetailsPage: React.FC = () => {
                 if (request.type === RequestType.PARTNER_APPLICATION) {
                     await addPartner(request.payload as any);
                 } else if (request.type === RequestType.PROPERTY_LISTING_REQUEST) {
-                     const r = request.payload as any;
-                     const pd = r.propertyDetails || {};
-
-                     // Safety Check for required fields
-                     if (!pd) {
-                         throw new Error("Incomplete property details. Cannot create listing.");
-                     }
-                     
-                     // Helper to safe parse numbers and text
-                     const safeNum = (val: any) => Number(val) || 0;
-                     const getEn = (obj: any) => obj?.en || '';
-                     const getAr = (obj: any) => obj?.ar || '';
-                     
-                     const mainImage = (r.images && r.images[0]) ? r.images[0] : 'https://via.placeholder.com/800x600?text=No+Image';
-
-                     const newProperty: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl' | 'projectName'> = {
-                        partnerId: 'individual-listings',
-                        sourceType: 'owner_public',
-                        sourceRequestId: request.id,
-                        publicationStatus: 'draft',
-                        verificationStatus: 'pending',
-                        availabilityStatus: 'available',
-                        title: { 
-                            en: getEn(pd.title) || 'Untitled Property', 
-                            ar: getAr(pd.title) || 'عقار بدون عنوان' 
-                        },
-                        description: { 
-                            en: getEn(pd.description) || '', 
-                            ar: getAr(pd.description) || '' 
-                        },
-                        address: { en: pd.address || '', ar: pd.address || '' },
-                        location: pd.location || { lat: 30.0, lng: 31.0 },
-                        status: pd.purpose || { en: 'For Sale', ar: 'للبيع' },
-                        type: { 
-                            en: (getEn(pd.propertyType) || 'Apartment') as any, 
-                            ar: getAr(pd.propertyType) || 'شقة' 
-                        },
-                        finishingStatus: pd.finishingStatus ? { 
-                            en: getEn(pd.finishingStatus), 
-                            ar: getAr(pd.finishingStatus) 
-                        } : undefined,
-                        area: safeNum(pd.area),
-                        price: { 
-                            en: `EGP ${safeNum(pd.price).toLocaleString('en-US')}`,
-                            ar: `${safeNum(pd.price).toLocaleString('ar-EG')} ج.م`
-                        },
-                        priceNumeric: safeNum(pd.price),
-                        pricePerMeter: safeNum(pd.area) > 0 ? {
-                            en: `EGP ${Math.round(safeNum(pd.price) / safeNum(pd.area)).toLocaleString('en-US')}/m²`,
-                            ar: `${Math.round(safeNum(pd.price) / safeNum(pd.area)).toLocaleString('ar-EG')} ج.م/م²`
-                        } : undefined,
-                        beds: safeNum(pd.bedrooms),
-                        baths: safeNum(pd.bathrooms),
-                        floor: safeNum(pd.floor),
-                        amenities: pd.amenities || { en: [], ar: [] },
-                        isInCompound: !!pd.isInCompound,
-                        delivery: { 
-                            isImmediate: pd.deliveryType === 'immediate', 
-                            date: pd.deliveryType === 'future' ? `${pd.deliveryYear}-${pd.deliveryMonth}` : undefined
-                        },
-                        installmentsAvailable: !!pd.hasInstallments,
-                        installments: pd.hasInstallments ? {
-                            downPayment: safeNum(pd.downPayment),
-                            monthlyInstallment: safeNum(pd.monthlyInstallment),
-                            years: safeNum(pd.years)
-                        } : undefined,
-                        realEstateFinanceAvailable: !!pd.realEstateFinanceAvailable,
-                        imageUrl: mainImage,
-                        imageUrl_small: mainImage,
-                        imageUrl_medium: mainImage,
-                        imageUrl_large: mainImage,
-                        gallery: r.images ? r.images.slice(1) : [],
-                        listingStatus: 'draft',
-                        contactMethod: pd.contactMethod || 'platform',
-                        ownerPhone: pd.ownerPhone,
-                        listingStartDate: pd.listingStartDate || new Date().toISOString().split('T')[0],
-                    };
-                    const createdProp = await addProperty(newProperty);
-                    await updateRequest(request.id, { 
-                        status: action,
-                        payload: { ...(request.payload as any), createdPropertyId: createdProp.id }
+                    const result = await approvePropertyListingRequest(request.id, {
+                        assigneeId: actionAssignee || undefined,
+                        actorId: currentUser?.id,
+                        partners: partners || [],
                     });
-                    return;
+                    return { action, property: result.property, alreadyExisted: result.alreadyExisted };
                 }
             }
             await updateRequest(request.id, { status: action });
+            return { action };
         },
-        onSuccess: (_, action) => {
-             showToast(`Request ${action}.`, 'success');
+        onSuccess: (res, action) => {
              queryClient.invalidateQueries({ queryKey: ['request', requestId] });
+             queryClient.invalidateQueries({ queryKey: ['propertyRequests'] });
+             queryClient.invalidateQueries({ queryKey: ['allRequests'] });
+             queryClient.invalidateQueries({ queryKey: ['unifiedRequests'] });
+             if (res && 'property' in res && res.property) {
+                 invalidateAllPropertyQueries(queryClient, {
+                     propertyId: res.property.id,
+                     partnerId: res.property.partnerId,
+                 });
+                 showToast(
+                     res.alreadyExisted
+                         ? (language === 'ar' ? 'تم استكمال ربط المسودة الموجودة دون تكرار.' : 'Linked existing draft property safely.')
+                         : (language === 'ar' ? 'تم اعتماد الطلب وإنشاء مسودة عقار مرتبطة.' : 'Request approved and linked draft property created.'),
+                     'success'
+                 );
+                 return;
+             }
+             showToast(`Request ${action}.`, 'success');
         },
         onError: (error: any) => {
             console.error("Approval error:", error);
@@ -222,11 +164,23 @@ const AdminRequestDetailsPage: React.FC = () => {
                 <div className="lg:col-span-2 space-y-6">
                     <Card>
                          <CardHeader>
-                             <div className="flex justify-between items-center">
+                             <div className="flex flex-wrap justify-between items-center gap-3">
                                  <CardTitle>Request Details</CardTitle>
-                                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 dark:bg-gray-700 capitalize">
-                                     {request.type.replace(/_/g, ' ')}
-                                 </span>
+                                 <div className="flex items-center gap-2">
+                                     {(request.payload as any)?.createdPropertyId && (
+                                         <Link
+                                             to={`/admin/properties/edit/${(request.payload as any).createdPropertyId}`}
+                                             className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 transition-colors"
+                                         >
+                                             {language === 'ar'
+                                                 ? `المسودة المرتبطة (${resolvePropertyReferenceCode((request.payload as any).createdPropertyId, (request.payload as any).createdPropertyReference)})`
+                                                 : `Linked Draft (${resolvePropertyReferenceCode((request.payload as any).createdPropertyId, (request.payload as any).createdPropertyReference)})`}
+                                         </Link>
+                                     )}
+                                     <span className="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 dark:bg-gray-700 capitalize">
+                                         {request.type.replace(/_/g, ' ')}
+                                     </span>
+                                 </div>
                              </div>
                          </CardHeader>
                         <CardContent className="space-y-6">

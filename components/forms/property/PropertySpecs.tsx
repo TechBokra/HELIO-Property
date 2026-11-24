@@ -4,19 +4,32 @@ import { useFormContext } from 'react-hook-form';
 import { useLanguage } from '../../shared/LanguageContext';
 import FormField, { inputClasses, selectClasses } from '../../ui/FormField';
 import { Checkbox } from '../../ui/Checkbox';
-import type { FilterOption } from '../../../types';
+import type { FilterOption, ListingStatus } from '../../../types';
+import { PROPERTY_VALIDATION_RULES, getAllowedListingStatusesForRole } from '../../../utils/propertyFormShared';
 
 interface PropertySpecsProps {
     propertyTypes: FilterOption[];
     finishingStatuses: FilterOption[];
     amenities: FilterOption[];
+    isAdmin?: boolean;
+    editingStatus?: ListingStatus | string;
 }
 
-const PropertySpecs: React.FC<PropertySpecsProps> = ({ propertyTypes, finishingStatuses, amenities }) => {
-    const { register, watch, setValue } = useFormContext();
+const PropertySpecs: React.FC<PropertySpecsProps> = ({
+    propertyTypes,
+    finishingStatuses,
+    amenities,
+    isAdmin = true,
+    editingStatus,
+}) => {
+    const { register, watch, setValue, formState: { errors } } = useFormContext<any>();
     const { language, t } = useLanguage();
     const tp = t.propertiesPage;
     const t_prop = t.propertyDetailsPage;
+    const allowedStatuses = useMemo(
+        () => getAllowedListingStatusesForRole(isAdmin, editingStatus),
+        [isAdmin, editingStatus]
+    );
 
     const watchType = watch('type');
     const watchStatus = watch('status');
@@ -111,24 +124,84 @@ const PropertySpecs: React.FC<PropertySpecsProps> = ({ propertyTypes, finishingS
                          {availableFinishingStatuses.map(opt => <option key={opt.id} value={opt.en}>{opt[language]}</option>)}
                     </select>
                 </FormField>
-                <FormField label="Area (m²)" id="area">
-                    <input type="number" {...register("area", { required: true, valueAsNumber: true })} className={inputClasses} />
+                <FormField label="Area (m²)" id="area" error={typeof errors?.area?.message === 'string' ? errors.area.message : undefined}>
+                    <input
+                        type="number"
+                        {...register("area", {
+                            required: language === 'ar' ? 'المساحة مطلوبة' : 'Area is required',
+                            valueAsNumber: true,
+                            min: {
+                                value: PROPERTY_VALIDATION_RULES.MIN_AREA,
+                                message: language === 'ar' ? `المساحة يجب ألا تقل عن ${PROPERTY_VALIDATION_RULES.MIN_AREA} م²` : `Minimum area is ${PROPERTY_VALIDATION_RULES.MIN_AREA} m²`,
+                            },
+                            max: {
+                                value: PROPERTY_VALIDATION_RULES.MAX_AREA,
+                                message: language === 'ar' ? `الحد الأقصى ${PROPERTY_VALIDATION_RULES.MAX_AREA} م²` : `Maximum area is ${PROPERTY_VALIDATION_RULES.MAX_AREA} m²`,
+                            },
+                        })}
+                        className={inputClasses}
+                    />
                 </FormField>
-                <FormField label={t_prop.bedrooms} id="beds">
-                    <input type="number" {...register("beds", { valueAsNumber: true })} className={inputClasses} disabled={watchType?.en === 'Land' || watchType?.en === 'Commercial'} />
+                <FormField label={t_prop.bedrooms} id="beds" error={typeof errors?.beds?.message === 'string' ? errors.beds.message : undefined}>
+                    <input
+                        type="number"
+                        {...register("beds", {
+                            valueAsNumber: true,
+                            min: {
+                                value: PROPERTY_VALIDATION_RULES.MIN_COUNT,
+                                message: language === 'ar' ? 'لا يمكن أن يكون سالباً' : 'Cannot be negative',
+                            },
+                            max: {
+                                value: PROPERTY_VALIDATION_RULES.MAX_COUNT,
+                                message: language === 'ar' ? `الحد الأقصى ${PROPERTY_VALIDATION_RULES.MAX_COUNT}` : `Max ${PROPERTY_VALIDATION_RULES.MAX_COUNT}`,
+                            },
+                        })}
+                        className={inputClasses}
+                        disabled={watchType?.en === 'Land' || watchType?.en === 'Commercial'}
+                    />
                 </FormField>
-                <FormField label={t_prop.bathrooms} id="baths">
-                    <input type="number" {...register("baths", { valueAsNumber: true })} className={inputClasses} disabled={watchType?.en === 'Land'} />
+                <FormField label={t_prop.bathrooms} id="baths" error={typeof errors?.baths?.message === 'string' ? errors.baths.message : undefined}>
+                    <input
+                        type="number"
+                        {...register("baths", {
+                            valueAsNumber: true,
+                            min: {
+                                value: PROPERTY_VALIDATION_RULES.MIN_COUNT,
+                                message: language === 'ar' ? 'لا يمكن أن يكون سالباً' : 'Cannot be negative',
+                            },
+                            max: {
+                                value: PROPERTY_VALIDATION_RULES.MAX_COUNT,
+                                message: language === 'ar' ? `الحد الأقصى ${PROPERTY_VALIDATION_RULES.MAX_COUNT}` : `Max ${PROPERTY_VALIDATION_RULES.MAX_COUNT}`,
+                            },
+                        })}
+                        className={inputClasses}
+                        disabled={watchType?.en === 'Land'}
+                    />
                 </FormField>
-                <FormField label={t_prop.floor} id="floor">
-                    <input type="number" {...register("floor", { valueAsNumber: true })} className={inputClasses} disabled={watchType?.en === 'Land' || watchType?.en === 'Villa'} />
+                <FormField label={t_prop.floor} id="floor" error={typeof errors?.floor?.message === 'string' ? errors.floor.message : undefined}>
+                    <input
+                        type="number"
+                        {...register("floor", {
+                            valueAsNumber: true,
+                            min: {
+                                value: PROPERTY_VALIDATION_RULES.MIN_FLOOR,
+                                message: language === 'ar' ? `الحد الأدنى ${PROPERTY_VALIDATION_RULES.MIN_FLOOR}` : `Min ${PROPERTY_VALIDATION_RULES.MIN_FLOOR}`,
+                            },
+                            max: {
+                                value: PROPERTY_VALIDATION_RULES.MAX_FLOOR,
+                                message: language === 'ar' ? `الحد الأقصى ${PROPERTY_VALIDATION_RULES.MAX_FLOOR}` : `Max ${PROPERTY_VALIDATION_RULES.MAX_FLOOR}`,
+                            },
+                        })}
+                        className={inputClasses}
+                        disabled={watchType?.en === 'Land' || watchType?.en === 'Villa'}
+                    />
                 </FormField>
-                <FormField label="Listing Status" id="listingStatus">
-                    <select {...register("listingStatus")} className={selectClasses} >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="draft">Draft</option>
-                        <option value="sold">Sold/Rented</option>
+                <FormField label={language === 'ar' ? 'حالة الإعلان' : 'Listing Status'} id="listingStatus">
+                    <select {...register("listingStatus")} className={selectClasses} disabled={!isAdmin && !editingStatus}>
+                        {allowedStatuses.includes('active') && <option value="active">{language === 'ar' ? 'نشط (منشور)' : 'Active'}</option>}
+                        {allowedStatuses.includes('draft') && <option value="draft">{language === 'ar' ? 'مسودة (للمراجعة)' : 'Draft'}</option>}
+                        {allowedStatuses.includes('inactive') && <option value="inactive">{language === 'ar' ? 'مخفي / غير نشط' : 'Inactive'}</option>}
+                        {allowedStatuses.includes('sold') && <option value="sold">{language === 'ar' ? 'تم البيع / التأجير' : 'Sold/Rented'}</option>}
                     </select>
                 </FormField>
             </div>

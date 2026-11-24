@@ -23,6 +23,7 @@ interface FinishingCostEstimatorProps {
     defaultArea?: number;
     defaultPropertyType?: FinishingPropertyType;
     propertyId?: string;
+    propertyReference?: string;
     propertyTitle?: string;
     onRfqLaunched?: () => void;
 }
@@ -31,6 +32,7 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
     defaultArea,
     defaultPropertyType = 'apartment',
     propertyId,
+    propertyReference,
     propertyTitle,
     onRfqLaunched
 }) => {
@@ -842,6 +844,8 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
                 partnerId={PLATFORM_FINISHING_MANAGER_ID}
                 serviceTitle={modalServiceTitle}
                 propertyId={propertyId}
+                propertyReference={propertyReference}
+                propertyTitle={propertyTitle}
             />
         </section>
     );

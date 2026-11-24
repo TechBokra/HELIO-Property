@@ -194,8 +194,20 @@ const DynamicForm: FC<DynamicFormProps> = ({
         }
 
         if (field.validation) {
-            const { type, pattern, minLength, maxLength, errorMessage } = field.validation;
+            const { type, pattern, min, max, minLength, maxLength, errorMessage } = field.validation;
             
+            if (min !== undefined) {
+                rules.min = {
+                    value: min,
+                    message: errorMessage?.[language] || (isAr ? `يجب أن لا تقل القيمة عن ${min}` : `Minimum value is ${min}`),
+                };
+            }
+            if (max !== undefined) {
+                rules.max = {
+                    value: max,
+                    message: errorMessage?.[language] || (isAr ? `يجب أن لا تزيد القيمة عن ${max}` : `Maximum value is ${max}`),
+                };
+            }
             if (minLength) rules.minLength = { value: minLength, message: MESSAGES[language].min_length(minLength) };
             if (maxLength) rules.maxLength = { value: maxLength, message: MESSAGES[language].max_length(maxLength) };
 

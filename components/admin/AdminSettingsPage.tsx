@@ -1,12 +1,12 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import type { Language, SiteContent } from '../../types';
+import type { SiteContent } from '../../types';
 import { inputClasses, selectClasses } from '../ui/FormField';
 // FIX: Corrected import path for Icons
-import { CloseIcon, PhotoIcon, MegaphoneIcon, CreditCardIcon, BanknotesIcon, GlobeAltIcon } from '../ui/Icons';
-import { getContent, updateContent as updateSiteContent } from '../../services/content';
-import { useQuery } from '@tanstack/react-query';
+import { PhotoIcon, MegaphoneIcon, CreditCardIcon, BanknotesIcon, GlobeAltIcon } from '../ui/Icons';
+import { buildContentPatch, getContent, updateContent as updateSiteContent } from '../../services/content';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../shared/ToastContext';
 import { useLanguage } from '../shared/LanguageContext';
 import { Button } from '../ui/Button';
@@ -27,18 +27,35 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 const AdminSettingsPage: React.FC = () => {
     const { language, t } = useLanguage();
-    const { data: siteContent, isLoading: dataLoading, refetch } = useQuery({ queryKey: ['siteContent'], queryFn: getContent });
+    const queryClient = useQueryClient();
+    const { data: siteContent, isLoading: dataLoading } = useQuery({
+        queryKey: ['siteContent'],
+        queryFn: () => getContent({ forceRefresh: true }),
+        staleTime: 0,
+        refetchOnMount: 'always',
+    });
     const { showToast } = useToast();
     
-    const { register, handleSubmit, reset, watch, setValue, formState: { isSubmitting, isDirty } } = useForm<SiteContent>();
+    const { register, handleSubmit, reset, watch, setValue, formState: { isSubmitting, isDirty, dirtyFields } } = useForm<SiteContent>();
     
     const [activeTab, setActiveTab] = useState<'general' | 'banner' | 'contact' | 'social' | 'finance'>('general');
+    const savedBaselineRef = useRef<SiteContent | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (siteContent) {
+        if (siteContent && (!savedBaselineRef.current || !isDirty)) {
+            savedBaselineRef.current = siteContent;
             reset(siteContent); // Populate form with fetched data
         }
-    }, [siteContent, reset]);
+    }, [siteContent, isDirty, reset]);
+
+    const handleRestoreSaved = () => {
+        const baseline = savedBaselineRef.current || siteContent;
+        if (baseline) {
+            reset(baseline);
+        }
+        setSaveError(null);
+    };
 
     const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -59,14 +76,45 @@ const AdminSettingsPage: React.FC = () => {
     const watchQrCode = watch('paymentConfiguration.instapay.qrCodeUrl');
 
     const onSubmit = async (formData: SiteContent) => {
+        setSaveError(null);
         // Exclude finishingServices from the update
-        const { finishingServices, ...dataToSave } = formData;
-        await updateSiteContent(dataToSave as Partial<SiteContent>);
-        refetch();
-        showToast('Settings updated successfully!', 'success');
+        const { finishingServices: _ignored, ...dataToSave } = formData;
+        const baseline = savedBaselineRef.current || siteContent;
+        const { finishingServices: _baseIgnored, ...baselineWithoutFinishing } = baseline || {};
+        const patch = baseline
+            ? buildContentPatch(baselineWithoutFinishing, dataToSave, dirtyFields)
+            : (dataToSave as Partial<SiteContent>);
+
+        if (Object.keys(patch).length === 0) {
+            if (baseline) reset(baseline);
+            return;
+        }
+
+        try {
+            const updated = await updateSiteContent(patch);
+            savedBaselineRef.current = updated;
+            queryClient.setQueryData(['siteContent'], updated);
+            reset(updated);
+            showToast(
+                language === 'ar' ? 'تم حفظ الإعدادات بنجاح!' : 'Settings updated successfully!',
+                'success'
+            );
+        } catch (err: any) {
+            console.error('Failed to save settings:', err);
+            const detail = err?.message ? String(err.message) : '';
+            const fallbackMsg =
+                language === 'ar'
+                    ? 'تعذر حفظ الإعدادات في قاعدة البيانات. تم الاحتفاظ بالقيم المحفوظة سابقًا.'
+                    : 'Failed to save settings to the database. Previously saved values have been preserved.';
+            setSaveError(detail ? `${fallbackMsg} (${detail})` : fallbackMsg);
+            showToast(
+                language === 'ar' ? 'فشل حفظ الإعدادات — تم الاحتفاظ بالقيمة السابقة' : 'Failed to save settings — previous values preserved',
+                'error'
+            );
+        }
     };
 
-    if (dataLoading) {
+    if (dataLoading && !savedBaselineRef.current) {
         return <div>Loading settings...</div>;
     }
     
@@ -84,6 +132,26 @@ const AdminSettingsPage: React.FC = () => {
         <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t.adminDashboard.nav.settings}</h1>
             <p className="text-gray-500 dark:text-gray-400 mb-8">Manage global settings for the website, such as footer content and contact information.</p>
+
+            {saveError && (
+                <div
+                    role="alert"
+                    dir={language === 'ar' ? 'rtl' : 'ltr'}
+                    className="mb-6 p-4 rounded-xl border border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-800 text-red-800 dark:text-red-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                    <div className="space-y-1">
+                        <p className="font-bold text-sm">
+                            {language === 'ar' ? 'فشل حفظ الإعدادات' : 'Settings Save Failed'}
+                        </p>
+                        <p className="text-sm">{saveError}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Button type="button" variant="secondary" size="sm" onClick={handleRestoreSaved}>
+                            {language === 'ar' ? 'استعادة القيم المحفوظة' : 'Restore Saved Values'}
+                        </Button>
+                    </div>
+                </div>
+            )}
             
             <form onSubmit={handleSubmit(onSubmit)}>
                 <div className="bg-white dark:bg-gray-900 rounded-lg shadow border border-gray-200 dark:border-gray-700">

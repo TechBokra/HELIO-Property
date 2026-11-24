@@ -27,6 +27,7 @@ import { FinishingQuoteComparison } from '../finishing/FinishingQuoteComparison'
 import { FinishingRequestTimeline } from '../finishing/FinishingRequestTimeline';
 import { SubmitFinishingQuoteModal } from '../finishing/SubmitFinishingQuoteModal';
 import { FinishingMilestonesTracker } from '../finishing/FinishingMilestonesTracker';
+import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
 
 const AdminFinishingRequestDetailsPage: React.FC = () => {
     const { requestId } = useParams<{ requestId: string }>();
@@ -162,10 +163,15 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
                             <CardContent>
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                     <div>
-                                        <p className="font-bold text-gray-900 dark:text-white text-base">
-                                            {lead.propertyTitle || lead.serviceTitle}
-                                        </p>
-                                        <p className="text-xs text-gray-500 font-mono mt-0.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200">
+                                                {resolvePropertyReferenceCode(lead.propertyId, lead.propertyReference)}
+                                            </span>
+                                            <p className="font-bold text-gray-900 dark:text-white text-base">
+                                                {lead.propertyTitle || lead.serviceTitle}
+                                            </p>
+                                        </div>
+                                        <p className="text-xs text-gray-500 font-mono mt-1">
                                             Property ID: {lead.propertyId}
                                         </p>
                                     </div>

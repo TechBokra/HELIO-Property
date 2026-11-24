@@ -1,10 +1,11 @@
 
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { BuildingIcon, DecorationIcon, FinishingIcon, SparklesIcon } from '../ui/Icons';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardContent } from '../ui/Card';
+import SmartActionLink from '../shared/SmartActionLink';
+import { siteContentData as fallbackData } from '../../data/content';
 
 const iconMap: { [key: string]: React.FC<{ className?: string }> } = {
     BuildingIcon,
@@ -19,7 +20,7 @@ const ServiceCard: React.FC<{ icon: React.ReactNode; title: string; description:
     description,
     link,
 }) => (
-    <Link to={link} className="block group h-full">
+    <SmartActionLink to={link} fallback="/properties" className="block group h-full">
         <Card className="bg-white/50 backdrop-blur-sm h-full transform hover:-translate-y-2 transition-transform duration-300 hover:border-amber-500/50 hover:shadow-2xl hover:shadow-amber-500/10 p-0 card-glow">
             <CardContent className="p-8 flex flex-col items-start h-full">
                 <div className="flex-shrink-0 bg-amber-500/10 text-amber-500 p-4 rounded-full mb-6 inline-block group-hover:bg-amber-500/20 transition-colors">
@@ -31,20 +32,22 @@ const ServiceCard: React.FC<{ icon: React.ReactNode; title: string; description:
                 <p className="text-gray-600 leading-relaxed flex-grow">{description}</p>
             </CardContent>
         </Card>
-    </Link>
+    </SmartActionLink>
 );
-
-import { siteContentData as fallbackData } from '../../data/content';
 
 const Services: React.FC = () => {
     const { language } = useLanguage();
     const { data: siteContent, isLoading } = useSiteContent();
 
     const t = siteContent?.services?.[language] || fallbackData.services[language];
+    const enFeatures = siteContent?.services?.en?.features || fallbackData.services.en.features;
+    const fallbackFeatures = fallbackData.services[language]?.features || [];
 
     if (isLoading && !t) {
         return <section className="py-20 bg-gray-50 animate-pulse h-96"></section>;
     }
+
+    const features = Array.isArray(t?.features) ? t.features : fallbackFeatures;
 
     return (
         <section className="py-20 bg-gray-50 subtle-bg">
@@ -54,9 +57,19 @@ const Services: React.FC = () => {
                     <p className="text-lg text-gray-500 mt-4 max-w-3xl mx-auto">{t.description}</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {t.features.map((feature: any) => {
-                        const IconComponent = iconMap[feature.icon] || BuildingIcon;
-                        return <ServiceCard key={feature.title} {...feature} icon={<IconComponent className="w-8 h-8" />} />;
+                    {features.map((feature: any, index: number) => {
+                        const resolvedIcon = feature.icon || enFeatures?.[index]?.icon || fallbackFeatures?.[index]?.icon || 'BuildingIcon';
+                        const resolvedLink = feature.link || enFeatures?.[index]?.link || fallbackFeatures?.[index]?.link || '/properties';
+                        const IconComponent = iconMap[resolvedIcon] || BuildingIcon;
+                        return (
+                            <ServiceCard
+                                key={`${feature.title}-${index}`}
+                                title={feature.title}
+                                description={feature.description}
+                                link={resolvedLink}
+                                icon={<IconComponent className="w-8 h-8" />}
+                            />
+                        );
                     })}
                 </div>
             </div>

@@ -1,10 +1,91 @@
 import { supabase, supabasePublic } from '../lib/supabase';
-import { getAllPartners, getPartnerById } from './partners'; 
+import { getAllPartners, getPartnerById } from './partners';
 import { getAllProjects, getProjectById } from './projects';
-import { Permission, type Property, type PropertyFiltersType, type Partner, type Project, type PropertyHistoryEntry } from '../types';
+import {
+    Permission,
+    type Property,
+    type PropertyFiltersType,
+    type Partner,
+    type Project,
+    type PropertyHistoryEntry,
+    type PublicationStatus,
+} from '../types';
 import { filterProperties } from '../utils/propertyFilters';
+import { isPropertyPubliclyVisible } from '../utils/propertyUtils';
+import { isDemoModeEnabled } from '../utils/demoMode';
 import { propertiesData } from '../data/properties';
 import { requireAnyPermission } from './authGuard';
+import { useAuthStore } from '../store/useAuthStore';
+
+export interface PropertyQueryOptions {
+    cityId?: string;
+    publicOnly?: boolean;
+    forceRefresh?: boolean;
+    client?: any;
+}
+
+const getReadClient = (overrideClient?: any, preferPublicClient = false) => {
+    if (overrideClient) return overrideClient;
+    if (preferPublicClient) return supabasePublic;
+    try {
+        const user = useAuthStore.getState().currentUser;
+        if (user && !user.isDemo) {
+            return supabase;
+        }
+    } catch {
+        // Ignore outside browser runtime
+    }
+    return supabasePublic;
+};
+
+const parsePropertyQueryOptions = (cityIdOrOptions?: string | PropertyQueryOptions | unknown): PropertyQueryOptions => {
+    if (typeof cityIdOrOptions === 'string') {
+        return { cityId: cityIdOrOptions };
+    }
+    if (
+        cityIdOrOptions &&
+        typeof cityIdOrOptions === 'object' &&
+        ('cityId' in cityIdOrOptions ||
+            'publicOnly' in cityIdOrOptions ||
+            'forceRefresh' in cityIdOrOptions ||
+            'client' in cityIdOrOptions)
+    ) {
+        return cityIdOrOptions as PropertyQueryOptions;
+    }
+    return {};
+};
+
+const isMissingColumnError = (error: any, columnName: string): boolean => {
+    if (!error) return false;
+    const code = String(error.code || '');
+    const msg = String(error.message || '').toLowerCase();
+    return (code === '42703' || code === 'PGRST204') && msg.includes(columnName.toLowerCase());
+};
+
+const OPTIONAL_PROPERTY_MIGRATION_COLUMNS = ['city_id', 'source_request_id'] as const;
+
+const stripMissingOptionalColumns = (
+    payload: Record<string, any>,
+    error: any
+): Record<string, any> | null => {
+    let stripped = false;
+    const next = { ...payload };
+    for (const col of OPTIONAL_PROPERTY_MIGRATION_COLUMNS) {
+        if (col in next && isMissingColumnError(error, col)) {
+            delete next[col];
+            stripped = true;
+        }
+    }
+    return stripped ? next : null;
+};
+
+const derivePublicationStatusForListing = (listingStatus: string | undefined): PublicationStatus | undefined => {
+    if (!listingStatus) return undefined;
+    if (listingStatus === 'draft') return 'draft';
+    if (listingStatus === 'inactive') return 'archived';
+    if (listingStatus === 'active' || listingStatus === 'sold') return 'published';
+    return undefined;
+};
 
 export const generatePropertyReference = (id: string): string => {
     if (!id) return 'HEL-0001';
@@ -28,7 +109,6 @@ export const generatePropertySlug = (titleEn: string, id: string): string => {
 export const getPropertyHistory = async (propertyId: string): Promise<PropertyHistoryEntry[]> => {
     if (!propertyId) return [];
     try {
-        // First try the dedicated property_history table
         const { data, error } = await supabase
             .from('property_history')
             .select('*')
@@ -47,11 +127,10 @@ export const getPropertyHistory = async (propertyId: string): Promise<PropertyHi
                 fieldName: row.field_name,
                 oldValue: row.old_value,
                 newValue: row.new_value,
-                note: row.note
+                note: row.note,
             }));
         }
 
-        // Secondary database fallback: check embedded audit log in property installments_info._meta
         const { data: propData } = await supabase
             .from('properties')
             .select('installments_info')
@@ -59,9 +138,10 @@ export const getPropertyHistory = async (propertyId: string): Promise<PropertyHi
             .maybeSingle();
 
         if (propData?.installments_info) {
-            const raw = typeof propData.installments_info === 'string'
-                ? JSON.parse(propData.installments_info)
-                : propData.installments_info;
+            const raw =
+                typeof propData.installments_info === 'string'
+                    ? JSON.parse(propData.installments_info)
+                    : propData.installments_info;
             if (raw?._meta?.history && Array.isArray(raw._meta.history)) {
                 return raw._meta.history;
             }
@@ -69,7 +149,7 @@ export const getPropertyHistory = async (propertyId: string): Promise<PropertyHi
 
         return [];
     } catch (e) {
-        console.warn("Failed to retrieve property history from Supabase:", e);
+        console.warn('Failed to retrieve property history from Supabase:', e);
         return [];
     }
 };
@@ -80,9 +160,10 @@ export const getPropertyHistory = async (propertyId: string): Promise<PropertyHi
 export const recordPropertyHistory = async (entry: Omit<PropertyHistoryEntry, 'id' | 'changedAt'>): Promise<void> => {
     try {
         const now = new Date().toISOString();
-        const historyId = (typeof crypto !== 'undefined' && crypto.randomUUID)
-            ? crypto.randomUUID()
-            : `hist-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const historyId =
+            typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `hist-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
         const changeType = entry.changeType || entry.field || 'update';
         const fieldName = entry.fieldName || entry.field || 'general';
@@ -96,17 +177,15 @@ export const recordPropertyHistory = async (entry: Omit<PropertyHistoryEntry, 'i
             old_value: entry.oldValue,
             new_value: entry.newValue,
             note: entry.note || '',
-            created_at: now
+            created_at: now,
         };
 
-        // 1. Insert into property_history table
         try {
             await supabase.from('property_history').insert(historyRow);
         } catch {
             // Table may be pending migration in some environments
         }
 
-        // 2. Also append to the property's installments_info._meta.history in Supabase for guaranteed persistence
         try {
             const { data: propData } = await supabase
                 .from('properties')
@@ -115,9 +194,10 @@ export const recordPropertyHistory = async (entry: Omit<PropertyHistoryEntry, 'i
                 .maybeSingle();
 
             if (propData) {
-                const rawInst = typeof propData.installments_info === 'string'
-                    ? JSON.parse(propData.installments_info)
-                    : propData.installments_info || {};
+                const rawInst =
+                    typeof propData.installments_info === 'string'
+                        ? JSON.parse(propData.installments_info)
+                        : propData.installments_info || {};
                 const existingMeta = rawInst._meta || {};
                 const existingHist = Array.isArray(existingMeta.history) ? existingMeta.history : [];
 
@@ -132,102 +212,179 @@ export const recordPropertyHistory = async (entry: Omit<PropertyHistoryEntry, 'i
                     fieldName,
                     oldValue: entry.oldValue,
                     newValue: entry.newValue,
-                    note: entry.note
+                    note: entry.note,
                 };
 
                 const updatedMeta = {
                     ...existingMeta,
-                    history: [newHistEntry, ...existingHist].slice(0, 100)
+                    history: [newHistEntry, ...existingHist].slice(0, 100),
                 };
 
-                await supabase.from('properties').update({
-                    installments_info: { ...rawInst, _meta: updatedMeta }
-                }).eq('id', entry.propertyId);
+                await supabase
+                    .from('properties')
+                    .update({
+                        installments_info: { ...rawInst, _meta: updatedMeta },
+                    })
+                    .eq('id', entry.propertyId);
             }
         } catch (innerErr) {
-            console.warn("Could not embed history into property row in Supabase:", innerErr);
+            console.warn('Could not embed history into property row in Supabase:', innerErr);
         }
     } catch (e) {
-        console.error("Failed to record property history:", e);
+        console.error('Failed to record property history:', e);
     }
 };
 
 /**
  * Transforms Supabase database row into canonical Property interface
  */
-const mapPropertyFromDb = (row: any): Property => {
-    const amenities = typeof row.amenities === 'string' ? JSON.parse(row.amenities) : row.amenities || { ar: [], en: [] };
-    const location = typeof row.location === 'string' ? JSON.parse(row.location) : row.location || { lat: 0, lng: 0 };
-    const installmentsRaw = typeof row.installments_info === 'string' ? JSON.parse(row.installments_info) : row.installments_info;
+export const mapPropertyFromDb = (row: any): Property => {
+    let amenities = { ar: [], en: [] };
+    try {
+        amenities = typeof row.amenities === 'string' ? JSON.parse(row.amenities) : row.amenities || { ar: [], en: [] };
+    } catch {
+        amenities = { ar: [], en: [] };
+    }
+
+    let location = { lat: 0, lng: 0 };
+    try {
+        location = typeof row.location === 'string' ? JSON.parse(row.location) : row.location || { lat: 0, lng: 0 };
+    } catch {
+        location = { lat: 0, lng: 0 };
+    }
+
+    let installmentsRaw: any = null;
+    try {
+        installmentsRaw =
+            typeof row.installments_info === 'string' ? JSON.parse(row.installments_info) : row.installments_info;
+    } catch {
+        installmentsRaw = null;
+    }
+
+    let gallery: string[] = [];
+    if (Array.isArray(row.gallery)) {
+        gallery = row.gallery;
+    } else if (typeof row.gallery === 'string') {
+        try {
+            const parsed = JSON.parse(row.gallery);
+            gallery = Array.isArray(parsed) ? parsed : [];
+        } catch {
+            gallery = [];
+        }
+    }
+
     const meta = installmentsRaw?._meta || {};
 
     const priceNumeric = Number(row.price) || 0;
     const price = {
         en: `EGP ${priceNumeric.toLocaleString('en-US')}`,
-        ar: `${priceNumeric.toLocaleString('ar-EG')} ج.م`
+        ar: `${priceNumeric.toLocaleString('ar-EG')} ج.م`,
     };
 
-    const isVerified = row.is_verified === true || meta.verificationStatus === 'verified' || row.verification_status === 'verified';
-    const availabilityStatus = row.availability_status || meta.availabilityStatus || (row.listing_status === 'sold' ? 'sold' : 'available');
-    const publicationStatus = row.publication_status || meta.publicationStatus || (row.listing_status === 'draft' ? 'draft' : (row.listing_status === 'inactive' ? 'archived' : 'published'));
-    const verificationStatus = isVerified ? 'verified' : (row.verification_status || meta.verificationStatus || 'pending');
+    const listingStatus = row.listing_status || 'active';
+    const isVerified =
+        row.is_verified === true || meta.verificationStatus === 'verified' || row.verification_status === 'verified';
+    const availabilityStatus =
+        row.availability_status || meta.availabilityStatus || (listingStatus === 'sold' ? 'sold' : 'available');
+
+    // Keep publicationStatus aligned with authoritative listing_status so hiding a previously
+    // published listing cannot leave a stale 'published' status in _meta.
+    const rawExplicitPub = row.publication_status || meta.publicationStatus;
+    const publicationStatus: PublicationStatus =
+        listingStatus === 'draft'
+            ? rawExplicitPub === 'pending_review' || rawExplicitPub === 'rejected'
+                ? rawExplicitPub
+                : 'draft'
+            : listingStatus === 'inactive'
+                ? 'archived'
+                : rawExplicitPub && rawExplicitPub !== 'draft' && rawExplicitPub !== 'archived'
+                    ? rawExplicitPub
+                    : 'published';
+
+    const verificationStatus = isVerified ? 'verified' : row.verification_status || meta.verificationStatus || 'pending';
 
     return {
         id: row.id,
         referenceNumber: row.reference_number || meta.referenceNumber || generatePropertyReference(row.id),
         slug: row.slug || meta.slug || generatePropertySlug(row.title_en, row.id),
         partnerId: row.partner_id,
-        projectId: row.project_id,
-        imageUrl: row.main_image,
-        gallery: row.gallery || [],
-        
-        title: { ar: row.title_ar, en: row.title_en },
-        description: { ar: row.description_ar, en: row.description_en },
-        address: { ar: row.address_ar, en: row.address_en },
-        
-        status: { 
-            en: (row.status === 'For Rent' || row.status === 'rent') ? 'For Rent' : 'For Sale', 
-            ar: (row.status === 'For Rent' || row.status === 'rent') ? 'إيجار' : 'للبيع' 
+        projectId: row.project_id || undefined,
+        imageUrl: row.main_image || '',
+        gallery,
+
+        title: {
+            ar: row.title_ar || row.title_en || '',
+            en: row.title_en || row.title_ar || '',
+        },
+        description: {
+            ar: row.description_ar || row.description_en || '',
+            en: row.description_en || row.description_ar || '',
+        },
+        address: {
+            ar: row.address_ar || row.address_en || '',
+            en: row.address_en || row.address_ar || '',
+        },
+
+        status: {
+            en: row.status === 'For Rent' || row.status === 'rent' ? 'For Rent' : 'For Sale',
+            ar: row.status === 'For Rent' || row.status === 'rent' ? 'إيجار' : 'للبيع',
         },
         type: {
-            en: row.type,
-            ar: row.type === 'Apartment' ? 'شقة' : row.type === 'Villa' ? 'فيلا' : row.type === 'Commercial' ? 'تجاري' : 'أرض'
+            en: row.type || 'Apartment',
+            ar:
+                row.type === 'Apartment'
+                    ? 'شقة'
+                    : row.type === 'Villa'
+                        ? 'فيلا'
+                        : row.type === 'Commercial'
+                            ? 'تجاري'
+                            : 'أرض',
         },
-        finishingStatus: row.finishing_status ? {
-            en: row.finishing_status,
-            ar: row.finishing_status 
-        } : undefined,
+        finishingStatus: row.finishing_status
+            ? {
+                  en: row.finishing_status,
+                  ar: row.finishing_status,
+              }
+            : undefined,
 
-        price: price,
-        priceNumeric: priceNumeric,
+        price,
+        priceNumeric,
         area: Number(row.area) || 0,
-        beds: row.beds,
-        baths: row.baths,
+        beds: row.beds ?? 0,
+        baths: row.baths ?? 0,
         floor: row.floor,
-        
-        amenities: amenities,
-        location: location,
-        
-        isInCompound: row.is_in_compound,
-        installmentsAvailable: row.installments_available,
-        realEstateFinanceAvailable: row.finance_available,
-        
-        delivery: {
-            isImmediate: row.delivery_immediate,
-            date: row.delivery_date
+
+        amenities: {
+            ar: Array.isArray(amenities?.ar) ? amenities.ar : [],
+            en: Array.isArray(amenities?.en) ? amenities.en : [],
         },
-        installments: installmentsRaw ? {
-            downPayment: installmentsRaw.downPayment || 0,
-            monthlyInstallment: installmentsRaw.monthlyInstallment || 0,
-            years: installmentsRaw.years || 0
-        } : undefined,
-        
-        listingStatus: row.listing_status || 'active',
-        publicationStatus: publicationStatus,
-        availabilityStatus: availabilityStatus,
-        verificationStatus: verificationStatus,
-        
-        listingStartDate: row.listing_start_date,
+        location: {
+            lat: Number(location?.lat) || 0,
+            lng: Number(location?.lng) || 0,
+        },
+
+        isInCompound: Boolean(row.is_in_compound),
+        installmentsAvailable: Boolean(row.installments_available),
+        realEstateFinanceAvailable: Boolean(row.finance_available),
+
+        delivery: {
+            isImmediate: Boolean(row.delivery_immediate),
+            date: row.delivery_date,
+        },
+        installments: installmentsRaw
+            ? {
+                  downPayment: installmentsRaw.downPayment || 0,
+                  monthlyInstallment: installmentsRaw.monthlyInstallment || 0,
+                  years: installmentsRaw.years || 0,
+              }
+            : undefined,
+
+        listingStatus,
+        publicationStatus,
+        availabilityStatus,
+        verificationStatus,
+
+        listingStartDate: row.listing_start_date || row.created_at,
         contactMethod: row.contact_method,
         ownerPhone: row.owner_phone,
 
@@ -244,9 +401,9 @@ const mapPropertyFromDb = (row: any): Property => {
         updatedAt: row.updated_at,
         history: meta.history || [],
 
-        imageUrl_small: row.main_image, 
-        imageUrl_medium: row.main_image,
-        imageUrl_large: row.main_image,
+        imageUrl_small: row.main_image || '',
+        imageUrl_medium: row.main_image || '',
+        imageUrl_large: row.main_image || '',
         cityId: row.city_id || meta.cityId || 'heliopolis',
     };
 };
@@ -258,30 +415,27 @@ export const filterPropertiesByCity = (properties: Property[], cityId?: string):
 };
 
 /**
- * Hydrates partner & project details in batch
+ * Hydrates partner & project details efficiently without masking property errors.
  */
-/**
- * Hydrates partner & project details efficiently using cached catalogs
- */
-const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[]> => {
+const hydratePropertiesBatch = async (properties: Property[], options?: { client?: any }): Promise<Property[]> => {
     if (properties.length === 0) return [];
 
     try {
-        const partnerIds = new Set(properties.map(p => p.partnerId).filter(Boolean));
-        const projectIds = new Set(properties.map(p => p.projectId).filter(Boolean));
+        const partnerIds = new Set(properties.map((p) => p.partnerId).filter(Boolean));
+        const projectIds = new Set(properties.map((p) => p.projectId).filter(Boolean));
 
         const [allPartners, allProjects] = await Promise.all([
-            partnerIds.size > 0 ? getAllPartners().catch(() => []) : Promise.resolve([]),
-            projectIds.size > 0 ? getAllProjects().catch(() => []) : Promise.resolve([])
+            partnerIds.size > 0 ? getAllPartners({ client: options?.client }).catch(() => []) : Promise.resolve([]),
+            projectIds.size > 0 ? getAllProjects({ client: options?.client }).catch(() => []) : Promise.resolve([]),
         ]);
 
         const partnerMap = new Map<string, Partner>();
-        allPartners.forEach(p => partnerMap.set(p.id, p));
+        allPartners.forEach((p) => partnerMap.set(p.id, p));
 
         const projectMap = new Map<string, Project>();
-        allProjects.forEach(p => projectMap.set(p.id, p));
+        allProjects.forEach((p) => projectMap.set(p.id, p));
 
-        return properties.map(prop => {
+        return properties.map((prop) => {
             const partner = partnerMap.get(prop.partnerId);
             const project = prop.projectId ? projectMap.get(prop.projectId) : undefined;
 
@@ -292,9 +446,8 @@ const hydratePropertiesBatch = async (properties: Property[]): Promise<Property[
                 projectName: project ? project.name : undefined,
             };
         });
-
     } catch (e) {
-        console.warn("Non-blocking property hydration notice:", e);
+        console.warn('Non-blocking property hydration notice:', e);
         return properties;
     }
 };
@@ -316,208 +469,253 @@ export const invalidatePropertiesCache = () => {
 };
 
 /**
- * Fetches all properties for Admin management
+ * Fetches all properties for Admin / Partner operational dashboards (includes drafts & hidden).
  */
-export const getAllProperties = async (cityIdOrContext?: string | unknown): Promise<Property[]> => {
-    const cityId = typeof cityIdOrContext === 'string' ? cityIdOrContext : undefined;
+export const getAllProperties = async (cityIdOrOptions?: string | PropertyQueryOptions | unknown): Promise<Property[]> => {
+    const opts = parsePropertyQueryOptions(cityIdOrOptions);
+    const cityId = opts.cityId;
+
+    if (isDemoModeEnabled() && !opts.client) {
+        return filterPropertiesByCity(propertiesData, cityId);
+    }
+
+    const useCache = !opts.client && !opts.forceRefresh;
     const now = Date.now();
-    if (cachedAllProperties && (now - cachedAllProperties.timestamp) < PROPERTIES_CACHE_TTL) {
+    if (useCache && cachedAllProperties && now - cachedAllProperties.timestamp < PROPERTIES_CACHE_TTL) {
         return filterPropertiesByCity(cachedAllProperties.data, cityId);
     }
 
-    if (inFlightAllPropertiesPromise) {
-        const list = await inFlightAllPropertiesPromise;
-        return filterPropertiesByCity(list, cityId);
-    }
-
-    inFlightAllPropertiesPromise = (async () => {
-        try {
-            const { data, error } = await supabasePublic
-                .from('properties')
-                .select('*')
-                .order('created_at', { ascending: false });
-            
-            if (error) {
-                console.warn("Supabase notice in getAllProperties, using fallback:", error.message);
-                return cachedAllProperties ? cachedAllProperties.data : propertiesData;
-            }
-
-            if (!data || data.length === 0) {
-                return propertiesData;
-            }
-
-            const rawProperties = data.map(mapPropertyFromDb);
-            const dbIds = new Set(rawProperties.map((p) => p.id));
-            const mergedRaw = [
-                ...rawProperties,
-                ...propertiesData.filter((p) => !dbIds.has(p.id) && p.cityId && p.cityId !== 'heliopolis'),
-            ];
-            const hydrated = await hydratePropertiesBatch(mergedRaw);
-            cachedAllProperties = { data: hydrated, timestamp: Date.now() };
-            return hydrated;
-        } catch (e) {
-            console.warn("Exception in getAllProperties, using fallback:", e);
-            return cachedAllProperties ? cachedAllProperties.data : propertiesData;
-        } finally {
-            inFlightAllPropertiesPromise = null;
-        }
-    })();
-
-    const result = await inFlightAllPropertiesPromise;
-    return filterPropertiesByCity(result, cityId);
-};
-
-/**
- * Fetches publicly visible properties (active or sold listings, never drafts or archived)
- */
-export const getProperties = async (cityIdOrContext?: string | unknown): Promise<Property[]> => {
-    const cityId = typeof cityIdOrContext === 'string' ? cityIdOrContext : undefined;
-    const now = Date.now();
-    if (cachedPublicProperties && (now - cachedPublicProperties.timestamp) < PROPERTIES_CACHE_TTL) {
-        return filterPropertiesByCity(cachedPublicProperties.data, cityId);
-    }
-
-    if (inFlightPublicPropertiesPromise) {
-        const list = await inFlightPublicPropertiesPromise;
-        return filterPropertiesByCity(list, cityId);
-    }
-
-    inFlightPublicPropertiesPromise = (async () => {
-        try {
-            const { data, error } = await supabasePublic
-                .from('properties')
-                .select('*')
-                .in('listing_status', ['active', 'sold'])
-                .order('created_at', { ascending: false });
-
-            if (error) {
-                console.warn("Supabase notice in getProperties, using fallback:", error.message);
-                return cachedPublicProperties ? cachedPublicProperties.data : propertiesData;
-            }
-
-            if (!data || data.length === 0) {
-                return propertiesData;
-            }
-
-            const rawProperties = data.map(mapPropertyFromDb);
-            const dbIds = new Set(rawProperties.map((p) => p.id));
-            const mergedRaw = [
-                ...rawProperties,
-                ...propertiesData.filter((p) => !dbIds.has(p.id) && p.cityId && p.cityId !== 'heliopolis'),
-            ];
-            const hydrated = await hydratePropertiesBatch(mergedRaw);
-            cachedPublicProperties = { data: hydrated, timestamp: Date.now() };
-            return hydrated;
-        } catch (e) {
-            console.warn("Exception in getProperties, using fallback:", e);
-            return cachedPublicProperties ? cachedPublicProperties.data : propertiesData;
-        } finally {
-            inFlightPublicPropertiesPromise = null;
-        }
-    })();
-
-    const result = await inFlightPublicPropertiesPromise;
-    return filterPropertiesByCity(result, cityId);
-};
-
-/**
- * Fetches properties belonging strictly to a specific partner (enforcing partner isolation)
- */
-export const getPropertiesByPartnerId = async (partnerId: string): Promise<Property[]> => {
-    if (!partnerId) return [];
-    const { data, error } = await supabase
-        .from('properties')
-        .select('*')
-        .eq('partner_id', partnerId)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error("Supabase error in getPropertiesByPartnerId:", error);
-        throw new Error(`Failed to get partner properties: ${error.message}`);
-    }
-
-    if (!data || data.length === 0) {
-        return [];
-    }
-
-    const rawProperties = data.map(mapPropertyFromDb);
-    return hydratePropertiesBatch(rawProperties);
-};
-
-export const getPropertiesByProjectId = async (projectId: string): Promise<Property[]> => {
-    if (!projectId) return [];
-    try {
-        const { data, error } = await supabasePublic
+    const executeFetch = async (): Promise<Property[]> => {
+        const dbClient = getReadClient(opts.client, false);
+        const { data, error } = await dbClient
             .from('properties')
             .select('*')
-            .eq('project_id', projectId)
             .order('created_at', { ascending: false });
 
         if (error) {
-            console.warn("Supabase notice in getPropertiesByProjectId, using fallback:", error.message);
-            return propertiesData.filter(p => p.projectId === projectId);
+            throw new Error(error.message || 'Failed to fetch properties from database.');
         }
 
-        if (!data || data.length === 0) {
-            return propertiesData.filter(p => p.projectId === projectId);
+        const rawProperties = (data || []).map(mapPropertyFromDb);
+        const hydrated = await hydratePropertiesBatch(rawProperties, { client: opts.client });
+        if (!opts.client) {
+            cachedAllProperties = { data: hydrated, timestamp: Date.now() };
+        }
+        return hydrated;
+    };
+
+    if (!opts.client && !opts.forceRefresh) {
+        if (inFlightAllPropertiesPromise) {
+            const list = await inFlightAllPropertiesPromise;
+            return filterPropertiesByCity(list, cityId);
         }
 
-        const rawProperties = data.map(mapPropertyFromDb);
-        return hydratePropertiesBatch(rawProperties);
-    } catch (e) {
-        console.warn("Exception in getPropertiesByProjectId, using fallback:", e);
-        return propertiesData.filter(p => p.projectId === projectId);
+        inFlightAllPropertiesPromise = executeFetch().finally(() => {
+            inFlightAllPropertiesPromise = null;
+        });
+
+        const result = await inFlightAllPropertiesPromise;
+        return filterPropertiesByCity(result, cityId);
     }
+
+    const result = await executeFetch();
+    return filterPropertiesByCity(result, cityId);
 };
 
 /**
- * Fetches single property by ID with fast targeted hydration
+ * Fetches publicly visible properties strictly enforcing the unified public visibility rule
+ * (active or sold published listings; never drafts, inactive, archived, pending_review, or rejected).
  */
-export const getPropertyById = async (id: string): Promise<Property | undefined> => {
-    if (!id) return undefined;
-    try {
-        const { data, error } = await supabasePublic
-            .from('properties')
-            .select('*')
-            .eq('id', id)
-            .maybeSingle();
+export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOptions | unknown): Promise<Property[]> => {
+    const opts = parsePropertyQueryOptions(cityIdOrOptions);
+    const cityId = opts.cityId;
 
-        if (!error && data) {
-            const rawProp = mapPropertyFromDb(data);
-            try {
-                const [partner, project] = await Promise.all([
-                    rawProp.partnerId ? getPartnerById(rawProp.partnerId).catch(() => undefined) : Promise.resolve(undefined),
-                    rawProp.projectId ? getProjectById(rawProp.projectId).catch(() => undefined) : Promise.resolve(undefined)
-                ]);
-                rawProp.partnerName = partner?.name;
-                rawProp.partnerImageUrl = partner?.imageUrl;
-                rawProp.projectName = project?.name;
-            } catch (e) {
-                console.warn("Non-blocking property hydration warning:", e);
-            }
-            return rawProp;
-        }
-    } catch (e) {
-        console.warn("Error fetching property from Supabase, checking fallback:", e);
+    if (isDemoModeEnabled() && !opts.client) {
+        return filterPropertiesByCity(
+            propertiesData.filter((p) => isPropertyPubliclyVisible(p, { includeSold: true })),
+            cityId
+        );
     }
 
-    return propertiesData.find(p => p.id === id);
+    const useCache = !opts.client && !opts.forceRefresh;
+    const now = Date.now();
+    if (useCache && cachedPublicProperties && now - cachedPublicProperties.timestamp < PROPERTIES_CACHE_TTL) {
+        return filterPropertiesByCity(cachedPublicProperties.data, cityId);
+    }
+
+    const executeFetch = async (): Promise<Property[]> => {
+        const dbClient = getReadClient(opts.client, true);
+        const { data, error } = await dbClient
+            .from('properties')
+            .select('*')
+            .in('listing_status', ['active', 'sold'])
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            throw new Error(error.message || 'Failed to fetch public properties from database.');
+        }
+
+        const rawProperties: Property[] = (data || [])
+            .map(mapPropertyFromDb)
+            .filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true }));
+        const hydrated = await hydratePropertiesBatch(rawProperties, { client: opts.client });
+        if (!opts.client) {
+            cachedPublicProperties = { data: hydrated, timestamp: Date.now() };
+        }
+        return hydrated;
+    };
+
+    if (!opts.client && !opts.forceRefresh) {
+        if (inFlightPublicPropertiesPromise) {
+            const list = await inFlightPublicPropertiesPromise;
+            return filterPropertiesByCity(list, cityId);
+        }
+
+        inFlightPublicPropertiesPromise = executeFetch().finally(() => {
+            inFlightPublicPropertiesPromise = null;
+        });
+
+        const result = await inFlightPublicPropertiesPromise;
+        return filterPropertiesByCity(result, cityId);
+    }
+
+    const result = await executeFetch();
+    return filterPropertiesByCity(result, cityId);
 };
 
+/**
+ * Fetches properties belonging to a specific partner.
+ * - With `{ publicOnly: true }` (used on public PartnerProfilePage): returns only publicly visible listings.
+ * - With `{ publicOnly: false }` (default for Partner Dashboard): returns all partner properties including drafts.
+ */
+export const getPropertiesByPartnerId = async (
+    partnerId: string,
+    options?: { publicOnly?: boolean; client?: any }
+): Promise<Property[]> => {
+    if (!partnerId) return [];
+    const publicOnly = options?.publicOnly ?? false;
+
+    if (isDemoModeEnabled() && !options?.client) {
+        const demoProps = propertiesData.filter((p) => p.partnerId === partnerId);
+        return publicOnly ? demoProps.filter((p) => isPropertyPubliclyVisible(p, { includeSold: true })) : demoProps;
+    }
+
+    const dbClient = getReadClient(options?.client, publicOnly);
+    let query = dbClient.from('properties').select('*').eq('partner_id', partnerId);
+    if (publicOnly) {
+        query = query.in('listing_status', ['active', 'sold']);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) {
+        throw new Error(error.message || 'Failed to get partner properties from database.');
+    }
+
+    const mapped: Property[] = (data || []).map(mapPropertyFromDb);
+    const scoped = publicOnly ? mapped.filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true })) : mapped;
+    return hydratePropertiesBatch(scoped, { client: options?.client });
+};
+
+export const getPublicPropertiesByPartnerId = async (
+    partnerId: string,
+    options?: { client?: any }
+): Promise<Property[]> => {
+    return getPropertiesByPartnerId(partnerId, { publicOnly: true, client: options?.client });
+};
+
+/**
+ * Fetches properties linked to a specific project.
+ * Defaults to `publicOnly: true` for public project showcase views.
+ */
+export const getPropertiesByProjectId = async (
+    projectId: string,
+    options?: { publicOnly?: boolean; client?: any }
+): Promise<Property[]> => {
+    if (!projectId) return [];
+    const publicOnly = options?.publicOnly ?? true;
+
+    if (isDemoModeEnabled() && !options?.client) {
+        const demoProps = propertiesData.filter((p) => p.projectId === projectId);
+        return publicOnly ? demoProps.filter((p) => isPropertyPubliclyVisible(p, { includeSold: true })) : demoProps;
+    }
+
+    const dbClient = getReadClient(options?.client, publicOnly);
+    let query = dbClient.from('properties').select('*').eq('project_id', projectId);
+    if (publicOnly) {
+        query = query.in('listing_status', ['active', 'sold']);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) {
+        throw new Error(error.message || 'Failed to get project properties from database.');
+    }
+
+    const mapped: Property[] = (data || []).map(mapPropertyFromDb);
+    const scoped = publicOnly ? mapped.filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true })) : mapped;
+    return hydratePropertiesBatch(scoped, { client: options?.client });
+};
+
+/**
+ * Fetches single property by ID with fast targeted hydration.
+ * Uses the authenticated client when a user session is active so authorized
+ * partners and admins can review unpublished/draft properties under RLS.
+ */
+export const getPropertyById = async (
+    id: string,
+    options?: { client?: any }
+): Promise<Property | undefined> => {
+    if (!id) return undefined;
+
+    if (isDemoModeEnabled() && !options?.client) {
+        return propertiesData.find((p) => p.id === id);
+    }
+
+    const dbClient = getReadClient(options?.client, false);
+    const { data, error } = await dbClient.from('properties').select('*').eq('id', id).maybeSingle();
+
+    if (error) {
+        throw new Error(error.message || 'Failed to fetch property from database.');
+    }
+
+    if (!data) {
+        return undefined;
+    }
+
+    const rawProp = mapPropertyFromDb(data);
+    try {
+        const [partner, project] = await Promise.all([
+            rawProp.partnerId
+                ? getPartnerById(rawProp.partnerId, { client: options?.client }).catch(() => undefined)
+                : Promise.resolve(undefined),
+            rawProp.projectId
+                ? getProjectById(rawProp.projectId, { client: options?.client }).catch(() => undefined)
+                : Promise.resolve(undefined),
+        ]);
+        rawProp.partnerName = partner?.name;
+        rawProp.partnerImageUrl = partner?.imageUrl;
+        rawProp.projectName = project?.name;
+    } catch (e) {
+        console.warn('Non-blocking property hydration warning:', e);
+    }
+    return rawProp;
+};
 
 /**
  * Paginated property filtering for public marketplace
  */
 export const getPaginatedProperties = async (options: {
-  page: number;
-  limit: number;
-  filters: PropertyFiltersType;
-  disablePagination?: boolean;
-  cityId?: string;
+    page: number;
+    limit: number;
+    filters: PropertyFiltersType;
+    disablePagination?: boolean;
+    cityId?: string;
+    client?: any;
 }): Promise<{ properties: Property[]; total: number }> => {
-    const allProps = await getProperties(options.cityId);
+    const allProps = await getProperties({ cityId: options.cityId, client: options.client });
     const filtered = filterProperties(allProps, options.filters);
-    
+
     const total = filtered.length;
     if (options.disablePagination) {
         return { properties: filtered, total };
@@ -529,16 +727,64 @@ export const getPaginatedProperties = async (options: {
 };
 
 /**
+ * Looks up an existing property linked to a specific source listing request ID
+ * (supports both top-level `source_request_id` column and legacy `_meta.sourceRequestId` JSONB).
+ */
+export const getPropertyBySourceRequestId = async (
+    sourceRequestId: string,
+    options?: { client?: any }
+): Promise<Property | undefined> => {
+    if (!sourceRequestId) return undefined;
+
+    if (isDemoModeEnabled() && !options?.client) {
+        return propertiesData.find((p) => p.sourceRequestId === sourceRequestId);
+    }
+
+    const dbClient = getReadClient(options?.client, false);
+    const { data, error } = await dbClient
+        .from('properties')
+        .select('*')
+        .eq('source_request_id', sourceRequestId)
+        .maybeSingle();
+
+    if (!error && data) {
+        const hydrated = await hydratePropertiesBatch([mapPropertyFromDb(data)], { client: options?.client });
+        return hydrated[0];
+    }
+
+    if (error && !isMissingColumnError(error, 'source_request_id')) {
+        throw new Error(error.message || 'Failed to look up property by source request ID.');
+    }
+
+    // Fallback when `source_request_id` column is absent or legacy row stored link inside `_meta.sourceRequestId`
+    const { data: rows, error: listError } = await dbClient
+        .from('properties')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (listError) {
+        throw new Error(listError.message || 'Failed to scan properties for source request link.');
+    }
+
+    const matched = (rows || []).map(mapPropertyFromDb).find((p: Property) => p.sourceRequestId === sourceRequestId);
+    if (!matched) return undefined;
+    const hydrated = await hydratePropertiesBatch([matched], { client: options?.client });
+    return hydrated[0];
+};
+
+/**
  * Maps frontend Property to database payload, embedding canonical business metadata safely
  */
 const mapPropertyToDbPayload = (property: Partial<Property>, existingMeta: Record<string, any> = {}) => {
     const payload: any = {};
-    
+
     if (property.partnerId) payload.partner_id = property.partnerId;
-    if (property.projectId) payload.project_id = property.projectId;
-    if (property.imageUrl) payload.main_image = property.imageUrl;
+    if ('projectId' in property) {
+        payload.project_id = property.projectId ? property.projectId : null;
+    }
+    if (property.imageUrl !== undefined) payload.main_image = property.imageUrl;
     if (property.gallery) payload.gallery = property.gallery;
-    
+
     if (property.title) {
         payload.title_ar = property.title.ar;
         payload.title_en = property.title.en;
@@ -551,41 +797,45 @@ const mapPropertyToDbPayload = (property: Partial<Property>, existingMeta: Recor
         payload.address_ar = property.address.ar;
         payload.address_en = property.address.en;
     }
-    
+
     if (property.priceNumeric !== undefined) payload.price = property.priceNumeric;
     if (property.area !== undefined) payload.area = property.area;
-    
+
     if (property.type) payload.type = property.type.en;
     if (property.status) payload.status = property.status.en;
     if (property.finishingStatus) payload.finishing_status = property.finishingStatus.en;
-    
+
     if (property.beds !== undefined) payload.beds = property.beds;
     if (property.baths !== undefined) payload.baths = property.baths;
     if (property.floor !== undefined) payload.floor = property.floor;
-    
-    if (property.amenities) payload.amenities = property.amenities; 
-    if (property.location) payload.location = property.location; 
-    
+
+    if (property.amenities) payload.amenities = property.amenities;
+    if (property.location) payload.location = property.location;
+
     if (property.isInCompound !== undefined) payload.is_in_compound = property.isInCompound;
     if (property.installmentsAvailable !== undefined) payload.installments_available = property.installmentsAvailable;
     if (property.realEstateFinanceAvailable !== undefined) payload.finance_available = property.realEstateFinanceAvailable;
-    
+
     if (property.delivery) {
         payload.delivery_immediate = property.delivery.isImmediate;
         payload.delivery_date = property.delivery.date;
     }
-    
+
     if (property.listingStatus) payload.listing_status = property.listingStatus;
     if (property.contactMethod) payload.contact_method = property.contactMethod;
     if (property.ownerPhone !== undefined) payload.owner_phone = property.ownerPhone;
     if (property.listingStartDate) payload.listing_start_date = property.listingStartDate;
     if (property.listingEndDate) payload.listing_end_date = property.listingEndDate;
+    if (property.cityId) payload.city_id = property.cityId;
+    if (property.sourceRequestId) payload.source_request_id = property.sourceRequestId;
 
     if (property.verificationStatus !== undefined) {
         payload.is_verified = property.verificationStatus === 'verified';
     }
 
-    // Prepare unified business metadata to be persisted in installments_info._meta
+    const derivedPubStatus =
+        property.publicationStatus || derivePublicationStatusForListing(property.listingStatus);
+
     const baseInstallments = property.installments || existingMeta.installments || {};
     const updatedMeta = {
         ...existingMeta,
@@ -594,7 +844,7 @@ const mapPropertyToDbPayload = (property: Partial<Property>, existingMeta: Recor
         slug: property.slug || existingMeta.slug,
         sourceType: property.sourceType || existingMeta.sourceType,
         sourceRequestId: property.sourceRequestId || existingMeta.sourceRequestId,
-        publicationStatus: property.publicationStatus || existingMeta.publicationStatus,
+        publicationStatus: derivedPubStatus || existingMeta.publicationStatus,
         availabilityStatus: property.availabilityStatus || existingMeta.availabilityStatus,
         verificationStatus: property.verificationStatus || existingMeta.verificationStatus,
         verifiedAt: property.verifiedAt || existingMeta.verifiedAt,
@@ -603,12 +853,12 @@ const mapPropertyToDbPayload = (property: Partial<Property>, existingMeta: Recor
         lastAvailabilityConfirmedAt: property.lastAvailabilityConfirmedAt || existingMeta.lastAvailabilityConfirmedAt,
         createdBy: property.createdBy || existingMeta.createdBy,
         updatedBy: property.updatedBy || existingMeta.updatedBy,
-        history: property.history || existingMeta.history || []
+        history: property.history || existingMeta.history || [],
     };
 
     payload.installments_info = {
         ...baseInstallments,
-        _meta: updatedMeta
+        _meta: updatedMeta,
     };
 
     return payload;
@@ -617,27 +867,32 @@ const mapPropertyToDbPayload = (property: Partial<Property>, existingMeta: Recor
 /**
  * Creates new property and persists all canonical business state in Supabase
  */
-export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl'>): Promise<Property> => {
+export const addProperty = async (
+    property: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl'>,
+    options?: { client?: any }
+): Promise<Property> => {
     requireAnyPermission([
-        Permission.MANAGE_ALL_PROPERTIES, 
-        Permission.MANAGE_PLATFORM_PROPERTIES, 
-        Permission.MANAGE_MARKET_PROPERTIES, 
-        Permission.MANAGE_OWN_PROPERTIES
+        Permission.MANAGE_ALL_PROPERTIES,
+        Permission.MANAGE_PLATFORM_PROPERTIES,
+        Permission.MANAGE_MARKET_PROPERTIES,
+        Permission.MANAGE_OWN_PROPERTIES,
     ]);
 
-    const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
-        ? crypto.randomUUID()
-        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-            const r = Math.random() * 16 | 0;
-            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-        });
+    const dbClient = options?.client || supabase;
+    const id =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                  const r = (Math.random() * 16) | 0;
+                  return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+              });
 
     const now = new Date().toISOString();
     const referenceNumber = property.referenceNumber || generatePropertyReference(id);
     const slug = property.slug || generatePropertySlug(property.title?.en || '', id);
 
     const initialHistoryEntry: PropertyHistoryEntry = {
-        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}`,
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hist-${Date.now()}`,
         propertyId: id,
         changedBy: property.partnerId || 'system',
         changedAt: now,
@@ -647,15 +902,19 @@ export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' 
         fieldName: 'creation',
         oldValue: null,
         newValue: { title: property.title?.en, price: property.priceNumeric, status: property.listingStatus },
-        note: 'Property created'
+        note: 'Property created',
     };
 
     const initialMeta = {
+        cityId: property.cityId || 'heliopolis',
         referenceNumber,
         slug,
         verificationStatus: property.verificationStatus || 'pending',
         availabilityStatus: property.availabilityStatus || 'available',
-        publicationStatus: property.publicationStatus || (property.listingStatus === 'draft' ? 'draft' : 'published'),
+        publicationStatus:
+            property.publicationStatus ||
+            derivePublicationStatusForListing(property.listingStatus) ||
+            'published',
         priceUpdatedAt: now,
         lastPriceConfirmedAt: now,
         lastAvailabilityConfirmedAt: now,
@@ -663,64 +922,74 @@ export const addProperty = async (property: Omit<Property, 'id' | 'partnerName' 
         sourceType: property.sourceType || 'partner_direct',
         sourceRequestId: property.sourceRequestId,
         createdBy: property.createdBy || property.partnerId,
-        history: [initialHistoryEntry]
+        history: [initialHistoryEntry],
     };
 
-    const dbPayload = {
+    const dbPayload: Record<string, any> = {
         id,
         ...mapPropertyToDbPayload(property, initialMeta),
+        listing_start_date: property.listingStartDate || now,
         created_at: now,
-        updated_at: now
+        updated_at: now,
     };
-    
-    try {
-        const { data, error } = await supabase.from('properties').insert(dbPayload).select().single();
-        if (error) {
-            console.error("Supabase property insert error:", error);
-            throw error;
-        }
 
-        // Try direct insert to property_history table
-        try {
-            await supabase.from('property_history').insert({
-                id: initialHistoryEntry.id,
-                property_id: id,
-                changed_by: initialHistoryEntry.changedBy,
-                change_type: 'creation',
-                field_name: 'creation',
-                old_value: null,
-                new_value: initialHistoryEntry.newValue,
-                note: initialHistoryEntry.note,
-                created_at: now
-            });
-        } catch {
-            // Table may be pending migration
-        }
-
-        invalidatePropertiesCache();
-        return mapPropertyFromDb(data);
-    } catch (e) {
-        console.error("Failed to insert property into Supabase:", e);
-        throw e;
+    let currentInsertPayload = dbPayload;
+    let { data, error } = await dbClient.from('properties').insert(currentInsertPayload).select().single();
+    for (let attempt = 0; attempt < 2 && error; attempt++) {
+        const nextPayload = stripMissingOptionalColumns(currentInsertPayload, error);
+        if (!nextPayload) break;
+        currentInsertPayload = nextPayload;
+        const retry = await dbClient.from('properties').insert(currentInsertPayload).select().single();
+        data = retry.data;
+        error = retry.error;
     }
+
+    if (error) {
+        console.error('Supabase property insert error:', error);
+        throw error;
+    }
+
+    try {
+        await dbClient.from('property_history').insert({
+            id: initialHistoryEntry.id,
+            property_id: id,
+            changed_by: initialHistoryEntry.changedBy,
+            change_type: 'creation',
+            field_name: 'creation',
+            old_value: null,
+            new_value: initialHistoryEntry.newValue,
+            note: initialHistoryEntry.note,
+            created_at: now,
+        });
+    } catch {
+        // Table may be pending migration
+    }
+
+    invalidatePropertiesCache();
+    return mapPropertyFromDb(data);
 };
 
 /**
  * Updates existing property and records database-backed audit log
  */
-export const updateProperty = async (propertyId: string, updates: Partial<Property>): Promise<Property | undefined> => {
+export const updateProperty = async (
+    propertyId: string,
+    updates: Partial<Property>,
+    options?: { client?: any }
+): Promise<Property | undefined> => {
     requireAnyPermission([
-        Permission.MANAGE_ALL_PROPERTIES, 
-        Permission.MANAGE_PLATFORM_PROPERTIES, 
-        Permission.MANAGE_MARKET_PROPERTIES, 
-        Permission.MANAGE_OWN_PROPERTIES
+        Permission.MANAGE_ALL_PROPERTIES,
+        Permission.MANAGE_PLATFORM_PROPERTIES,
+        Permission.MANAGE_MARKET_PROPERTIES,
+        Permission.MANAGE_OWN_PROPERTIES,
     ]);
 
+    const dbClient = options?.client || supabase;
     const now = new Date().toISOString();
-    const existing = await getPropertyById(propertyId).catch(() => undefined);
-    
-    // Existing metadata from the property itself (persisted in Supabase)
+    const existing = await getPropertyById(propertyId, { client: options?.client }).catch(() => undefined);
+
     const existingMeta = (existing as any)?.installments_info?._meta || {
+        cityId: existing?.cityId,
         referenceNumber: existing?.referenceNumber,
         slug: existing?.slug,
         sourceType: existing?.sourceType,
@@ -734,11 +1003,13 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
         lastAvailabilityConfirmedAt: existing?.lastAvailabilityConfirmedAt,
         createdBy: existing?.createdBy,
         updatedBy: existing?.updatedBy,
-        history: existing?.history || []
+        history: existing?.history || [],
     };
 
-    // Calculate metadata updates
     const metaUpdates: Record<string, any> = { ...existingMeta };
+    if (updates.cityId) {
+        metaUpdates.cityId = updates.cityId;
+    }
     if (updates.verificationStatus) {
         metaUpdates.verificationStatus = updates.verificationStatus;
         if (updates.verificationStatus === 'verified') {
@@ -750,9 +1021,13 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
         metaUpdates.availabilityStatus = updates.availabilityStatus;
         metaUpdates.lastAvailabilityConfirmedAt = now;
     }
-    if (updates.publicationStatus) {
-        metaUpdates.publicationStatus = updates.publicationStatus;
+
+    const nextPublicationStatus =
+        updates.publicationStatus || derivePublicationStatusForListing(updates.listingStatus);
+    if (nextPublicationStatus) {
+        metaUpdates.publicationStatus = nextPublicationStatus;
     }
+
     if (updates.priceNumeric !== undefined && existing?.priceNumeric !== updates.priceNumeric) {
         metaUpdates.priceUpdatedAt = now;
         metaUpdates.lastPriceConfirmedAt = now;
@@ -763,12 +1038,11 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
     if (updates.slug) metaUpdates.slug = updates.slug;
     if (updates.updatedBy) metaUpdates.updatedBy = updates.updatedBy;
 
-    // Track audit entries
     const historyEntries: PropertyHistoryEntry[] = [];
     if (existing) {
         if (updates.priceNumeric !== undefined && updates.priceNumeric !== existing.priceNumeric) {
             historyEntries.push({
-                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}-1`,
+                id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hist-${Date.now()}-1`,
                 propertyId,
                 changedBy: updates.updatedBy || updates.partnerId || 'admin',
                 changedAt: now,
@@ -778,12 +1052,12 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
                 fieldName: 'price',
                 oldValue: existing.priceNumeric,
                 newValue: updates.priceNumeric,
-                note: `Price updated from ${existing.priceNumeric} to ${updates.priceNumeric}`
+                note: `Price updated from ${existing.priceNumeric} to ${updates.priceNumeric}`,
             });
         }
         if (updates.availabilityStatus !== undefined && updates.availabilityStatus !== existing.availabilityStatus) {
             historyEntries.push({
-                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}-2`,
+                id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hist-${Date.now()}-2`,
                 propertyId,
                 changedBy: updates.updatedBy || updates.partnerId || 'admin',
                 changedAt: now,
@@ -793,12 +1067,12 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
                 fieldName: 'availability',
                 oldValue: existing.availabilityStatus || 'available',
                 newValue: updates.availabilityStatus,
-                note: `Availability changed to ${updates.availabilityStatus}`
+                note: `Availability changed to ${updates.availabilityStatus}`,
             });
         }
         if (updates.verificationStatus !== undefined && updates.verificationStatus !== existing.verificationStatus) {
             historyEntries.push({
-                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}-3`,
+                id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hist-${Date.now()}-3`,
                 propertyId,
                 changedBy: updates.updatedBy || 'admin',
                 changedAt: now,
@@ -808,12 +1082,12 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
                 fieldName: 'verification',
                 oldValue: existing.verificationStatus || 'pending',
                 newValue: updates.verificationStatus,
-                note: `Verification status changed to ${updates.verificationStatus}`
+                note: `Verification status changed to ${updates.verificationStatus}`,
             });
         }
         if (updates.listingStatus !== undefined && updates.listingStatus !== existing.listingStatus) {
             historyEntries.push({
-                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `hist-${Date.now()}-4`,
+                id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hist-${Date.now()}-4`,
                 propertyId,
                 changedBy: updates.updatedBy || updates.partnerId || 'admin',
                 changedAt: now,
@@ -823,17 +1097,16 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
                 fieldName: 'publication',
                 oldValue: existing.listingStatus,
                 newValue: updates.listingStatus,
-                note: `Listing status changed to ${updates.listingStatus}`
+                note: `Listing status changed to ${updates.listingStatus}`,
             });
         }
     }
 
     if (historyEntries.length > 0) {
         metaUpdates.history = [...historyEntries, ...(existingMeta.history || [])].slice(0, 100);
-        // Persist history entries to property_history table
         historyEntries.forEach(async (h) => {
             try {
-                await supabase.from('property_history').insert({
+                await dbClient.from('property_history').insert({
                     id: h.id,
                     property_id: h.propertyId,
                     changed_by: h.changedBy,
@@ -842,7 +1115,7 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
                     old_value: h.oldValue,
                     new_value: h.newValue,
                     note: h.note,
-                    created_at: h.createdAt
+                    created_at: h.createdAt,
                 });
             } catch {
                 // Table might be pending schema reload
@@ -850,38 +1123,44 @@ export const updateProperty = async (propertyId: string, updates: Partial<Proper
         });
     }
 
-    const dbUpdates = {
+    const dbUpdates: Record<string, any> = {
         ...mapPropertyToDbPayload(updates, metaUpdates),
-        updated_at: now
+        updated_at: now,
     };
-    
-    try {
-        const { data, error } = await supabase.from('properties').update(dbUpdates).eq('id', propertyId).select().single();
-        if (error) {
-            console.error("Supabase update error:", error);
-            throw error;
-        }
-        invalidatePropertiesCache();
-        return mapPropertyFromDb(data);
-    } catch (e) {
-        console.error("Error updating property in Supabase:", e);
-        throw e;
+
+    let currentUpdatePayload = dbUpdates;
+    let { data, error } = await dbClient.from('properties').update(currentUpdatePayload).eq('id', propertyId).select().single();
+    for (let attempt = 0; attempt < 2 && error; attempt++) {
+        const nextPayload = stripMissingOptionalColumns(currentUpdatePayload, error);
+        if (!nextPayload) break;
+        currentUpdatePayload = nextPayload;
+        const retry = await dbClient.from('properties').update(currentUpdatePayload).eq('id', propertyId).select().single();
+        data = retry.data;
+        error = retry.error;
     }
+
+    if (error) {
+        console.error('Supabase update error:', error);
+        throw error;
+    }
+    invalidatePropertiesCache();
+    return mapPropertyFromDb(data);
 };
 
 /**
  * Deletes property from Supabase
  */
-export const deleteProperty = async (propertyId: string): Promise<boolean> => {
+export const deleteProperty = async (propertyId: string, options?: { client?: any }): Promise<boolean> => {
     requireAnyPermission([
-        Permission.MANAGE_ALL_PROPERTIES, 
-        Permission.ARCHIVE_PROPERTIES, 
-        Permission.MANAGE_OWN_PROPERTIES
+        Permission.MANAGE_ALL_PROPERTIES,
+        Permission.ARCHIVE_PROPERTIES,
+        Permission.MANAGE_OWN_PROPERTIES,
     ]);
 
-    const { error } = await supabase.from('properties').delete().eq('id', propertyId);
+    const dbClient = options?.client || supabase;
+    const { error } = await dbClient.from('properties').delete().eq('id', propertyId);
     if (error) {
-        console.error("Error deleting property:", error);
+        console.error('Error deleting property:', error);
         return false;
     }
     invalidatePropertiesCache();

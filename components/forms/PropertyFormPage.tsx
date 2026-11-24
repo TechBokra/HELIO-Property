@@ -3,10 +3,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Property, FilterOption } from '../../types';
+import type { Partner, Property } from '../../types';
 import { useAuth } from '../auth/AuthContext';
-import { addProperty as apiAddProperty, updateProperty as apiUpdateProperty, getAllProperties, getPropertyById } from '../../services/properties';
+import { addProperty as apiAddProperty, updateProperty as apiUpdateProperty, getPropertyById } from '../../services/properties';
 import { getAllProjects } from '../../services/projects';
+import { getAllPartnersForAdmin } from '../../services/partners';
 import { getAllPropertyTypes, getAllFinishingStatuses, getAllAmenities } from '../../services/filters';
 import { Role, Permission } from '../../types';
 import { useToast } from '../shared/ToastContext';
@@ -14,7 +15,7 @@ import { useSubscriptionUsage } from '../../hooks/useSubscriptionUsage';
 import UpgradeNotice from '../shared/UpgradeNotice';
 import { useLanguage } from '../shared/LanguageContext';
 import { Button } from '../ui/Button';
-import FormField, { inputClasses, selectClasses } from '../ui/FormField';
+import FormField, { inputClasses } from '../ui/FormField';
 import { RadioGroup, RadioGroupItem } from '../ui/RadioGroup';
 import { uploadFile } from '../../services/upload';
 
@@ -26,9 +27,17 @@ import PropertyLocation from './property/PropertyLocation';
 import PropertyMedia from './property/PropertyMedia';
 import LocationPickerModal from '../shared/LocationPickerModal';
 import { useCityStore } from '../../store/useCityStore';
+import { invalidateAllPropertyQueries } from '../../utils/queryInvalidation';
+import {
+    validateEgyptPhone,
+    validatePropertyMediaFiles,
+    formatPropertyPrice,
+    getAllowedListingStatusesForRole,
+} from '../../utils/propertyFormShared';
 
 export interface PropertyFormData {
     cityId?: string;
+    partnerId?: string;
     projectId?: string;
     title: { ar: string; en: string };
     description: { ar: string; en: string };
@@ -77,6 +86,11 @@ const PropertyFormPage: React.FC = () => {
     });
 
     const { data: projects, isLoading: isLoadingProjs } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
+    const { data: partners } = useQuery({
+        queryKey: ['allPartnersAdmin'],
+        queryFn: getAllPartnersForAdmin,
+        enabled: isAdmin,
+    });
     const { data: propertyTypes, isLoading: isLoadingPropTypes } = useQuery({ queryKey: ['propertyTypes'], queryFn: getAllPropertyTypes });
     const { data: finishingStatuses, isLoading: isLoadingFinishing } = useQuery({ queryKey: ['finishingStatuses'], queryFn: getAllFinishingStatuses });
     const { data: amenities, isLoading: isLoadingAmenities } = useQuery({ queryKey: ['amenities'], queryFn: getAllAmenities });
@@ -99,16 +113,30 @@ const PropertyFormPage: React.FC = () => {
     const [isUploading, setIsUploading] = useState(false);
 
     const partnerProjects = useMemo(() => (projects || []).filter(p => p.partnerId === currentUser?.id), [projects, currentUser]);
+    const selectablePartners = useMemo(() => {
+        const list: Partner[] = (partners || []).filter((p) => {
+            if (propertyToEdit?.partnerId && p.id === propertyToEdit.partnerId) return true;
+            if (currentUser?.id && p.id === currentUser.id) return true;
+            if (p.status && p.status !== 'active') return false;
+            return p.type === 'developer' || p.type === 'agency';
+        });
+        if (currentUser && 'name' in currentUser && !list.some((p) => p.id === currentUser.id)) {
+            list.unshift(currentUser);
+        }
+        return list;
+    }, [partners, currentUser, propertyToEdit]);
+
     const watchContactMethod = watch('contactMethod');
 
     const handleNavigationSuccess = (property?: Property) => {
-        queryClient.invalidateQueries({ queryKey: ['allProperties'] });
-        queryClient.invalidateQueries({ queryKey: [`partner-properties-${currentUser?.id}`] });
-        if (propertyId) {
-            queryClient.invalidateQueries({ queryKey: ['property', propertyId] });
-        }
-        
         const projectId = property?.projectId || watch('projectId');
+        const resolvedPartnerId = property?.partnerId || watch('partnerId') || currentUser?.id;
+
+        invalidateAllPropertyQueries(queryClient, {
+            propertyId: property?.id || propertyId,
+            projectId,
+            partnerId: resolvedPartnerId,
+        });
         
         if (hasPermission(Permission.VIEW_ADMIN_DASHBOARD)) {
             navigate('/admin/properties/list');
@@ -127,7 +155,7 @@ const PropertyFormPage: React.FC = () => {
             showToast(td.addSuccess, 'success');
             handleNavigationSuccess(newProperty);
         },
-        onError: () => showToast('Failed to add property.', 'error'),
+        onError: (err: any) => showToast(err?.message || (language === 'ar' ? 'فشل إضافة العقار.' : 'Failed to add property.'), 'error'),
     });
 
     const updateMutation = useMutation({
@@ -136,7 +164,7 @@ const PropertyFormPage: React.FC = () => {
             showToast(td.updateSuccess, 'success');
             handleNavigationSuccess(updatedProperty);
         },
-        onError: () => showToast('Failed to update property.', 'error'),
+        onError: (err: any) => showToast(err?.message || (language === 'ar' ? 'فشل تحديث العقار.' : 'Failed to update property.'), 'error'),
     });
 
     useEffect(() => {
@@ -149,6 +177,7 @@ const PropertyFormPage: React.FC = () => {
                 // Prepare form data from property object
                 reset({
                     cityId: prop.cityId || 'heliopolis',
+                    partnerId: prop.partnerId || currentUser.id,
                     projectId: prop.projectId,
                     title: prop.title,
                     description: prop.description,
@@ -188,6 +217,7 @@ const PropertyFormPage: React.FC = () => {
              // New Property Defaults
              reset({
                 cityId: defaultCityId,
+                partnerId: searchParams.get('partnerId') || currentUser?.id || '',
                 projectId: searchParams.get('projectId') || undefined,
                 status: { en: 'For Sale', ar: 'للبيع' },
                 type: { en: 'Apartment', ar: 'شقة' },
@@ -207,10 +237,15 @@ const PropertyFormPage: React.FC = () => {
         }
     }, [propertyId, propertyToEdit, currentUser, navigate, reset, searchParams, hasPermission, isAdmin, defaultCityId]);
     
-    // Image Handlers
+    // Image Handlers with shared media validation
     const handleMainImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
+            const validation = validatePropertyMediaFiles([file], 0, language);
+            if (!validation.valid) {
+                showToast(validation.error || 'Invalid image.', 'error');
+                return;
+            }
             setMainImageFile(file);
             setMainImage(URL.createObjectURL(file));
         }
@@ -219,6 +254,11 @@ const PropertyFormPage: React.FC = () => {
     const handleGalleryImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const files: File[] = Array.from(e.target.files);
+            const validation = validatePropertyMediaFiles(files, galleryImages.length, language);
+            if (!validation.valid) {
+                showToast(validation.error || 'Invalid images.', 'error');
+                return;
+            }
             setGalleryImageFiles(prev => [...prev, ...files]);
             const newPreviews = files.map(file => URL.createObjectURL(file));
             setGalleryImages(prev => [...prev, ...newPreviews]);
@@ -277,20 +317,19 @@ const PropertyFormPage: React.FC = () => {
         setIsUploading(false);
         
         const priceNumeric = Number(formData.priceNumeric) || 0;
-        const formattedPriceAr = `${priceNumeric.toLocaleString('ar-EG')} ج.م`;
-        const formattedPriceEn = `EGP ${priceNumeric.toLocaleString('en-US')}`;
-
-        const pricePerMeterNumeric = Math.round(priceNumeric / (Number(formData.area) || 1));
-        const pricePerMeter = formData.status?.en === 'For Sale' && pricePerMeterNumeric > 0 ? {
-            ar: `${pricePerMeterNumeric.toLocaleString('ar-EG')} ج.م/م²`,
-            en: `EGP ${pricePerMeterNumeric.toLocaleString('en-US')}/m²`,
-        } : undefined;
+        const { price, pricePerMeter } = formatPropertyPrice(priceNumeric, Number(formData.area) || 0, formData.status?.en || 'For Sale');
 
         const isPartner = !isAdmin;
-        const initialStatus = isPartner && !propertyId ? 'draft' : formData.listingStatus;
-        const verificationStatus = isAdmin 
-            ? (propertyToEdit?.verificationStatus || 'pending') 
-            : (propertyToEdit?.verificationStatus || 'pending');
+        const allowedStatuses = getAllowedListingStatusesForRole(isAdmin, propertyToEdit?.listingStatus);
+        const requestedStatus = formData.listingStatus as any;
+        const initialStatus = isPartner && !propertyId
+            ? 'draft'
+            : (allowedStatuses.includes(requestedStatus) ? requestedStatus : allowedStatuses[0]);
+        const verificationStatus = propertyToEdit?.verificationStatus || 'pending';
+
+        const resolvedPartnerId = isAdmin
+            ? (formData.partnerId || propertyToEdit?.partnerId || currentUser.id)
+            : (propertyId ? propertyToEdit?.partnerId || currentUser.id : currentUser.id);
 
         const propertyData: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl'> = {
             ...formData,
@@ -313,8 +352,8 @@ const PropertyFormPage: React.FC = () => {
                 isImmediate: formData.delivery?.isImmediate === 'true',
                 date: formData.delivery?.isImmediate !== 'true' ? formData.delivery.date : undefined,
             },
-            partnerId: propertyId ? propertyToEdit?.partnerId || currentUser.id : currentUser.id,
-            price: { ar: formattedPriceAr, en: formattedPriceEn },
+            partnerId: resolvedPartnerId,
+            price,
             priceNumeric,
             pricePerMeter,
             imageUrl: finalMainImage,
@@ -382,13 +421,16 @@ const PropertyFormPage: React.FC = () => {
                     <PropertyBasicInfo 
                         projects={projects || []} 
                         partnerProjects={partnerProjects} 
-                        isAdmin={isAdmin} 
+                        isAdmin={isAdmin}
+                        partners={selectablePartners}
                     />
                     
                     <PropertySpecs 
                         propertyTypes={propertyTypes || []}
                         finishingStatuses={finishingStatuses || []}
                         amenities={amenities || []}
+                        isAdmin={isAdmin}
+                        editingStatus={propertyToEdit?.listingStatus}
                     />
 
                     <PropertyFinancials />
@@ -422,8 +464,23 @@ const PropertyFormPage: React.FC = () => {
                                 </RadioGroup>
                                 {watchContactMethod === 'direct' && (
                                     <div className="pt-4 animate-fadeIn max-w-md">
-                                        <FormField label={td.directContactPhone} id="ownerPhone">
-                                            <input type="tel" {...methods.register("ownerPhone", { required: watchContactMethod === 'direct' })} className={inputClasses} dir="ltr" placeholder="+20..." />
+                                        <FormField
+                                            label={td.directContactPhone}
+                                            id="ownerPhone"
+                                            error={methods.formState.errors?.ownerPhone?.message}
+                                        >
+                                            <input
+                                                type="tel"
+                                                {...methods.register("ownerPhone", {
+                                                    validate: (val) =>
+                                                        watchContactMethod !== 'direct'
+                                                            ? true
+                                                            : validateEgyptPhone(val, language),
+                                                })}
+                                                className={inputClasses}
+                                                dir="ltr"
+                                                placeholder="01012345678"
+                                            />
                                         </FormField>
                                     </div>
                                 )}

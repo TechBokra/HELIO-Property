@@ -374,14 +374,26 @@ const AdminOperationsCenterPage: React.FC = () => {
 
                                                 {/* Subject & Context */}
                                                 <TableCell>
-                                                    <p className="text-xs font-semibold text-gray-900 truncate max-w-[200px]">
+                                                    <p className="text-xs font-semibold text-gray-900 truncate max-w-[220px]">
                                                         {req.context.serviceTitle || req.context.details || '—'}
                                                     </p>
-                                                    {(req.context.propertyTitle || req.context.partnerName) && (
-                                                        <span className="text-[11px] text-gray-400 truncate max-w-[200px] block">
-                                                            {req.context.propertyTitle || req.context.partnerName}
-                                                        </span>
-                                                    )}
+                                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                                        {req.context.propertyReference && (
+                                                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                                                {req.context.propertyReference}
+                                                            </span>
+                                                        )}
+                                                        {req.context.createdPropertyReference && (
+                                                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                {req.context.createdPropertyReference}
+                                                            </span>
+                                                        )}
+                                                        {(req.context.propertyTitle || req.context.partnerName) && (
+                                                            <span className="text-[11px] text-gray-500 truncate max-w-[180px]">
+                                                                {req.context.propertyTitle || req.context.partnerName}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
 
                                                 {/* Operational State + Domain Status */}
@@ -460,6 +472,25 @@ const AdminOperationsCenterPage: React.FC = () => {
                                             <p className="text-xs text-gray-600 line-clamp-1 mt-0.5">
                                                 {req.context.serviceTitle || req.context.details || '—'}
                                             </p>
+                                            {(req.context.propertyReference || req.context.createdPropertyReference || req.context.propertyTitle) && (
+                                                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                    {req.context.propertyReference && (
+                                                        <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                                            {req.context.propertyReference}
+                                                        </span>
+                                                    )}
+                                                    {req.context.createdPropertyReference && (
+                                                        <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                            {req.context.createdPropertyReference}
+                                                        </span>
+                                                    )}
+                                                    {req.context.propertyTitle && (
+                                                        <span className="text-[11px] text-gray-500 truncate max-w-[180px]">
+                                                            {req.context.propertyTitle}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex items-center justify-between pt-1 text-[11px] text-gray-500">

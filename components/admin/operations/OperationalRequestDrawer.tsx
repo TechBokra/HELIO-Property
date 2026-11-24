@@ -202,10 +202,20 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
                             <h2 className="text-base font-bold text-gray-900 line-clamp-1">
                                 {request.context.serviceTitle || request.typeLabel[isAr ? 'ar' : 'en']}
                             </h2>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                            <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-500">
                                 <span>{isAr ? request.domainLabel.ar : request.domainLabel.en}</span>
                                 <span>•</span>
                                 <span>{request.ageHours}h ago</span>
+                                {request.context.propertyReference && (
+                                    <span className="font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                                        {request.context.propertyReference}
+                                    </span>
+                                )}
+                                {request.context.createdPropertyReference && (
+                                    <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                        {request.context.createdPropertyReference}
+                                    </span>
+                                )}
                                 {request.isAged && (
                                     <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.2 rounded border border-red-200">
                                         {isAr ? 'تجاوز المهلة (SLA Risk)' : 'SLA Exceeded'}
@@ -331,6 +341,11 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
                                             className="text-xs h-9 bg-gray-50/50 flex-1"
                                         >
                                             <option value="">{isAr ? 'غير معين (Unassigned)' : 'Unassigned'}</option>
+                                            {selectedAssignee && !(managers || []).some(m => m.id === selectedAssignee) && (
+                                                <option value={selectedAssignee}>
+                                                    {request.assignedToName || selectedAssignee}
+                                                </option>
+                                            )}
                                             {(managers || []).map(m => (
                                                 <option key={m.id} value={m.id}>
                                                     {(isAr && m.nameAr ? m.nameAr : m.name) || m.email}
@@ -395,6 +410,86 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
                                         </button>
                                     </div>
                                 </div>
+
+                                {/* Linked Property & Service Reference */}
+                                {(request.context.propertyId || request.context.propertyReference || request.context.createdPropertyId || request.context.propertyTitle || request.context.serviceTitle || request.context.partnerName) && (
+                                    <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-200 space-y-2.5 text-xs">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
+                                            <BuildingIcon className="w-4 h-4 text-blue-600" />
+                                            <span>{isAr ? 'مرجع العقار / الخدمة' : 'Property & Service Reference'}</span>
+                                        </h3>
+
+                                        {request.context.serviceTitle && (
+                                            <div className="flex items-start justify-between gap-2">
+                                                <span className="text-gray-500 shrink-0">{isAr ? 'الخدمة / الموضوع:' : 'Service / Subject:'}</span>
+                                                <span className="font-semibold text-gray-900 text-end">{request.context.serviceTitle}</span>
+                                            </div>
+                                        )}
+
+                                        {(request.context.propertyReference || request.context.propertyId || request.context.propertyTitle) && (
+                                            <div className="p-2.5 bg-white rounded-lg border border-blue-100 flex items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        {request.context.propertyReference && (
+                                                            <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                                                                {request.context.propertyReference}
+                                                            </span>
+                                                        )}
+                                                        <span className="font-semibold text-gray-900 truncate">
+                                                            {request.context.propertyTitle || request.context.propertyId}
+                                                        </span>
+                                                    </div>
+                                                    {request.context.propertyId && (
+                                                        <p className="text-[10px] font-mono text-gray-400 mt-0.5 truncate">
+                                                            ID: {request.context.propertyId}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                {request.context.propertyId && (
+                                                    <Link
+                                                        to={`/properties/${request.context.propertyId}`}
+                                                        className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shrink-0 transition-colors"
+                                                    >
+                                                        {isAr ? 'عرض العقار ↗' : 'View Property ↗'}
+                                                    </Link>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {request.context.createdPropertyId && (
+                                            <div className="p-2.5 bg-white rounded-lg border border-emerald-200 flex items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        {request.context.createdPropertyReference && (
+                                                            <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                                                {request.context.createdPropertyReference}
+                                                            </span>
+                                                        )}
+                                                        <span className="font-semibold text-emerald-900">
+                                                            {isAr ? 'مسودة العقار المُنشأة' : 'Created Draft Property'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] font-mono text-gray-400 mt-0.5 truncate">
+                                                        ID: {request.context.createdPropertyId}
+                                                    </p>
+                                                </div>
+                                                <Link
+                                                    to={`/admin/properties/edit/${request.context.createdPropertyId}`}
+                                                    className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shrink-0 transition-colors"
+                                                >
+                                                    {isAr ? 'فتح المسودة ↗' : 'Open Draft ↗'}
+                                                </Link>
+                                            </div>
+                                        )}
+
+                                        {request.context.partnerName && (
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-gray-500">{isAr ? 'الشريك المرتبط:' : 'Partner:'}</span>
+                                                <span className="font-semibold text-gray-900">{request.context.partnerName}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Request Content & Details */}
                                 <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2">

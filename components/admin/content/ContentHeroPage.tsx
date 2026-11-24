@@ -21,7 +21,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 const ContentHeroPage: React.FC = () => {
-    const { register, control, setValue } = useOutletContext<ContentFormContext>();
+    const { register, control, setValue, watch } = useOutletContext<ContentFormContext>();
     const { fields, append, remove, swap } = useFieldArray({ control, name: 'hero.images' });
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
@@ -109,7 +109,7 @@ const ContentHeroPage: React.FC = () => {
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Preview (Slide {index + 1})</label>
                                     <div className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
                                         <img 
-                                            src={(field as any).src || 'https://via.placeholder.com/300x169?text=No+Image'} 
+                                            src={watch(`hero.images.${index}.src`) || (field as any).src || 'https://via.placeholder.com/300x169?text=No+Image'} 
                                             alt="preview" 
                                             className="w-full h-full object-cover"
                                         />

@@ -18,6 +18,8 @@ import {
 } from '../../services/finishing';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import FinishingCostEstimator from './FinishingCostEstimator';
+import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
+import { isExternalUrl, normalizeActionTarget } from '../../utils/siteContentHelpers';
 
 const ServicePackageCard: React.FC<{
     service: FinishingService;
@@ -259,7 +261,11 @@ const FinishingPage: React.FC = () => {
 
     // Linked Property Context from state or URL query
     const linkedPropertyId = location.state?.propertyId || searchParams.get('propertyId');
-    const linkedPropertyTitle = location.state?.propertyTitle;
+    const linkedPropertyTitle = location.state?.propertyTitle || searchParams.get('propertyTitle') || undefined;
+    const linkedPropertyReference =
+        location.state?.propertyReference ||
+        searchParams.get('propertyReference') ||
+        (linkedPropertyId ? resolvePropertyReferenceCode(linkedPropertyId) : undefined);
     const linkedPropertyArea = location.state?.propertyArea ? Number(location.state.propertyArea) : undefined;
     const rawType = (location.state?.propertyType || searchParams.get('propertyType') || '').toLowerCase();
     const linkedPropertyType = rawType.includes('villa') || rawType.includes('فيلا') || rawType.includes('townhouse') || rawType.includes('twin') ? 'villa' : 'apartment';
@@ -295,6 +301,23 @@ const FinishingPage: React.FC = () => {
     const defaultContent = t.finishingPage;
     const dynamicContent = siteContent?.finishingPage?.[language];
     const content = dynamicContent || defaultContent;
+    const heroButtonLabel = dynamicContent?.heroButton || (language === 'ar' ? 'تواصل مع مدير التشطيبات' : 'Contact Finishing Manager');
+    const heroButtonLink = siteContent?.finishingPage?.heroButtonLink || '/request-service';
+    const ctaButtonLabel = dynamicContent?.ctaButton || defaultContent.ctaButton;
+    const ctaButtonLink = siteContent?.finishingPage?.ctaLink || '/request-service';
+
+    const handleActionOrRequest = (targetLink: string | undefined, defaultServiceTitle: string) => {
+        const normalized = normalizeActionTarget(targetLink, '/request-service');
+        if (normalized !== '/request-service') {
+            if (isExternalUrl(normalized)) {
+                window.open(normalized, '_blank', 'noopener,noreferrer');
+            } else {
+                navigate(normalized);
+            }
+            return;
+        }
+        handleRequestService(defaultServiceTitle);
+    };
 
     // Direct routing to verified Platform Finishing Manager UUID
     const handleRequestService = (serviceTitle: string, partnerId: string = PLATFORM_FINISHING_MANAGER_ID) => {
@@ -304,6 +327,7 @@ const FinishingPage: React.FC = () => {
                 partnerId: partnerId,
                 serviceType: 'finishing',
                 propertyId: linkedPropertyId || undefined,
+                propertyReference: linkedPropertyReference || undefined,
                 propertyTitle: linkedPropertyTitle || undefined,
             },
         });
@@ -318,6 +342,7 @@ const FinishingPage: React.FC = () => {
                 tier: tier,
                 isBooking: true,
                 propertyId: linkedPropertyId || undefined,
+                propertyReference: linkedPropertyReference || undefined,
                 propertyTitle: linkedPropertyTitle || undefined,
             },
         });
@@ -406,10 +431,10 @@ const FinishingPage: React.FC = () => {
                             {t.sharing.share}
                         </Button>
                         <Button
-                            onClick={() => handleRequestService(language === 'ar' ? 'طلب استشارة تشطيب عامة' : 'General Finishing Inquiry')}
+                            onClick={() => handleActionOrRequest(heroButtonLink, language === 'ar' ? 'طلب استشارة تشطيب عامة' : 'General Finishing Inquiry')}
                             className="bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold"
                         >
-                            {language === 'ar' ? 'تواصل مع مدير التشطيبات' : 'Contact Finishing Manager'}
+                            {heroButtonLabel}
                         </Button>
                     </div>
                 </div>
@@ -427,6 +452,11 @@ const FinishingPage: React.FC = () => {
                                 <span className="font-bold text-gray-900 dark:text-white">
                                     {language === 'ar' ? 'طلب تشطيب مرتبط بالعقار:' : 'Finishing inquiry for property:'}
                                 </span>{' '}
+                                {linkedPropertyReference && (
+                                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 me-1.5">
+                                        {linkedPropertyReference}
+                                    </span>
+                                )}
                                 <span className="font-semibold text-amber-600 dark:text-amber-400">
                                     {linkedPropertyTitle || linkedPropertyId}
                                 </span>
@@ -526,6 +556,7 @@ const FinishingPage: React.FC = () => {
                     defaultArea={linkedPropertyArea}
                     defaultPropertyType={linkedPropertyType}
                     propertyId={linkedPropertyId || undefined}
+                    propertyReference={linkedPropertyReference || undefined}
                     propertyTitle={linkedPropertyTitle || undefined}
                     onRfqLaunched={() => {
                         // Optional callback
@@ -596,10 +627,10 @@ const FinishingPage: React.FC = () => {
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                         <Button
-                            onClick={() => handleRequestService(language === 'ar' ? 'طلب معاينة واستشارة للموقع' : 'Site Visit & Consultation Request')}
+                            onClick={() => handleActionOrRequest(ctaButtonLink, language === 'ar' ? 'طلب معاينة واستشارة للموقع' : 'Site Visit & Consultation Request')}
                             className="w-full sm:w-auto bg-amber-500 text-gray-900 font-bold px-8 py-3.5 rounded-lg text-base hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
                         >
-                            {content.ctaButton}
+                            {ctaButtonLabel}
                         </Button>
                     </div>
                 </div>

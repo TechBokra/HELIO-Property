@@ -5,8 +5,10 @@ import type { Property, Request } from '../../../types';
 import { RequestType, Role, LeadStatus, RequestStatus } from '../../../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getRequestById, updateRequest, addMessageToLead } from '../../../services/requests';
-import { getAllPartnersForAdmin, addPartner } from '../../../services/partners';
-import { addProperty } from '../../../services/properties';
+import { getAllPartnersForAdmin } from '../../../services/partners';
+import { approvePropertyListingRequest } from '../../../services/propertyRequests';
+import { invalidateAllPropertyQueries } from '../../../utils/queryInvalidation';
+import { resolvePropertyReferenceCode } from '../../../utils/propertyFormShared';
 import { ArrowLeftIcon, CheckCircleIcon, XCircleIcon, BuildingIcon, UsersIcon, PhoneIcon, BedIcon, BathIcon, AreaIcon, FloorIcon, WrenchScrewdriverIcon } from '../../ui/Icons';
 import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
@@ -103,8 +105,39 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
         onError: () => showToast('Failed to update request', 'error')
     });
 
-    const addPropertyMutation = useMutation({
-        mutationFn: (propertyData: Omit<Property, 'id'>) => addProperty(propertyData),
+    const acceptMutation = useMutation({
+        mutationFn: async () => {
+            if (!request) throw new Error('Request not found');
+            return approvePropertyListingRequest(request.id, {
+                assigneeId: actionAssignee || undefined,
+                actorId: currentUser?.id,
+                partners: partners || [],
+            });
+        },
+        onSuccess: ({ property, alreadyExisted }) => {
+            invalidateAllPropertyQueries(queryClient, { propertyId: property.id, partnerId: property.partnerId });
+            queryClient.invalidateQueries({ queryKey: ['propertyRequests'] });
+            queryClient.invalidateQueries({ queryKey: ['request', requestId] });
+            queryClient.invalidateQueries({ queryKey: ['allRequests'] });
+            queryClient.invalidateQueries({ queryKey: ['unifiedRequests'] });
+
+            showToast(
+                alreadyExisted
+                    ? (language === 'ar' ? 'تم استكمال ربط المسودة الموجودة دون تكرار.' : 'Existing draft property linked cleanly without duplication.')
+                    : (language === 'ar' ? 'تم قبول الطلب وإنشاء مسودة عقار واحدة مرتبطة بالطلب.' : 'Request accepted. Single draft property created with bidirectional link.'),
+                'success'
+            );
+            setTimeout(() => {
+                navigate(`/admin/properties/edit/${property.id}`);
+            }, 900);
+        },
+        onError: (error: any) => {
+            console.error(error);
+            showToast(
+                error?.message || (language === 'ar' ? 'فشل إنشاء المسودة. يمكنك إعادة المحاولة بأمان دون تكرار.' : 'Failed to create draft property. Retrying is safe and idempotent.'),
+                'error'
+            );
+        },
     });
 
     const updateRequestStatusMutation = useMutation({
@@ -112,115 +145,14 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
         onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ['propertyRequests'] });
             queryClient.invalidateQueries({ queryKey: ['request', requestId] });
+            queryClient.invalidateQueries({ queryKey: ['unifiedRequests'] });
         },
         onError: () => showToast('Failed to update request status.', 'error')
     });
 
     const handleAcceptAsDraft = async () => {
-        if (!request) return;
-
-        try {
-            const payload = request.payload as any;
-            const pd = payload.propertyDetails;
-
-            if (!pd) {
-                showToast('Invalid request data: Missing property details', 'error');
-                return;
-            }
-            
-            // Helper for safe numbers
-            const num = (val: any) => {
-                const n = parseInt(val);
-                return isNaN(n) ? 0 : n;
-            }
-            
-            const mainImage = (payload.images && payload.images.length > 0) ? payload.images[0] : 'https://via.placeholder.com/800x600';
-
-            const validPartnerId = actionAssignee || (partners && partners[0] ? partners[0].id : (currentUser?.id || '3e554896-eee8-4545-9c7f-0a79a4c1a9f1'));
-            const newProperty: Omit<Property, 'id' | 'partnerName' | 'partnerImageUrl' | 'projectName'> = {
-                partnerId: validPartnerId,
-                sourceType: 'owner_public',
-                sourceRequestId: request.id,
-                publicationStatus: 'draft',
-                verificationStatus: 'pending',
-                availabilityStatus: 'available',
-                createdBy: currentUser?.id || 'admin',
-                title: { 
-                    en: `[DRAFT] ${pd.propertyType?.en || 'Property'} - ${pd.address || 'New Heliopolis'}`, 
-                    ar: `[مسودة] ${pd.propertyType?.ar || 'عقار'} - ${pd.address || 'هليوبوليس الجديدة'}` 
-                },
-                description: { 
-                    en: pd.description?.en || pd.description?.ar || 'Description pending review...', 
-                    ar: pd.description?.ar || pd.description?.en || 'الوصف قيد المراجعة...' 
-                },
-                address: { 
-                    en: pd.address || 'Address pending', 
-                    ar: pd.address || 'العنوان قيد المراجعة' 
-                },
-                location: pd.location || { lat: 30.11, lng: 31.65 },
-                status: { 
-                    en: pd.purpose?.en || 'For Sale', 
-                    ar: pd.purpose?.ar || 'للبيع' 
-                },
-                type: { 
-                    en: (pd.propertyType?.en || 'Apartment'), 
-                    ar: (pd.propertyType?.ar || 'شقة')
-                },
-                finishingStatus: pd.finishingStatus ? { 
-                    en: pd.finishingStatus.en || pd.finishingStatus, 
-                    ar: pd.finishingStatus.ar || pd.finishingStatus
-                } : undefined,
-                area: num(pd.area),
-                price: { 
-                    en: `EGP ${num(pd.price).toLocaleString('en-US')}`,
-                    ar: `${num(pd.price).toLocaleString('ar-EG')} ج.م`
-                },
-                priceNumeric: num(pd.price),
-                beds: num(pd.bedrooms || pd.beds),
-                baths: num(pd.bathrooms || pd.baths),
-                floor: num(pd.floor),
-                amenities: pd.amenities || { en: [], ar: [] },
-                isInCompound: pd.isInCompound === 'yes' || pd.isInCompound === true,
-                realEstateFinanceAvailable: pd.realEstateFinanceAvailable === 'yes' || pd.realEstateFinanceAvailable === true,
-                installmentsAvailable: pd.hasInstallments === 'yes' || pd.hasInstallments === true,
-                delivery: { 
-                    isImmediate: pd.deliveryType === 'immediate',
-                    date: pd.deliveryType === 'future' ? `${pd.deliveryYear}-${pd.deliveryMonth}` : undefined
-                },
-                listingStatus: 'draft', 
-                listingStartDate: new Date().toISOString(), 
-                contactMethod: pd.contactMethod || 'platform',
-                ownerPhone: pd.ownerPhone,
-                imageUrl: mainImage,
-                imageUrl_small: mainImage,
-                imageUrl_medium: mainImage,
-                imageUrl_large: mainImage,
-                gallery: (payload.images && payload.images.length > 1) ? payload.images.slice(1) : [],
-            };
-
-            const createdProperty = await addPropertyMutation.mutateAsync(newProperty);
-            
-            // Link both ways: update request with status 'approved' and createdPropertyId
-            await updateRequest(request.id, {
-                status: 'approved',
-                payload: {
-                    ...payload,
-                    createdPropertyId: createdProperty.id
-                }
-            });
-            queryClient.invalidateQueries({ queryKey: ['propertyRequests'] });
-            queryClient.invalidateQueries({ queryKey: ['request', requestId] });
-            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
-
-            showToast('Request accepted. Draft property created with explicit traceability link.', 'success');
-            setTimeout(() => {
-                navigate(`/admin/properties/edit/${createdProperty.id}`);
-            }, 1000);
-
-        } catch (error) {
-            console.error(error);
-            showToast('Failed to create property from request.', 'error');
-        }
+        if (!request || acceptMutation.isPending) return;
+        acceptMutation.mutate();
     };
 
     const handleReject = async () => {
@@ -288,7 +220,11 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
                                 to={`/admin/properties/edit/${payload.createdPropertyId}`} 
                                 className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors"
                             >
-                                <span>{language === 'ar' ? 'عرض المسودة العقارية المنشأة ←' : 'View Created Draft Property →'}</span>
+                                <span>
+                                    {language === 'ar'
+                                        ? `فتح المسودة العقارية (${resolvePropertyReferenceCode(payload.createdPropertyId, payload.createdPropertyReference)}) ←`
+                                        : `Open Draft Property (${resolvePropertyReferenceCode(payload.createdPropertyId, payload.createdPropertyReference)}) →`}
+                                </span>
                             </Link>
                         )}
                         <div className={`px-4 py-1.5 rounded-full text-sm font-bold capitalize flex items-center gap-2 ${
@@ -462,11 +398,13 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
                                             <div className="flex flex-wrap gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                                                 <Button 
                                                     onClick={handleAcceptAsDraft} 
-                                                    isLoading={addPropertyMutation.isPending || updateRequestStatusMutation.isPending}
+                                                    isLoading={acceptMutation.isPending || updateRequestStatusMutation.isPending}
                                                     className="flex-1 bg-green-600 hover:bg-green-700 text-white shadow-md py-3 text-lg"
                                                 >
                                                     <CheckCircleIcon className="w-6 h-6 mr-2" />
-                                                    Accept as Draft & Edit
+                                                    {payload.createdPropertyId
+                                                        ? (language === 'ar' ? 'استكمال ربط المسودة واعتماد الطلب' : 'Complete Draft Link & Approve')
+                                                        : (language === 'ar' ? 'اعتماد وإنشاء مسودة عقار' : 'Accept as Draft & Edit')}
                                                 </Button>
                                                 
                                                 <Button 
@@ -497,12 +435,31 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
                                         )}
                                     </>
                                 ) : (
-                                    <div className="text-center py-8 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-                                        <CheckCircleIcon className={`w-12 h-12 mx-auto mb-3 ${request.status === 'approved' ? 'text-green-500' : 'text-red-500'}`} />
+                                    <div className="text-center py-8 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 space-y-3">
+                                        <CheckCircleIcon className={`w-12 h-12 mx-auto mb-1 ${request.status === 'approved' ? 'text-green-500' : 'text-red-500'}`} />
                                         <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                                             Request {request.status === 'approved' ? 'Accepted' : 'Rejected'}
                                         </h3>
-                                        <p className="text-gray-500 mt-2">This request has been processed.</p>
+                                        <p className="text-gray-500">This request has been processed.</p>
+                                        {payload.createdPropertyId && (
+                                            <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                                                <span className="font-mono text-xs px-2.5 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                                                    {resolvePropertyReferenceCode(payload.createdPropertyId, payload.createdPropertyReference)}
+                                                </span>
+                                                <Link
+                                                    to={`/admin/properties/edit/${payload.createdPropertyId}`}
+                                                    className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold text-xs shadow-sm transition-colors"
+                                                >
+                                                    {language === 'ar' ? 'تعديل المسودة المرتبطة' : 'Edit Linked Draft Property'}
+                                                </Link>
+                                                <Link
+                                                    to={`/properties/${payload.createdPropertyId}`}
+                                                    className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 font-semibold text-xs transition-colors"
+                                                >
+                                                    {language === 'ar' ? 'معاينة العقار' : 'Preview Listing'}
+                                                </Link>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </CardContent>

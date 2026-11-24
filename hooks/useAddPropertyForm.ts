@@ -1,21 +1,25 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { addRequest } from '../services/requests';
 import { submitIntake } from '../services/intake';
-import { RequestType, AddPropertyRequest, FilterOption } from '../types';
+import { RequestType } from '../types';
 import { useToast } from '../components/shared/ToastContext';
 import { getAllPropertyTypes, getAllFinishingStatuses, getAllAmenities } from '../services/filters';
 import { getPlans } from '../services/plans';
 import { useLanguage } from '../components/shared/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import { uploadFile } from '../services/upload';
-
-const purposeOptions = [
-    { en: 'For Sale', ar: 'للبيع' },
-    { en: 'For Rent', ar: 'إيجار' },
-] as const;
+import { useCityStore } from '../store/useCityStore';
+import {
+    PROPERTY_PURPOSE_OPTIONS,
+    validateEgyptPhone,
+    validatePropertyMediaFiles,
+    resolvePropertyTypeOption,
+    resolveFinishingOption,
+    resolveListingPurpose,
+    normalizeBilingualText,
+} from '../utils/propertyFormShared';
 
 export const useAddPropertyForm = () => {
     const { language, t } = useLanguage();
@@ -40,9 +44,13 @@ export const useAddPropertyForm = () => {
     const { data: plans, isLoading: isLoadingPlans } = useQuery({ queryKey: ['plans'], queryFn: getPlans });
     const isLoadingContext = isLoadingPropTypes || isLoadingFinishing || isLoadingPlans || isLoadingAmenities;
 
+    const activeCityId = useCityStore((s) => s.activeCityId);
+    const cities = useCityStore((s) => s.cities);
+
     // React Hook Form
-    const { register, handleSubmit, watch, setValue, formState: { errors }, reset, getValues } = useForm({
+    const { register, handleSubmit, watch, setValue, setError, clearErrors, formState: { errors }, reset, getValues } = useForm({
         defaultValues: {
+            cityId: activeCityId || 'heliopolis',
             customerName: '', customerPhone: '', contactTime: '',
             description: { ar: '', en: '' },
             propertyType: '', finishingStatus: '', area: '', price: '',
@@ -66,6 +74,7 @@ export const useAddPropertyForm = () => {
     const watchLatitude = watch("latitude");
     const watchLongitude = watch("longitude");
     const watchAmenities = watch('amenities');
+    const watchCityId = watch('cityId');
 
     // Mutation for submission via Canonical Intake Architecture
     const mutation = useMutation({
@@ -77,10 +86,12 @@ export const useAddPropertyForm = () => {
                 customerName: data.customerName,
                 customerPhone: data.customerPhone,
                 contactTime: data.contactTime,
+                cityId: data.cityId,
                 ...data.propertyDetails,
                 images: data.images,
             },
             contextData: {
+                cityId: data.cityId,
                 propertyDetails: data.propertyDetails,
                 cooperationType: data.cooperationType,
                 images: data.images,
@@ -130,12 +141,13 @@ export const useAddPropertyForm = () => {
         return (plans.individual as any)[subCategory] || {};
     }, [purpose, plans]);
 
-    // Image handling
+    // Image handling with shared validation constraints
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const filesArray: File[] = Array.from(e.target.files);
-            if ((images.length + filesArray.length) > 10) {
-                showToast('You can only upload a maximum of 10 images.', 'error');
+            const validation = validatePropertyMediaFiles(filesArray, images.length, language);
+            if (!validation.valid) {
+                showToast(validation.error || 'Invalid image selection.', 'error');
                 return;
             }
             setImages(prev => [...prev, ...filesArray]);
@@ -175,8 +187,11 @@ export const useAddPropertyForm = () => {
     
     // Form submission
     const onSubmit = async (formData: any) => {
-        const isOwner = formData.isOwner || getValues('isOwner');
+        clearErrors(['isOwner', 'ownerPhone']);
+
+        const isOwner = Boolean(formData.isOwner || getValues('isOwner'));
         if (!isOwner) {
+            setError('isOwner', { type: 'manual', message: t_page.errors.mustBeOwner });
             showToast(t_page.errors.mustBeOwner, 'error');
             return;
         }
@@ -184,6 +199,20 @@ export const useAddPropertyForm = () => {
         if (!cooperationType || !purpose) {
             showToast(t_page.errors.cooperationType, 'error');
             return;
+        }
+
+        const resolvedContactMethod = cooperationType === 'commission'
+            ? 'platform'
+            : ((formData.contactMethod || getValues('contactMethod') || 'platform') as 'platform' | 'direct');
+        const resolvedOwnerPhone = String(formData.ownerPhone || getValues('ownerPhone') || '').trim();
+
+        if (resolvedContactMethod === 'direct') {
+            const phoneValidation = validateEgyptPhone(resolvedOwnerPhone, language);
+            if (phoneValidation !== true) {
+                setError('ownerPhone', { type: 'manual', message: phoneValidation });
+                showToast(phoneValidation, 'error');
+                return;
+            }
         }
         
         if (images.length === 0) {
@@ -198,7 +227,7 @@ export const useAddPropertyForm = () => {
              imageUrls = await Promise.all(images.map(file => uploadFile(file)));
         } catch (error) {
             console.error("Upload failed", error);
-            showToast("Failed to upload images. Please check your connection.", "error");
+            showToast(language === 'ar' ? 'فشل رفع الصور. يرجى التحقق من الاتصال.' : "Failed to upload images. Please check your connection.", "error");
             setIsUploading(false);
             return;
         }
@@ -206,21 +235,28 @@ export const useAddPropertyForm = () => {
         
         const lat = formData.latitude || getValues('latitude') || '30.11';
         const lng = formData.longitude || getValues('longitude') || '31.65';
+        const selectedCityId = formData.cityId || getValues('cityId') || activeCityId || 'heliopolis';
         
-        const selectedTypeObj = propertyTypes?.find(t => t.en.toLowerCase() === (formData.propertyType || '').toLowerCase()) || { en: formData.propertyType, ar: formData.propertyType };
-        const selectedFinishingObj = finishingStatuses?.find(s => s.en.toLowerCase() === (formData.finishingStatus || '').toLowerCase()) || { en: formData.finishingStatus, ar: formData.finishingStatus };
+        const selectedTypeObj = resolvePropertyTypeOption(formData.propertyType, propertyTypes);
+        const selectedFinishingObj = resolveFinishingOption(formData.finishingStatus, finishingStatuses);
+        const selectedPurposeObj = resolveListingPurpose(purpose || PROPERTY_PURPOSE_OPTIONS[0]);
+        const descriptionObj = normalizeBilingualText({
+            ar: formData['description.ar'] || '',
+            en: formData['description.en'] || '',
+        });
 
         const propertyDetails = {
-            purpose: purposeOptions.find(o => o.en === purpose)!,
+            cityId: selectedCityId,
+            purpose: selectedPurposeObj,
             title: { ar: 'عقار جديد (في انتظار العنوان)', en: 'New Property (Pending Title)' },
-            description: { ar: formData['description.ar'] || '', en: formData['description.en'] || '' },
+            description: descriptionObj,
             propertyType: selectedTypeObj,
             finishingStatus: selectedFinishingObj,
-            area: parseInt(formData.area),
-            price: parseInt(formData.price),
-            bedrooms: formData.bedrooms || formData.beds ? parseInt(formData.bedrooms || formData.beds) : undefined,
-            bathrooms: formData.bathrooms || formData.baths ? parseInt(formData.bathrooms || formData.baths) : undefined,
-            floor: formData.floor ? parseInt(formData.floor) : undefined,
+            area: parseInt(formData.area, 10),
+            price: parseInt(formData.price, 10),
+            bedrooms: formData.bedrooms || formData.beds ? parseInt(formData.bedrooms || formData.beds, 10) : undefined,
+            bathrooms: formData.bathrooms || formData.baths ? parseInt(formData.bathrooms || formData.baths, 10) : undefined,
+            floor: formData.floor !== undefined && formData.floor !== '' ? parseInt(formData.floor, 10) : undefined,
             address: formData.address,
             amenities: formData.amenities || getValues('amenities'),
             location: { lat: parseFloat(lat), lng: parseFloat(lng) },
@@ -230,13 +266,13 @@ export const useAddPropertyForm = () => {
             deliveryYear: formData.deliveryYear,
             hasInstallments: formData.hasInstallments === 'yes',
             realEstateFinanceAvailable: formData.realEstateFinanceAvailable === 'yes',
-            downPayment: formData.downPayment ? parseInt(formData.downPayment) : undefined,
-            monthlyInstallment: formData.monthlyInstallment ? parseInt(formData.monthlyInstallment) : undefined,
-            years: formData.years ? parseInt(formData.years) : undefined,
+            downPayment: formData.downPayment ? parseInt(formData.downPayment, 10) : undefined,
+            monthlyInstallment: formData.monthlyInstallment ? parseInt(formData.monthlyInstallment, 10) : undefined,
+            years: formData.years ? parseInt(formData.years, 10) : undefined,
             listingStartDate: formData.listingStartDate,
             listingEndDate: formData.listingEndDate,
-            contactMethod: cooperationType === 'commission' ? 'platform' : (formData.contactMethod || getValues('contactMethod')),
-            ownerPhone: formData.ownerPhone || getValues('ownerPhone'),
+            contactMethod: resolvedContactMethod,
+            ownerPhone: resolvedOwnerPhone || undefined,
         };
         
         if (cooperationType === 'paid_listing') {
@@ -246,7 +282,7 @@ export const useAddPropertyForm = () => {
             
             if (planDetails) {
                  const planPriceString = planDetails[language]?.price || "0";
-                 priceNumeric = parseInt(planPriceString.replace(/[^0-9]/g, '')) || 0;
+                 priceNumeric = parseInt(planPriceString.replace(/[^0-9]/g, ''), 10) || 0;
             }
             
             // Fallback price if DB fetch failed or returns 0
@@ -264,6 +300,7 @@ export const useAddPropertyForm = () => {
                     data: {
                         requesterInfo: { name: formData.customerName, phone: formData.customerPhone },
                         payload: {
+                            cityId: selectedCityId,
                             contactTime: formData.contactTime,
                             cooperationType: cooperationType,
                             propertyDetails,
@@ -274,6 +311,7 @@ export const useAddPropertyForm = () => {
             });
         } else {
             mutation.mutate({
+                cityId: selectedCityId,
                 customerName: formData.customerName,
                 customerPhone: formData.customerPhone,
                 contactTime: formData.contactTime,
@@ -309,6 +347,8 @@ export const useAddPropertyForm = () => {
         setValue,
         errors,
         onSubmit,
+        cities,
+        watchCityId,
         watchPropertyType,
         watchAmenities,
         availableAmenities,

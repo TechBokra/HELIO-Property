@@ -8,6 +8,7 @@ import DynamicForm from '../../shared/DynamicForm';
 import FormField from '../../ui/FormField';
 import { Input } from '../../ui/Input';
 import { RadioGroup, RadioGroupItem } from '../../ui/RadioGroup';
+import { selectClasses } from '../../ui/FormField';
 
 // Derive props type from the return type of the hook
 type Step3FormFieldsProps = ReturnType<typeof useAddPropertyForm>;
@@ -33,27 +34,42 @@ export const Step3FormFields: React.FC<Step3FormFieldsProps> = (props) => {
 
     const watchContactMethod = watchManual("contactMethod");
 
-    // Header Content: Location Map
+    // Header Content: City + Location Map
     const locationHeader = (
-        <div className="col-span-full mb-8 bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                     <label className="block text-base font-bold text-gray-900 dark:text-white mb-1">{language === 'ar' ? 'موقع العقار' : 'Property Location'}</label>
-                     <p className="text-sm text-gray-500">{language === 'ar' ? 'حدد الموقع الدقيق للعقار على الخريطة.' : 'Pinpoint the exact location on the map.'}</p>
+        <div className="col-span-full space-y-4 mb-6">
+            {props.cities && props.cities.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <FormField label={language === 'ar' ? 'المدينة / النطاق' : 'City Portal'} id="visitor-cityId">
+                        <select {...registerManual("cityId")} className={selectClasses}>
+                            {props.cities.map((city) => (
+                                <option key={city.id} value={city.id}>
+                                    {city.name[language]}
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
                 </div>
-                
-                <div className="flex items-center gap-3">
-                     {(props.watchLatitude && props.watchLongitude) ? (
-                        <div className="text-xs font-mono text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-lg flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                            {parseFloat(props.watchLatitude).toFixed(4)}, {parseFloat(props.watchLongitude).toFixed(4)}
-                        </div>
-                    ) : (
-                        <span className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">{language === 'ar' ? 'مطلوب التحديد' : 'Location Required'}</span>
-                    )}
-                    <Button type="button" variant="outline" size="sm" onClick={() => setIsLocationModalOpen(true)} className="flex items-center gap-2">
-                        <LocationMarkerIcon className="w-4 h-4"/> {language === 'ar' ? 'تحديد' : 'Select'}
-                    </Button>
+            )}
+            <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                         <label className="block text-base font-bold text-gray-900 dark:text-white mb-1">{language === 'ar' ? 'موقع العقار' : 'Property Location'}</label>
+                         <p className="text-sm text-gray-500">{language === 'ar' ? 'حدد الموقع الدقيق للعقار على الخريطة.' : 'Pinpoint the exact location on the map.'}</p>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                         {(props.watchLatitude && props.watchLongitude) ? (
+                            <div className="text-xs font-mono text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-lg flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                                {parseFloat(props.watchLatitude).toFixed(4)}, {parseFloat(props.watchLongitude).toFixed(4)}
+                            </div>
+                        ) : (
+                            <span className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">{language === 'ar' ? 'مطلوب التحديد' : 'Location Required'}</span>
+                        )}
+                        <Button type="button" variant="outline" size="sm" onClick={() => setIsLocationModalOpen(true)} className="flex items-center gap-2">
+                            <LocationMarkerIcon className="w-4 h-4"/> {language === 'ar' ? 'تحديد' : 'Select'}
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -150,8 +166,8 @@ export const Step3FormFields: React.FC<Step3FormFieldsProps> = (props) => {
                         </RadioGroup>
                         {watchContactMethod === 'direct' && (
                             <div className="mt-3 animate-fadeIn max-w-sm">
-                                <FormField label={`${t_page.phone} (For Public)`} id="ownerPhone">
-                                    <Input type="tel" {...registerManual("ownerPhone")} dir="ltr" className="bg-white" placeholder="+20..." />
+                                <FormField label={`${t_page.phone} (For Public)`} id="ownerPhone" error={(errors as any).ownerPhone?.message}>
+                                    <Input type="tel" {...registerManual("ownerPhone")} dir="ltr" className="bg-white" placeholder="01012345678" />
                                 </FormField>
                             </div>
                         )}
@@ -160,11 +176,14 @@ export const Step3FormFields: React.FC<Step3FormFieldsProps> = (props) => {
 
                  <div className="col-span-full pt-6 border-t border-gray-100 dark:border-gray-700">
                     <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <Checkbox id="isOwner" {...registerManual("isOwner", { required: true })} className="mt-1" />
+                        <Checkbox id="isOwner" {...registerManual("isOwner")} className="mt-1" />
                         <div>
                             <label htmlFor="isOwner" className="text-sm font-medium text-gray-900 dark:text-white cursor-pointer">{t_page.confirmationLabel}</label>
-                            {/* @ts-ignore */}
-                            {errors.isOwner && <p className="text-red-500 text-xs mt-1 font-semibold">{t_page.errors.mustBeOwner}</p>}
+                            {(errors as any).isOwner && (
+                                <p className="text-red-500 text-xs mt-1 font-semibold">
+                                    {(errors as any).isOwner?.message || t_page.errors.mustBeOwner}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>

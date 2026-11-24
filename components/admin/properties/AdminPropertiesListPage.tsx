@@ -20,6 +20,7 @@ import { getAllPropertyTypes, getAllFinishingStatuses } from '../../../services/
 import { StatusBadge } from '../../ui/StatusBadge';
 import { useToast } from '../../shared/ToastContext';
 import { useCityStore } from '../../../store/useCityStore';
+import { invalidateAllPropertyQueries } from '../../../utils/queryInvalidation';
 
 interface AdminPropertiesListPageProps {
     title?: string;
@@ -114,19 +115,33 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
 
     const mutation = useMutation({
         mutationFn: ({ id, status }: { id: string, status: ListingStatus }) => updateProperty(id, { listingStatus: status }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
-            showToast('Listing status updated', 'success');
-        }
+        onSuccess: (updated, variables) => {
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: updated?.id || variables.id,
+                projectId: updated?.projectId,
+                partnerId: updated?.partnerId,
+            });
+            showToast(language === 'ar' ? 'تم تحديث حالة النشر بنجاح' : 'Listing status updated', 'success');
+        },
+        onError: (err: any) => {
+            showToast(err?.message || (language === 'ar' ? 'فشل تحديث حالة النشر' : 'Failed to update listing status'), 'error');
+        },
     });
 
     const verificationMutation = useMutation({
         mutationFn: ({ id, verificationStatus }: { id: string, verificationStatus: 'verified' | 'pending' }) => 
             updateProperty(id, { verificationStatus }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
-            showToast('Verification updated', 'success');
-        }
+        onSuccess: (updated, variables) => {
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: updated?.id || variables.id,
+                projectId: updated?.projectId,
+                partnerId: updated?.partnerId,
+            });
+            showToast(language === 'ar' ? 'تم تحديث حالة التوثيق' : 'Verification updated', 'success');
+        },
+        onError: (err: any) => {
+            showToast(err?.message || (language === 'ar' ? 'فشل تحديث التوثيق' : 'Failed to update verification'), 'error');
+        },
     });
 
     const availabilityMutation = useMutation({
@@ -135,18 +150,28 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
                 availabilityStatus, 
                 listingStatus: availabilityStatus === 'sold' ? 'sold' : 'active' 
             }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
-            showToast('Availability updated', 'success');
-        }
+        onSuccess: (updated, variables) => {
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: updated?.id || variables.id,
+                projectId: updated?.projectId,
+                partnerId: updated?.partnerId,
+            });
+            showToast(language === 'ar' ? 'تم تحديث الإتاحة' : 'Availability updated', 'success');
+        },
+        onError: (err: any) => {
+            showToast(err?.message || (language === 'ar' ? 'فشل تحديث الإتاحة' : 'Failed to update availability'), 'error');
+        },
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id: string) => deleteProperty(id),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
-            showToast('Property deleted', 'success');
-        }
+        onSuccess: (_ok, id) => {
+            invalidateAllPropertyQueries(queryClient, { propertyId: id });
+            showToast(language === 'ar' ? 'تم حذف العقار' : 'Property deleted', 'success');
+        },
+        onError: (err: any) => {
+            showToast(err?.message || (language === 'ar' ? 'فشل حذف العقار' : 'Failed to delete property'), 'error');
+        },
     });
     
     const handleSelect = (propertyId: string) => {
@@ -165,18 +190,24 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
 
     const handleBulkAction = async () => {
         if (!actionToConfirm) return;
-        const promises = selectedProperties.map(id => {
-            switch (actionToConfirm) {
-                case 'activate': return updateProperty(id, { listingStatus: 'active' });
-                case 'deactivate': return updateProperty(id, { listingStatus: 'inactive' });
-                case 'delete': return deleteProperty(id);
-            }
-            return Promise.resolve();
-        });
-        await Promise.all(promises);
-        queryClient.invalidateQueries({ queryKey: ['allPropertiesAdmin'] });
-        setSelectedProperties([]);
-        setActionToConfirm(null);
+        try {
+            const promises = selectedProperties.map(id => {
+                switch (actionToConfirm) {
+                    case 'activate': return updateProperty(id, { listingStatus: 'active' });
+                    case 'deactivate': return updateProperty(id, { listingStatus: 'inactive' });
+                    case 'delete': return deleteProperty(id);
+                }
+                return Promise.resolve();
+            });
+            await Promise.all(promises);
+            invalidateAllPropertyQueries(queryClient);
+            showToast(language === 'ar' ? 'تم تنفيذ الإجراء بنجاح' : 'Bulk action completed', 'success');
+            setSelectedProperties([]);
+        } catch (err: any) {
+            showToast(err?.message || (language === 'ar' ? 'تعذر تنفيذ الإجراء' : 'Bulk action failed'), 'error');
+        } finally {
+            setActionToConfirm(null);
+        }
     };
     
     const updateUrlFilter = (key: string, value: string) => {
@@ -377,9 +408,13 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
             </div>
         </>
     );
-    const emptyState = <div className="text-center py-8 text-gray-500">No properties found.</div>;
+    const emptyState = (
+        <div className="text-center py-8 text-gray-500">
+            {language === 'ar' ? 'لا توجد عقارات مطابقة.' : 'No properties found.'}
+        </div>
+    );
 
-    if (isError && !properties) {
+    if (isError && !propProperties && !fetchedProperties) {
         return <ErrorState onRetry={refetch} />;
     }
 

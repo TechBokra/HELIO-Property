@@ -55,6 +55,23 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     );
 };
 
+export const PreviewLanguageProvider: React.FC<{
+    language: Language;
+    onChangeLanguage?: (lang: Language) => void;
+    children: ReactNode;
+}> = ({ language, onChangeLanguage, children }) => {
+    const value = useMemo(
+        () => ({
+            language,
+            setLanguage: onChangeLanguage || (() => {}),
+            t: translations[language],
+        }),
+        [language, onChangeLanguage]
+    );
+
+    return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
+};
+
 export const useLanguage = (): LanguageContextType => {
     const context = useContext(LanguageContext);
     if (context === undefined) {

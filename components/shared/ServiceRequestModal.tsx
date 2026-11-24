@@ -2,6 +2,7 @@
 import React, { useEffect } from 'react';
 import { CloseIcon } from '../ui/Icons';
 import DynamicForm from './DynamicForm';
+import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
 
 interface ServiceRequestModalProps {
     isOpen: boolean;
@@ -9,9 +10,19 @@ interface ServiceRequestModalProps {
     partnerId: string;
     serviceTitle: string;
     propertyId?: string;
+    propertyReference?: string;
+    propertyTitle?: string;
 }
 
-const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({ isOpen, onClose, partnerId, serviceTitle, propertyId }) => {
+const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({
+    isOpen,
+    onClose,
+    partnerId,
+    serviceTitle,
+    propertyId,
+    propertyReference,
+    propertyTitle,
+}) => {
     useEffect(() => {
         if (!isOpen) return;
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -26,6 +37,10 @@ const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({ isOpen, onClo
     }, [isOpen, onClose]);
     
     if (!isOpen) return null;
+
+    const resolvedPropertyReference = propertyId
+        ? resolvePropertyReferenceCode(propertyId, propertyReference)
+        : propertyReference;
 
     return (
         <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 animate-fadeIn" onClick={onClose}>
@@ -43,7 +58,9 @@ const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({ isOpen, onClo
                             partnerId,
                             serviceTitle,
                             propertyId,
-                            serviceType: 'finishing' // Default, routing logic can adjust if needed
+                            propertyReference: resolvedPropertyReference,
+                            propertyTitle,
+                            serviceType: 'finishing'
                         }}
                     />
                 </div>

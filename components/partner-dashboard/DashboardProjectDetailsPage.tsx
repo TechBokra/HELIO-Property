@@ -2,36 +2,41 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import type { Property, Lead } from '../../types';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProjects, deleteProject as apiDeleteProject } from '../../services/projects';
 import { getPropertiesByPartnerId, deleteProperty as apiDeleteProperty } from '../../services/properties';
 import { getLeadsByPartnerId } from '../../services/leads';
-import { BuildingIcon, ChartBarIcon, InboxIcon } from '../ui/Icons';
+import { BuildingIcon, InboxIcon } from '../ui/Icons';
 import { useAuth } from '../auth/AuthContext';
 import UpgradePlanModal from '../shared/UpgradePlanModal';
 import StatCard from '../shared/StatCard';
 import { useSubscriptionUsage } from '../../hooks/useSubscriptionUsage';
 import { useLanguage } from '../shared/LanguageContext';
 import ConfirmationModal from '../shared/ConfirmationModal';
+import ErrorState from '../shared/ErrorState';
+import { useToast } from '../shared/ToastContext';
+import { StatusBadge } from '../ui/StatusBadge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/Table';
+import { invalidateAllProjectQueries, invalidateAllPropertyQueries } from '../../utils/queryInvalidation';
 
 const DashboardProjectDetailsPage: React.FC = () => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const { currentUser } = useAuth();
     const { language, t } = useLanguage();
+    const { showToast } = useToast();
+    const queryClient = useQueryClient();
     const t_proj = t.projectDashboard;
     const t_prop_table = t.dashboard.propertyTable;
     const t_analytics = t.dashboard.projectAnalytics;
 
-    const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
-    const { data: partnerProperties, isLoading: loadingProperties, refetch: refetchProperties } = useQuery({
-        queryKey: [`partner-properties-${currentUser?.id}`],
-        queryFn: () => getPropertiesByPartnerId(currentUser!.id),
+    const { data: projects, isLoading: loadingProjects, isError: errorProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
+    const { data: partnerProperties, isLoading: loadingProperties, isError: errorProperties, refetch: refetchProperties } = useQuery({
+        queryKey: ['partnerProperties', currentUser?.id, 'all'],
+        queryFn: () => getPropertiesByPartnerId(currentUser!.id, { publicOnly: false }),
         enabled: !!currentUser,
     });
-    const { data: leads, isLoading: loadingLeads, refetch: refetchLeads } = useQuery({ queryKey: [`leads-${currentUser?.id}`], queryFn: () => getLeadsByPartnerId(currentUser!.id), enabled: !!currentUser });
+    const { data: leads, isLoading: loadingLeads, isError: errorLeads, refetch: refetchLeads } = useQuery({ queryKey: [`leads-${currentUser?.id}`], queryFn: () => getLeadsByPartnerId(currentUser!.id), enabled: !!currentUser });
     
     const { isLimitReached: isUnitsLimitReached } = useSubscriptionUsage('units');
     
@@ -61,20 +66,35 @@ const DashboardProjectDetailsPage: React.FC = () => {
 
     const handleDeleteProject = async () => {
         if (project && modalState?.type === 'deleteProject') {
-            const propertyDeletions = projectProperties.map(p => apiDeleteProperty(p.id));
-            await Promise.all(propertyDeletions);
-            await apiDeleteProject(project.id);
-            refetchAll();
-            setModalState(null);
-            navigate('/dashboard/projects');
+            try {
+                const propertyDeletions = projectProperties.map(p => apiDeleteProperty(p.id));
+                await Promise.all(propertyDeletions);
+                await apiDeleteProject(project.id);
+                invalidateAllProjectQueries(queryClient, project.id);
+                invalidateAllPropertyQueries(queryClient, { projectId: project.id, partnerId: currentUser?.id });
+                showToast(language === 'ar' ? 'تم حذف المشروع بنجاح' : 'Project deleted successfully', 'success');
+                setModalState(null);
+                navigate('/dashboard/projects');
+            } catch (err: any) {
+                showToast(err?.message || (language === 'ar' ? 'تعذر حذف المشروع' : 'Failed to delete project'), 'error');
+            }
         }
     };
     
     const handleDeleteProperty = async () => {
         if (modalState?.type === 'deleteProperty') {
-            await apiDeleteProperty(modalState.id);
-            refetchProperties();
-            setModalState(null);
+            try {
+                await apiDeleteProperty(modalState.id);
+                invalidateAllPropertyQueries(queryClient, {
+                    propertyId: modalState.id,
+                    projectId,
+                    partnerId: currentUser?.id,
+                });
+                showToast(language === 'ar' ? 'تم حذف الوحدة' : 'Unit deleted', 'success');
+                setModalState(null);
+            } catch (err: any) {
+                showToast(err?.message || (language === 'ar' ? 'تعذر حذف الوحدة' : 'Failed to delete unit'), 'error');
+            }
         }
     };
     
@@ -123,13 +143,18 @@ const DashboardProjectDetailsPage: React.FC = () => {
 
 
     const loading = loadingProjects || loadingProperties || loadingLeads;
+    const isError = errorProjects || errorProperties || errorLeads;
+
+    if (isError) {
+        return <ErrorState onRetry={refetchAll} />;
+    }
 
     if (loading) {
-        return <div className="text-center p-8">Loading project details...</div>;
+        return <div className="text-center p-8">{language === 'ar' ? 'جاري تحميل تفاصيل المشروع...' : 'Loading project details...'}</div>;
     }
 
     if (!project) {
-        return <div className="text-center p-8">Project not found.</div>;
+        return <div className="text-center p-8">{language === 'ar' ? 'المشروع غير موجود.' : 'Project not found.'}</div>;
     }
 
     return (
@@ -187,6 +212,7 @@ const DashboardProjectDetailsPage: React.FC = () => {
                                     <TableHead>{t_prop_table.image}</TableHead>
                                     <TableHead>{t_prop_table.title}</TableHead>
                                     <TableHead>{t_prop_table.status}</TableHead>
+                                    <TableHead>{language === 'ar' ? 'حالة النشر' : 'Visibility'}</TableHead>
                                     <TableHead>{t_prop_table.price}</TableHead>
                                     <TableHead>{t_prop_table.actions}</TableHead>
                                 </TableRow>
@@ -201,14 +227,20 @@ const DashboardProjectDetailsPage: React.FC = () => {
                                             {prop.title[language]}
                                         </TableCell>
                                         <TableCell>{prop.status[language]}</TableCell>
+                                        <TableCell>
+                                            <StatusBadge status={prop.listingStatus} />
+                                        </TableCell>
                                         <TableCell>{prop.price[language]}</TableCell>
-                                        <TableCell className="space-x-2 whitespace-nowrap">
+                                        <TableCell className="space-x-2 rtl:space-x-reverse whitespace-nowrap">
+                                            <Link to={`/properties/${prop.id}`} target="_blank" className="font-medium text-gray-600 dark:text-gray-300 hover:underline">
+                                                {language === 'ar' ? 'معاينة' : 'Preview'}
+                                            </Link>
                                             <Link to={`/dashboard/properties/edit/${prop.id}`} className="font-medium text-amber-600 dark:text-amber-500 hover:underline">{t_prop_table.edit}</Link>
                                             <button onClick={() => setModalState({ type: 'deleteProperty', id: prop.id })} className="font-medium text-red-600 dark:text-red-500 hover:underline">{t_prop_table.delete}</button>
                                         </TableCell>
                                     </TableRow>
                                 )) : (
-                                    <TableRow><TableCell colSpan={5} className="text-center p-8">{t_prop_table.noProperties}</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={6} className="text-center p-8">{t_prop_table.noProperties}</TableCell></TableRow>
                                 )}
                             </TableBody>
                         </Table>

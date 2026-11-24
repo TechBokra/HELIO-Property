@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { useLanguage } from '../shared/LanguageContext';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
+import SmartActionLink from '../shared/SmartActionLink';
 
 import { siteContentData as fallbackData } from '../../data/content';
 import { useCityStore } from '../../store/useCityStore';
@@ -42,6 +42,13 @@ const Hero: React.FC = () => {
     const heroSubtitle = isCustomCity
         ? activeCity.tagline[language]
         : (siteContent?.hero?.[language]?.subtitle || fallbackData.hero[language].subtitle);
+
+    const primaryBtn = siteContent?.hero?.primaryButton || fallbackData.hero.primaryButton;
+    const secondaryBtn = siteContent?.hero?.secondaryButton || fallbackData.hero.secondaryButton;
+    const showPrimaryBtn = primaryBtn?.visible ?? true;
+    const showSecondaryBtn = secondaryBtn?.visible ?? true;
+    const primaryLabel = primaryBtn?.text?.[language] || t.heroButtons.availableProperties;
+    const secondaryLabel = secondaryBtn?.text?.[language] || t.addProperty;
 
     return (
         <section className="relative h-[85vh] flex items-center justify-center text-center text-white overflow-hidden">
@@ -84,20 +91,28 @@ const Hero: React.FC = () => {
                     {heroSubtitle}
                 </p>
 
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-10 animate-slideInUp" style={{ animationDelay: '300ms' }}>
-                    <Link
-                        to="/properties"
-                        className="w-full sm:w-auto bg-amber-500 text-gray-900 font-semibold px-10 py-4 rounded-lg text-lg hover:bg-amber-600 transition-colors duration-200 shadow-lg shadow-amber-500/20 transform hover:scale-105"
-                    >
-                        {t.heroButtons.availableProperties}
-                    </Link>
-                    <Link
-                        to="/add-property"
-                        className="w-full sm:w-auto bg-transparent border-2 border-white text-white font-semibold px-10 py-4 rounded-lg text-lg hover:bg-white/10 transition-colors duration-200 backdrop-blur-sm transform hover:scale-105"
-                    >
-                        {t.addProperty}
-                    </Link>
-                </div>
+                {(showPrimaryBtn || showSecondaryBtn) && (
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-10 animate-slideInUp" style={{ animationDelay: '300ms' }}>
+                        {showPrimaryBtn && (
+                            <SmartActionLink
+                                to={primaryBtn?.link}
+                                fallback="/properties"
+                                className="w-full sm:w-auto bg-amber-500 text-gray-900 font-semibold px-10 py-4 rounded-lg text-lg hover:bg-amber-600 transition-colors duration-200 shadow-lg shadow-amber-500/20 transform hover:scale-105"
+                            >
+                                {primaryLabel}
+                            </SmartActionLink>
+                        )}
+                        {showSecondaryBtn && (
+                            <SmartActionLink
+                                to={secondaryBtn?.link}
+                                fallback="/add-property"
+                                className="w-full sm:w-auto bg-transparent border-2 border-white text-white font-semibold px-10 py-4 rounded-lg text-lg hover:bg-white/10 transition-colors duration-200 backdrop-blur-sm transform hover:scale-105"
+                            >
+                                {secondaryLabel}
+                            </SmartActionLink>
+                        )}
+                    </div>
+                )}
             </div>
         </section>
     );

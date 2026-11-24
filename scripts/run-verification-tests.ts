@@ -4,7 +4,7 @@ import path from 'path';
 import { handleAdminCredentialsRequest, isAuthoritativeSuperAdmin } from '../server/credentialsEndpoint';
 import { mapPartnerTypeToRole } from '../data/permissions';
 import { normalizeRole } from '../services/permissions';
-import { Role, OperationalStatus, RequestType, type Partner } from '../types';
+import { Role, Permission, OperationalStatus, RequestType, type Partner } from '../types';
 import {
     mapDomainStatusToOperational,
     resolveOperationalStatus,
@@ -2599,6 +2599,1025 @@ async function runTests() {
         assert.deepStrictEqual(mappedPartner.allowedCities, ['shorouk', 'badr']);
     });
 
+    // ========================================================================
+    // Suite 9: Phase 1 — Site Content Save Sequencing & Non-Overwrite Tests
+    // ========================================================================
+    console.log('\n--- Suite 9: Phase 1 — Site Content Save Sequencing & Non-Overwrite Tests ---');
+
+    const createIsolatedSiteContentDb = (initialRowContent: Record<string, any> | null, options?: {
+        failWriteWith?: string;
+        simulateMissingRpc?: boolean;
+    }) => {
+        let dbRow: Record<string, any> | null = initialRowContent ? JSON.parse(JSON.stringify(initialRowContent)) : null;
+
+        const deepMergeDb = (target: any, patch: any): any => {
+            if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch;
+            if (!target || typeof target !== 'object' || Array.isArray(target)) return JSON.parse(JSON.stringify(patch));
+            const out: Record<string, any> = { ...target };
+            for (const key of Object.keys(patch)) {
+                if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key]) &&
+                    out[key] && typeof out[key] === 'object' && !Array.isArray(out[key])) {
+                    out[key] = deepMergeDb(out[key], patch[key]);
+                } else {
+                    out[key] = JSON.parse(JSON.stringify(patch[key]));
+                }
+            }
+            return out;
+        };
+
+        return {
+            getRawRow: () => dbRow,
+            rpc: async (fnName: string, args: { p_key: string; p_patch: any }) => {
+                if (options?.simulateMissingRpc) {
+                    return { data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fnName}` } };
+                }
+                if (options?.failWriteWith) {
+                    return { data: null, error: { message: options.failWriteWith } };
+                }
+                if (fnName === 'merge_site_content' && args.p_key === 'main_content') {
+                    dbRow = deepMergeDb(dbRow || {}, args.p_patch);
+                    return { data: JSON.parse(JSON.stringify(dbRow)), error: null };
+                }
+                return { data: null, error: { message: 'Unknown RPC' } };
+            },
+            from: (table: string) => {
+                assert.strictEqual(table, 'site_content');
+                return {
+                    select: (_cols: string) => ({
+                        eq: (_col: string, _key: string) => ({
+                            maybeSingle: async () => ({
+                                data: dbRow ? { content: JSON.parse(JSON.stringify(dbRow)) } : null,
+                                error: null,
+                            }),
+                        }),
+                    }),
+                    upsert: (row: { key: string; content: any }) => ({
+                        select: (_cols: string) => ({
+                            single: async () => {
+                                if (options?.failWriteWith) {
+                                    return { data: null, error: { message: options.failWriteWith } };
+                                }
+                                dbRow = JSON.parse(JSON.stringify(row.content));
+                                return { data: { content: JSON.parse(JSON.stringify(dbRow)) }, error: null };
+                            },
+                        }),
+                    }),
+                };
+            },
+        };
+    };
+
+    const setupAdminAuthForContentTests = () => {
+        useAuthStore.setState({
+            currentUser: {
+                id: '00000000-0000-4000-8000-000000000001',
+                name: 'Content Admin',
+                email: 'content-admin@example.com',
+                role: Role.CONTENT_MANAGER,
+                status: 'active',
+                type: 'admin',
+            } as Partner,
+            permissions: [Permission.VIEW_SITE_CONTENT, Permission.MANAGE_SITE_CONTENT],
+        });
+    };
+
+    await test('P9.1: Save Hero AR/EN title & Footer phone persists to DB before cache update and survives reload/second session', async () => {
+        setupAdminAuthForContentTests();
+        const {
+            getContent,
+            updateContent,
+            invalidateContentCache,
+            getCachedContentSnapshot,
+        } = await import('../services/content');
+
+        invalidateContentCache();
+        const db = createIsolatedSiteContentDb({
+            hero: { ar: { title: 'عنوان قديم', subtitle: 'وصف قديم' }, en: { title: 'Old Title', subtitle: 'Old Sub' } },
+            footer: { phone: '01000000000', email: 'info@onlyhelio.com' },
+        });
+
+        const initial = await getContent({ forceRefresh: true, client: db });
+        assert.strictEqual(initial.hero.ar.title, 'عنوان قديم');
+        assert.strictEqual(initial.footer.phone, '01000000000');
+
+        const updated = await updateContent(
+            {
+                hero: {
+                    ar: { title: 'عنوان تجريبي محدث' },
+                    en: { title: 'Updated Dev Hero Title' },
+                } as any,
+                footer: {
+                    phone: '01099887766',
+                },
+            },
+            { client: db }
+        );
+
+        assert.strictEqual(updated.hero.ar.title, 'عنوان تجريبي محدث');
+        assert.strictEqual(updated.hero.en.title, 'Updated Dev Hero Title');
+        assert.strictEqual(updated.hero.ar.subtitle, 'وصف قديم');
+        assert.strictEqual(updated.footer.phone, '01099887766');
+        assert.strictEqual(getCachedContentSnapshot()?.footer.phone, '01099887766');
+
+        // Simulate full reload / second session (fresh memory cache + fresh query from DB)
+        invalidateContentCache();
+        const secondSession = await getContent({ forceRefresh: true, client: db });
+        assert.strictEqual(secondSession.hero.ar.title, 'عنوان تجريبي محدث');
+        assert.strictEqual(secondSession.hero.en.title, 'Updated Dev Hero Title');
+        assert.strictEqual(secondSession.footer.phone, '01099887766');
+    });
+
+    await test('P9.2: Failed Supabase save throws clearly and retains previously saved cache and DB values', async () => {
+        setupAdminAuthForContentTests();
+        const {
+            getContent,
+            updateContent,
+            invalidateContentCache,
+            getCachedContentSnapshot,
+        } = await import('../services/content');
+
+        invalidateContentCache();
+        const healthyDb = createIsolatedSiteContentDb({
+            hero: { ar: { title: 'العنوان المحفوظ سابقا', subtitle: 'وصف' }, en: { title: 'Saved Title', subtitle: 'Sub' } },
+            footer: { phone: '01011223344' },
+        });
+
+        const loaded = await getContent({ forceRefresh: true, client: healthyDb });
+        assert.strictEqual(loaded.hero.ar.title, 'العنوان المحفوظ سابقا');
+
+        const failingDb = createIsolatedSiteContentDb(healthyDb.getRawRow(), {
+            failWriteWith: 'RLS policy violation or network timeout',
+        });
+
+        await assert.rejects(
+            () =>
+                updateContent(
+                    {
+                        hero: { ar: { title: 'قيمة فاشلة' }, en: { title: 'Failed Title' } } as any,
+                        footer: { phone: '01000009999' },
+                    },
+                    { client: failingDb }
+                ),
+            /RLS policy violation or network timeout/
+        );
+
+        // Cache & DB must still hold the previous saved values
+        assert.strictEqual(getCachedContentSnapshot()?.hero.ar.title, 'العنوان المحفوظ سابقا');
+        assert.strictEqual(getCachedContentSnapshot()?.hero.en.title, 'Saved Title');
+        assert.strictEqual(getCachedContentSnapshot()?.footer.phone, '01011223344');
+        assert.strictEqual(failingDb.getRawRow()?.hero?.ar?.title, 'العنوان المحفوظ سابقا');
+    });
+
+    await test('P9.3: Saving Hero section via buildContentPatch does not overwrite newer Footer update (RPC & fallback upsert)', async () => {
+        setupAdminAuthForContentTests();
+        const {
+            getContent,
+            updateContent,
+            buildContentPatch,
+            invalidateContentCache,
+        } = await import('../services/content');
+
+        for (const simulateMissingRpc of [false, true]) {
+            invalidateContentCache();
+            const db = createIsolatedSiteContentDb(
+                {
+                    hero: { ar: { title: 'عنوان أولي', subtitle: 'وصف' }, en: { title: 'Initial Hero', subtitle: 'Sub' } },
+                    footer: { phone: '01000000000', email: 'info@onlyhelio.com' },
+                },
+                { simulateMissingRpc }
+            );
+
+            // Session A loads baseline at T0
+            const sessionABaseline = await getContent({ forceRefresh: true, client: db });
+
+            // Session B updates Footer phone at T1
+            await updateContent({ footer: { phone: '01234567890' } }, { client: db });
+
+            // Session A edits ONLY Hero AR/EN titles using its T0 baseline and submits patch
+            const sessionAFormState = JSON.parse(JSON.stringify(sessionABaseline));
+            sessionAFormState.hero.ar.title = 'عنوان هيرو جديد';
+            sessionAFormState.hero.en.title = 'New Hero Title';
+
+            const patch = buildContentPatch(sessionABaseline, sessionAFormState, {
+                hero: { ar: { title: true }, en: { title: true } },
+            });
+
+            assert.strictEqual('footer' in patch, false);
+            const afterSessionA = await updateContent(patch, { client: db });
+
+            // Newer Footer phone from Session B MUST NOT be overwritten
+            assert.strictEqual(afterSessionA.hero.ar.title, 'عنوان هيرو جديد');
+            assert.strictEqual(afterSessionA.hero.en.title, 'New Hero Title');
+            assert.strictEqual(afterSessionA.footer.phone, '01234567890');
+        }
+    });
+
+    await test('P9.4: normalizeSiteContent preserves partial legacy DB data while filling missing nested defaults', async () => {
+        const { normalizeSiteContent } = await import('../services/content');
+
+        const legacyNormalized = normalizeSiteContent({
+            hero: { ar: { title: 'عنوان قديم جزئي' } },
+            footer: { phone: '01555555555', ar: { description: 'وصف قديم' } },
+        });
+
+        assert.strictEqual(legacyNormalized.hero.ar.title, 'عنوان قديم جزئي');
+        assert.ok(legacyNormalized.hero.ar.subtitle.length > 0);
+        assert.ok(legacyNormalized.hero.en.title.length > 0);
+        assert.ok(legacyNormalized.hero.images.length > 0);
+        assert.strictEqual(legacyNormalized.footer.phone, '01555555555');
+        assert.strictEqual(legacyNormalized.footer.ar.description, 'وصف قديم');
+        assert.ok(legacyNormalized.footer.ar.address.length > 0);
+        assert.ok(legacyNormalized.footer.en.hours.length > 0);
+    });
+
+    // ========================================================================
+    // Suite 10: Phase 2 — Catalog Supabase Queries, Demo Mode & Visibility Rules
+    // ========================================================================
+    console.log('\n--- Suite 10: Phase 2 — Catalog, Explicit Demo Mode & Visibility Lifecycle Tests ---');
+
+    const createIsolatedCatalogDb = (options?: { failReadsWith?: string; failWritesWith?: string }) => {
+        const projectsRows: any[] = [];
+        const propertiesRows: any[] = [];
+        const historyRows: any[] = [];
+        const partnersRows: any[] = [
+            {
+                id: 'partner-dev-100',
+                email: 'dev100@example.com',
+                name_en: 'Dev 100',
+                name_ar: 'مطور 100',
+                type: 'developer',
+                role: 'developer',
+                status: 'active',
+                subscription_plan: 'pro',
+                display_type: 'standard',
+            },
+        ];
+
+        const getTable = (name: string) => {
+            if (name === 'projects') return projectsRows;
+            if (name === 'properties') return propertiesRows;
+            if (name === 'property_history') return historyRows;
+            if (name === 'partners') return partnersRows;
+            throw new Error(`Unexpected catalog table: ${name}`);
+        };
+
+        return {
+            getProjectsRows: () => projectsRows,
+            getPropertiesRows: () => propertiesRows,
+            from: (table: string) => {
+                const store = getTable(table);
+                return {
+                    select: (_cols: string) => {
+                        const predicates: ((row: any) => boolean)[] = [];
+                        let orderCol = 'created_at';
+                        let orderAsc = false;
+
+                        const runSelect = async () => {
+                            if (options?.failReadsWith) {
+                                return { data: null, error: { message: options.failReadsWith } };
+                            }
+                            const filtered = store.filter((r) => predicates.every((fn) => fn(r)));
+                            const sorted = [...filtered].sort((a, b) => {
+                                const av = String(a[orderCol] ?? '');
+                                const bv = String(b[orderCol] ?? '');
+                                return orderAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+                            });
+                            return { data: sorted.map((r) => JSON.parse(JSON.stringify(r))), error: null };
+                        };
+
+                        const builder: any = {
+                            eq: (col: string, val: any) => {
+                                predicates.push((r) => r?.[col] === val);
+                                return builder;
+                            },
+                            in: (col: string, vals: any[]) => {
+                                predicates.push((r) => vals.includes(r?.[col]));
+                                return builder;
+                            },
+                            order: (col: string, opts?: { ascending?: boolean }) => {
+                                orderCol = col;
+                                orderAsc = !!opts?.ascending;
+                                return builder;
+                            },
+                            maybeSingle: async () => {
+                                const res = await runSelect();
+                                if (res.error) return { data: null, error: res.error };
+                                return { data: res.data?.[0] || null, error: null };
+                            },
+                            then: (resolve: any, reject: any) => runSelect().then(resolve, reject),
+                        };
+                        return builder;
+                    },
+                    insert: (payload: any) => {
+                        const insertedRow = {
+                            id: payload.id || `cat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                            created_at: payload.created_at || new Date().toISOString(),
+                            updated_at: payload.updated_at || new Date().toISOString(),
+                            ...JSON.parse(JSON.stringify(payload)),
+                        };
+
+                        const execInsert = async () => {
+                            if (options?.failWritesWith) {
+                                return { data: null, error: { message: options.failWritesWith } };
+                            }
+                            store.push(insertedRow);
+                            return { data: JSON.parse(JSON.stringify(insertedRow)), error: null };
+                        };
+
+                        return {
+                            select: () => ({
+                                single: execInsert,
+                            }),
+                            then: (resolve: any, reject: any) => execInsert().then(resolve, reject),
+                        };
+                    },
+                    update: (patch: any) => ({
+                        eq: (col: string, val: any) => ({
+                            select: () => ({
+                                single: async () => {
+                                    if (options?.failWritesWith) {
+                                        return { data: null, error: { message: options.failWritesWith } };
+                                    }
+                                    const idx = store.findIndex((r) => r?.[col] === val);
+                                    if (idx < 0) {
+                                        return { data: null, error: { message: 'Row not found' } };
+                                    }
+                                    store[idx] = { ...store[idx], ...JSON.parse(JSON.stringify(patch)) };
+                                    return { data: JSON.parse(JSON.stringify(store[idx])), error: null };
+                                },
+                            }),
+                        }),
+                    }),
+                    delete: () => ({
+                        eq: async (col: string, val: any) => {
+                            if (options?.failWritesWith) {
+                                return { error: { message: options.failWritesWith } };
+                            }
+                            const idx = store.findIndex((r) => r?.[col] === val);
+                            if (idx >= 0) store.splice(idx, 1);
+                            return { error: null };
+                        },
+                    }),
+                };
+            },
+        };
+    };
+
+    await test('P10.1: Non-demo mode returns empty catalog on empty DB, throws on DB errors, and reserves mock data for explicit Demo mode', async () => {
+        const { isDemoModeEnabled, setDemoModeEnabled } = await import('../utils/demoMode');
+        const {
+            getAllProjects,
+            getProjectById,
+            invalidateProjectsCache,
+        } = await import('../services/projects');
+        const {
+            getProperties,
+            getAllProperties,
+            getPropertyById,
+            getPropertiesByProjectId,
+            getPublicPropertiesByPartnerId,
+            invalidatePropertiesCache,
+        } = await import('../services/properties');
+
+        setDemoModeEnabled(null);
+        invalidateProjectsCache();
+        invalidatePropertiesCache();
+
+        assert.strictEqual(isDemoModeEnabled(), false, 'Demo mode must default to false');
+
+        const emptyDb = createIsolatedCatalogDb();
+        assert.deepStrictEqual(await getAllProjects({ client: emptyDb }), []);
+        assert.deepStrictEqual(await getProperties({ client: emptyDb }), []);
+        assert.deepStrictEqual(await getAllProperties({ client: emptyDb }), []);
+        assert.strictEqual(await getPropertyById('non-existent-id', { client: emptyDb }), undefined);
+        assert.strictEqual(await getProjectById('non-existent-id', { client: emptyDb }), undefined);
+
+        const failingDb = createIsolatedCatalogDb({ failReadsWith: 'Simulated catalog DB connection failure' });
+        await assert.rejects(() => getAllProjects({ client: failingDb }), /Simulated catalog DB connection failure/);
+        await assert.rejects(() => getProperties({ client: failingDb }), /Simulated catalog DB connection failure/);
+        await assert.rejects(() => getAllProperties({ client: failingDb }), /Simulated catalog DB connection failure/);
+        await assert.rejects(() => getPropertyById('prop-1', { client: failingDb }), /Simulated catalog DB connection failure/);
+        await assert.rejects(
+            () => getPropertiesByProjectId('proj-1', { client: failingDb }),
+            /Simulated catalog DB connection failure/
+        );
+        await assert.rejects(
+            () => getPublicPropertiesByPartnerId('partner-1', { client: failingDb }),
+            /Simulated catalog DB connection failure/
+        );
+
+        // Explicit Demo mode returns static sample data cleanly
+        try {
+            setDemoModeEnabled(true);
+            assert.strictEqual(isDemoModeEnabled(), true);
+            const demoProjects = await getAllProjects();
+            const demoProperties = await getProperties();
+            assert.ok(demoProjects.length > 0, 'Demo mode must return sample projects');
+            assert.ok(demoProperties.length > 0, 'Demo mode must return sample properties');
+        } finally {
+            setDemoModeEnabled(null);
+            invalidateProjectsCache();
+            invalidatePropertiesCache();
+        }
+    });
+
+    await test('P10.2: Project + Partner + Property lifecycle (Draft -> Publish -> Hide -> Sold) syncs visibility across all views', async () => {
+        const {
+            isPropertyPubliclyVisible,
+            isListingActive,
+            canReviewPropertyDraft,
+            canUserViewPropertyDetails,
+        } = await import('../utils/propertyUtils');
+        const { addProject, getAllProjects, getProjectById, invalidateProjectsCache } = await import('../services/projects');
+        const {
+            addProperty,
+            updateProperty,
+            getProperties,
+            getAllProperties,
+            getPropertyById,
+            getPropertiesByProjectId,
+            getPropertiesByPartnerId,
+            getPublicPropertiesByPartnerId,
+            invalidatePropertiesCache,
+        } = await import('../services/properties');
+
+        invalidateProjectsCache();
+        invalidatePropertiesCache();
+
+        const owningPartner: Partner = {
+            id: 'partner-dev-100',
+            email: 'dev100@example.com',
+            name: 'Dev 100',
+            nameAr: 'مطور 100',
+            imageUrl: 'https://example.com/p.png',
+            description: '',
+            descriptionAr: '',
+            type: 'developer',
+            status: 'active',
+            subscriptionPlan: 'pro',
+            displayType: 'standard',
+            role: Role.DEVELOPER_PARTNER,
+        };
+        const otherPartner: Partner = {
+            ...owningPartner,
+            id: 'partner-dev-200',
+            email: 'dev200@example.com',
+        };
+        const adminReviewer: Partner = {
+            ...owningPartner,
+            id: 'admin-listings-1',
+            email: 'listings@example.com',
+            type: 'admin',
+            role: Role.LISTINGS_MANAGER,
+        };
+
+        useAuthStore.setState({
+            currentUser: adminReviewer,
+            permissions: [
+                Permission.MANAGE_ALL_PROJECTS,
+                Permission.MANAGE_ALL_PROPERTIES,
+                Permission.VIEW_ADMIN_DASHBOARD,
+            ],
+        });
+
+        const db = createIsolatedCatalogDb();
+
+        // 1. Create Project linked to Partner
+        const createdProject = await addProject(
+            {
+                partnerId: owningPartner.id,
+                cityId: 'heliopolis',
+                name: { ar: 'كمبوند القبول', en: 'Acceptance Compound' },
+                description: { ar: 'وصف المشروع', en: 'Project description' },
+                imageUrl: 'https://example.com/proj.jpg',
+                features: [],
+            },
+            { client: db }
+        );
+        assert.ok(createdProject.id);
+        assert.strictEqual(createdProject.partnerId, owningPartner.id);
+        const fetchedProject = await getProjectById(createdProject.id, { client: db });
+        assert.strictEqual(fetchedProject?.id, createdProject.id);
+        assert.strictEqual((await getAllProjects({ client: db })).length, 1);
+
+        // 2. Create Draft Property linked to Project and Partner
+        const draftProp = await addProperty(
+            {
+                cityId: 'heliopolis',
+                partnerId: owningPartner.id,
+                projectId: createdProject.id,
+                title: { ar: 'شقة القبول', en: 'Acceptance Unit' },
+                description: { ar: 'وصف الشقة', en: 'Unit description' },
+                address: { ar: 'هليوبوليس الجديدة', en: 'New Heliopolis' },
+                status: { ar: 'للبيع', en: 'For Sale' },
+                type: { ar: 'شقة', en: 'Apartment' },
+                finishingStatus: { ar: 'سوبر لوكس', en: 'Super Lux' },
+                price: { ar: '3,000,000 ج.م', en: 'EGP 3,000,000' },
+                priceNumeric: 3000000,
+                area: 160,
+                beds: 3,
+                baths: 2,
+                amenities: { ar: [], en: [] },
+                location: { lat: 30.12, lng: 31.62 },
+                imageUrl: 'https://example.com/unit.jpg',
+                gallery: [],
+                isInCompound: true,
+                installmentsAvailable: false,
+                realEstateFinanceAvailable: true,
+                delivery: { isImmediate: true },
+                listingStatus: 'draft',
+                publicationStatus: 'draft',
+                verificationStatus: 'pending',
+                availabilityStatus: 'available',
+            },
+            { client: db }
+        );
+
+        assert.strictEqual(draftProp.listingStatus, 'draft');
+        assert.strictEqual(draftProp.publicationStatus, 'draft');
+        assert.ok(draftProp.listingStartDate, 'Newly created property must receive listingStartDate');
+
+        // Draft must be invisible to public views (List, Home, Project, Partner public profile)
+        assert.strictEqual((await getProperties({ client: db })).length, 0, 'Catalog list must exclude draft');
+        assert.strictEqual(isListingActive(draftProp), false, 'Home LatestProperties must exclude draft');
+        assert.strictEqual(
+            (await getPropertiesByProjectId(createdProject.id, { client: db })).length,
+            0,
+            'Public Project page must exclude draft'
+        );
+        assert.strictEqual(
+            (await getPublicPropertiesByPartnerId(owningPartner.id, { client: db })).length,
+            0,
+            'Public Partner profile must exclude draft'
+        );
+        assert.strictEqual(canUserViewPropertyDetails(draftProp, null), false, 'Public cannot view draft details');
+        assert.strictEqual(canUserViewPropertyDetails(draftProp, otherPartner), false, 'Other partner cannot view draft');
+
+        // Authorized Admin & Owning Partner CAN review draft
+        assert.strictEqual(canReviewPropertyDraft(draftProp, owningPartner), true);
+        assert.strictEqual(canReviewPropertyDraft(draftProp, adminReviewer), true);
+        assert.strictEqual(canUserViewPropertyDetails(draftProp, owningPartner), true);
+        assert.strictEqual(canUserViewPropertyDetails(draftProp, adminReviewer), true);
+        assert.strictEqual((await getAllProperties({ client: db })).length, 1, 'Admin all properties includes draft');
+        assert.strictEqual(
+            (await getPropertiesByPartnerId(owningPartner.id, { publicOnly: false, client: db })).length,
+            1,
+            'Partner dashboard includes own draft'
+        );
+        assert.strictEqual(
+            (await getPropertiesByProjectId(createdProject.id, { publicOnly: false, client: db })).length,
+            1
+        );
+
+        // 3. Publish Property -> appears across all public views
+        const publishedProp = await updateProperty(draftProp.id, { listingStatus: 'active' }, { client: db });
+        assert.ok(publishedProp);
+        assert.strictEqual(publishedProp.listingStatus, 'active');
+        assert.strictEqual(publishedProp.publicationStatus, 'published');
+        assert.strictEqual(isPropertyPubliclyVisible(publishedProp, { includeSold: true }), true);
+        assert.strictEqual(isListingActive(publishedProp), true);
+        assert.strictEqual((await getProperties({ client: db })).length, 1, 'Catalog list shows published property');
+        assert.strictEqual(
+            (await getPropertiesByProjectId(createdProject.id, { client: db })).length,
+            1,
+            'Project details shows published unit'
+        );
+        assert.strictEqual(
+            (await getPublicPropertiesByPartnerId(owningPartner.id, { client: db })).length,
+            1,
+            'Partner profile shows published property'
+        );
+        assert.strictEqual(canUserViewPropertyDetails(publishedProp, null), true, 'Public can view published details');
+
+        // 4. Hide Property ('inactive') -> disappears from all public views (no stale 'published' leak), reviewable by Admin/Partner
+        const hiddenProp = await updateProperty(draftProp.id, { listingStatus: 'inactive' }, { client: db });
+        assert.ok(hiddenProp);
+        assert.strictEqual(hiddenProp.listingStatus, 'inactive');
+        assert.strictEqual(
+            hiddenProp.publicationStatus,
+            'archived',
+            'Hiding property must sync publicationStatus away from published'
+        );
+        assert.strictEqual(isPropertyPubliclyVisible(hiddenProp, { includeSold: true }), false);
+        assert.strictEqual(isListingActive(hiddenProp), false);
+        assert.strictEqual((await getProperties({ client: db })).length, 0, 'Catalog list hides archived property');
+        assert.strictEqual(
+            (await getPropertiesByProjectId(createdProject.id, { client: db })).length,
+            0,
+            'Project details hides archived unit'
+        );
+        assert.strictEqual(
+            (await getPublicPropertiesByPartnerId(owningPartner.id, { client: db })).length,
+            0,
+            'Partner profile hides archived property'
+        );
+        assert.strictEqual(canUserViewPropertyDetails(hiddenProp, null), false, 'Public blocked from hidden details');
+        assert.strictEqual(canUserViewPropertyDetails(hiddenProp, owningPartner), true, 'Owning partner still sees hidden unit');
+        assert.strictEqual(canUserViewPropertyDetails(hiddenProp, adminReviewer), true, 'Admin still reviews hidden unit');
+
+        // 5. Sold Property -> Home LatestProperties excludes sold (includeSold: false), while Catalog/Project/Partner keep sold visible
+        const soldProp = await updateProperty(draftProp.id, { listingStatus: 'sold' }, { client: db });
+        assert.ok(soldProp);
+        assert.strictEqual(isListingActive(soldProp), false, 'Home latest available listings excludes sold');
+        assert.strictEqual(isPropertyPubliclyVisible(soldProp, { includeSold: true }), true);
+        assert.strictEqual((await getProperties({ client: db })).length, 1);
+        assert.strictEqual((await getPropertiesByProjectId(createdProject.id, { client: db })).length, 1);
+        assert.strictEqual((await getPublicPropertiesByPartnerId(owningPartner.id, { client: db })).length, 1);
+    });
+
+    // ========================================================================
+    // SUITE 11: Phase 3 — Shared Listing Validation, Idempotent Bidirectional Approval & Operations Center Tracking
+    // ========================================================================
+    console.log('\nSuite 11: Shared Listing Validation, Idempotent Bidirectional Approval & Operations Center Tracking');
+
+    await test('P11.1: Shared validation helpers & role-specific listing statuses behave consistently', async () => {
+        const {
+            PROPERTY_VALIDATION_RULES,
+            validateEgyptPhone,
+            getAllowedListingStatusesForRole,
+            resolvePropertyReferenceCode,
+            normalizeBilingualText,
+        } = await import('../utils/propertyFormShared');
+        const { formsData } = await import('../data/forms');
+        const { validateIntakeSubmission } = await import('../services/intake');
+
+        assert.strictEqual(validateEgyptPhone('01012345678', 'ar'), true);
+        assert.strictEqual(validateEgyptPhone('+201123456789', 'en'), true);
+        assert.notStrictEqual(validateEgyptPhone('12345', 'ar'), true);
+
+        const partnerDraftStatuses = getAllowedListingStatusesForRole(false, 'draft');
+        assert.ok(partnerDraftStatuses.includes('draft') && !partnerDraftStatuses.includes('active'), 'Partners cannot self-promote drafts to active');
+        const partnerActiveStatuses = getAllowedListingStatusesForRole(false, 'active');
+        assert.ok(partnerActiveStatuses.includes('active') && partnerActiveStatuses.includes('inactive') && partnerActiveStatuses.includes('sold'));
+        const adminStatuses = getAllowedListingStatusesForRole(true);
+        assert.ok(adminStatuses.includes('active') && adminStatuses.includes('draft'));
+
+        assert.strictEqual(resolvePropertyReferenceCode('1234abcd-5678-90ef-1234-567890abcdef'), 'HEL-BCDEF');
+        assert.strictEqual(resolvePropertyReferenceCode('prop-1', 'HEL-99999'), 'HEL-99999');
+        assert.deepStrictEqual(normalizeBilingualText({ ar: 'نص عربي', en: '' }), { ar: 'نص عربي', en: 'نص عربي' });
+
+        const addPropForm = formsData.find((f) => f.slug === 'add-property');
+        assert.ok(addPropForm, 'add-property form definition must exist');
+        const areaField = addPropForm!.fields.find((f) => f.key === 'area');
+        const priceField = addPropForm!.fields.find((f) => f.key === 'price');
+        assert.strictEqual(areaField?.validation?.min, PROPERTY_VALIDATION_RULES.MIN_AREA);
+        assert.strictEqual(priceField?.validation?.min, PROPERTY_VALIDATION_RULES.MIN_PRICE);
+
+        const invalidResult = validateIntakeSubmission(addPropForm!.fields, {
+            customerName: 'أحمد',
+            customerPhone: '999',
+            contactTime: 'morning',
+            address: 'الحي الثالث',
+            propertyType: 'apartment',
+            area: 0,
+            price: -100,
+            beds: 2,
+            baths: 1,
+            floor: 2,
+            finishingStatus: 'semi_finished',
+            isInCompound: 'no',
+            hasInstallments: 'no',
+            realEstateFinanceAvailable: 'no',
+        });
+        assert.strictEqual(invalidResult.isValid, false);
+        assert.ok(invalidResult.errors.customerPhone, 'Invalid phone must fail intake validation');
+        assert.ok(invalidResult.errors.area, 'Below-minimum area must fail intake validation');
+        assert.ok(invalidResult.errors.price, 'Negative price must fail intake validation');
+    });
+
+    await test('P11.2: Approving a listing request creates ONE draft property with bidirectional link and recovers safely on retry', async () => {
+        const { approvePropertyListingRequest } = await import('../services/propertyRequests');
+        const { resolvePropertyReferenceCode } = await import('../utils/propertyFormShared');
+        const { invalidatePropertiesCache } = await import('../services/properties');
+
+        invalidatePropertiesCache();
+
+        const adminReviewer: Partner = {
+            id: 'a1b2c3d4-0000-4000-8000-000000000001',
+            email: 'admin@onlyhelio.com',
+            name: 'Super Admin',
+            nameAr: 'مدير النظام',
+            imageUrl: 'https://example.com/admin.png',
+            description: '',
+            descriptionAr: '',
+            type: 'admin',
+            status: 'active',
+            subscriptionPlan: 'elite',
+            displayType: 'standard',
+            role: Role.SUPER_ADMIN,
+        };
+
+        useAuthStore.setState({
+            currentUser: adminReviewer,
+            permissions: [
+                Permission.MANAGE_REQUESTS,
+                Permission.MANAGE_PROPERTY_REQUESTS,
+                Permission.MANAGE_ALL_PROPERTIES,
+            ],
+        });
+
+        const reqId = '11111111-2222-4333-8444-555555555555';
+        const partnerUuid = '22222222-3333-4444-8555-666666666666';
+        const requestsRows: any[] = [
+            {
+                id: reqId,
+                city_id: 'heliopolis',
+                type: RequestType.PROPERTY_LISTING_REQUEST,
+                status: 'new',
+                requester_name: 'محمود علي',
+                requester_phone: '01098765432',
+                requester_email: 'mahmoud@example.com',
+                assigned_to: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                payload: {
+                    cityId: 'heliopolis',
+                    cooperationType: 'commission',
+                    contactTime: 'afternoon',
+                    images: ['https://example.com/prop-1.jpg'],
+                    propertyDetails: {
+                        cityId: 'heliopolis',
+                        purpose: { ar: 'للبيع', en: 'For Sale' },
+                        title: { ar: 'شقة مميزة بالتاسع', en: 'Prime Apartment District 9' },
+                        description: { ar: 'وصف تفصيلي للشقة', en: 'Detailed apartment description' },
+                        propertyType: { ar: 'شقة', en: 'Apartment' },
+                        finishingStatus: { ar: 'نصف تشطيب', en: 'Semi-Finished' },
+                        area: 185,
+                        price: 4200000,
+                        bedrooms: 3,
+                        bathrooms: 2,
+                        floor: 3,
+                        address: 'الحي التاسع - هليوبوليس الجديدة',
+                        location: { lat: 30.125, lng: 31.655 },
+                        amenities: { ar: ['أمن'], en: ['Security'] },
+                        isInCompound: true,
+                        hasInstallments: false,
+                        realEstateFinanceAvailable: true,
+                        deliveryType: 'immediate',
+                        contactMethod: 'platform',
+                    },
+                },
+            },
+        ];
+        const propertiesRows: any[] = [];
+        const messagesRows: any[] = [];
+        let failNextRequestUpdate = true;
+
+        const createListingWorkflowMockDb = () => {
+            const getStore = (table: string): any[] => {
+                if (table === 'requests') return requestsRows;
+                if (table === 'properties') return propertiesRows;
+                if (table === 'request_messages') return messagesRows;
+                if (table === 'partners') return [adminReviewer];
+                throw new Error(`Unexpected table: ${table}`);
+            };
+
+            return {
+                from: (table: string) => {
+                    const store = getStore(table);
+                    return {
+                        select: (_cols: string) => {
+                            const predicates: ((r: any) => boolean)[] = [];
+                            let limitVal: number | null = null;
+
+                            const runSelect = async () => {
+                                let res = store.filter((r) => predicates.every((fn) => fn(r)));
+                                if (limitVal !== null) res = res.slice(0, limitVal);
+                                return { data: JSON.parse(JSON.stringify(res)), error: null };
+                            };
+
+                            const builder: any = {
+                                eq: (col: string, val: any) => {
+                                    predicates.push((r) => r?.[col] === val);
+                                    return builder;
+                                },
+                                filter: (expr: string, _op: string, val: any) => {
+                                    if (expr.includes('sourceRequestId')) {
+                                        predicates.push(
+                                            (r) => r?.installments_info?._meta?.sourceRequestId === val
+                                        );
+                                    }
+                                    return builder;
+                                },
+                                order: () => builder,
+                                limit: (n: number) => {
+                                    limitVal = n;
+                                    return builder;
+                                },
+                                single: async () => {
+                                    const res = await runSelect();
+                                    if (!res.data || res.data.length === 0) {
+                                        return { data: null, error: { message: 'Not found' } };
+                                    }
+                                    return { data: res.data[0], error: null };
+                                },
+                                maybeSingle: async () => {
+                                    const res = await runSelect();
+                                    return { data: res.data?.[0] || null, error: null };
+                                },
+                                then: (resolve: any, reject: any) => runSelect().then(resolve, reject),
+                            };
+                            return builder;
+                        },
+                        insert: (payload: any) => {
+                            const row = {
+                                id:
+                                    payload.id ||
+                                    '33333333-4444-4555-8666-777777777777',
+                                created_at: payload.created_at || new Date().toISOString(),
+                                updated_at: payload.updated_at || new Date().toISOString(),
+                                ...JSON.parse(JSON.stringify(payload)),
+                            };
+                            const execInsert = async () => {
+                                if (table === 'properties' && row.source_request_id) {
+                                    const dup = propertiesRows.find(
+                                        (p) => p.source_request_id === row.source_request_id
+                                    );
+                                    if (dup) {
+                                        return {
+                                            data: null,
+                                            error: {
+                                                code: '23505',
+                                                message:
+                                                    'duplicate key value violates unique constraint uq_properties_source_request_id',
+                                            },
+                                        };
+                                    }
+                                }
+                                store.push(row);
+                                return { data: JSON.parse(JSON.stringify(row)), error: null };
+                            };
+                            return {
+                                select: () => ({ single: execInsert }),
+                                then: (resolve: any, reject: any) => execInsert().then(resolve, reject),
+                            };
+                        },
+                        update: (patch: any) => ({
+                            eq: (col: string, val: any) => ({
+                                select: () => ({
+                                    single: async () => {
+                                        if (table === 'requests' && failNextRequestUpdate) {
+                                            failNextRequestUpdate = false;
+                                            return {
+                                                data: null,
+                                                error: { message: 'Simulated transient network timeout on updateRequest' },
+                                            };
+                                        }
+                                        const idx = store.findIndex((r) => r?.[col] === val);
+                                        if (idx < 0) return { data: null, error: { message: 'Row not found' } };
+                                        store[idx] = { ...store[idx], ...JSON.parse(JSON.stringify(patch)) };
+                                        return { data: JSON.parse(JSON.stringify(store[idx])), error: null };
+                                    },
+                                }),
+                            }),
+                        }),
+                    };
+                },
+            };
+        };
+
+        const db = createListingWorkflowMockDb();
+
+        // Attempt 1: Draft property succeeds, then updateRequest fails mid-flight
+        await assert.rejects(
+            () =>
+                approvePropertyListingRequest(reqId, {
+                    assigneeId: partnerUuid,
+                    actorId: adminReviewer.id,
+                    client: db,
+                }),
+            /Simulated transient network timeout/
+        );
+        assert.strictEqual(propertiesRows.length, 1, 'Exactly one draft property created before failure');
+        assert.strictEqual(propertiesRows[0].source_request_id, reqId, 'Property holds source_request_id');
+        assert.strictEqual(requestsRows[0].status, 'new', 'Request remained uncommitted before retry');
+
+        // Attempt 2 (Retry): Must reuse existing draft without creating a duplicate and repair bidirectional link
+        const retryResult = await approvePropertyListingRequest(reqId, {
+            assigneeId: partnerUuid,
+            actorId: adminReviewer.id,
+            client: db,
+        });
+
+        assert.strictEqual(propertiesRows.length, 1, 'Retry MUST NOT create a second draft property');
+        assert.strictEqual(retryResult.alreadyExisted, true);
+        assert.strictEqual(retryResult.property.listingStatus, 'draft');
+        assert.strictEqual(retryResult.property.publicationStatus, 'draft');
+        assert.strictEqual(retryResult.property.sourceRequestId, reqId);
+        assert.strictEqual(retryResult.request.status, 'approved');
+        assert.strictEqual(retryResult.request.payload.createdPropertyId, retryResult.property.id);
+        assert.strictEqual(
+            retryResult.request.payload.createdPropertyReference,
+            resolvePropertyReferenceCode(retryResult.property.id, retryResult.property.referenceNumber)
+        );
+
+        // Attempt 3 (Repeated click): Still idempotent, zero duplicates
+        const thirdResult = await approvePropertyListingRequest(reqId, {
+            assigneeId: partnerUuid,
+            actorId: adminReviewer.id,
+            client: db,
+        });
+        assert.strictEqual(propertiesRows.length, 1);
+        assert.strictEqual(thirdResult.alreadyExisted, true);
+        assert.strictEqual(thirdResult.property.id, retryResult.property.id);
+    });
+
+    await test('P11.3: Operations Center preserves property reference, status, and assignee for finishing, inquiry, and contact forms', async () => {
+        const { resolvePropertyReferenceCode } = await import('../utils/propertyFormShared');
+        const propertyUuid = '44444444-5555-4666-8777-888888888888';
+        const expectedRef = resolvePropertyReferenceCode(propertyUuid);
+        const finishingManagerId = 'f1111111-1111-4111-8111-111111111111';
+        const crmManagerId = 'c2222222-2222-4222-8222-222222222222';
+        const listingsManagerId = 'l3333333-3333-4333-8333-333333333333';
+
+        const partnersMap = new Map<string, string>([
+            [finishingManagerId, 'مدير تشطيبات المنصة'],
+            [crmManagerId, 'خدمة العملاء'],
+            [listingsManagerId, 'مدير الوحدات'],
+        ]);
+
+        // 1. Finishing request originating from Property Details page
+        const finishingRaw = mapRequestFromDb({
+            id: 'req-fin-1',
+            city_id: 'heliopolis',
+            type: RequestType.LEAD,
+            status: 'in-progress',
+            requester_name: 'عمرو حسن',
+            requester_phone: '01011223344',
+            assigned_to: finishingManagerId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            payload: {
+                serviceType: 'finishing',
+                serviceTitle: 'طلب مقايسة خاصة: باقة الترا لوكس',
+                propertyId: propertyUuid,
+                propertyReference: expectedRef,
+                propertyTitle: 'فيلا مستقلة بالكمبوند السابع',
+                customerNotes: 'يرجى التواصل قبل المعاينة',
+            },
+        });
+        const unifiedFinishing = mapRequestToUnified(finishingRaw, partnersMap);
+        assert.strictEqual(unifiedFinishing.domain, 'finishing');
+        assert.strictEqual(unifiedFinishing.context.propertyId, propertyUuid);
+        assert.strictEqual(unifiedFinishing.context.propertyReference, expectedRef);
+        assert.strictEqual(unifiedFinishing.context.propertyTitle, 'فيلا مستقلة بالكمبوند السابع');
+        assert.strictEqual(unifiedFinishing.assignedToName, 'مدير تشطيبات المنصة');
+        assert.strictEqual(unifiedFinishing.operationalStatus, OperationalStatus.IN_PROGRESS);
+        assert.strictEqual(
+            matchesUnifiedRequestFilter(unifiedFinishing, { searchTerm: expectedRef }),
+            true,
+            'Operations search must locate finishing requests by propertyReference'
+        );
+
+        // 2. Contact Us form message
+        const contactRaw = mapRequestFromDb({
+            id: 'req-contact-1',
+            city_id: 'heliopolis',
+            type: RequestType.CONTACT_MESSAGE,
+            status: 'new',
+            requester_name: 'سارة محمد',
+            requester_phone: '01122334455',
+            assigned_to: crmManagerId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            payload: {
+                inquiryType: 'sales',
+                message: 'استفسار حول خطط السداد المتاحة',
+            },
+        });
+        const unifiedContact = mapRequestToUnified(contactRaw, partnersMap);
+        assert.strictEqual(unifiedContact.domain, 'customer_care');
+        assert.strictEqual(unifiedContact.context.serviceTitle, 'sales');
+        assert.strictEqual(unifiedContact.context.details, 'استفسار حول خطط السداد المتاحة');
+        assert.strictEqual(unifiedContact.assignedToName, 'خدمة العملاء');
+        assert.strictEqual(unifiedContact.operationalStatus, OperationalStatus.ASSIGNED);
+
+        // 3. Property Search Inquiry & Direct Property Inquiry
+        const inquiryRaw = mapRequestFromDb({
+            id: 'req-inq-1',
+            city_id: 'heliopolis',
+            type: RequestType.PROPERTY_INQUIRY,
+            status: 'contacted',
+            requester_name: 'طارق نبيل',
+            requester_phone: '01233445566',
+            assigned_to: listingsManagerId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            payload: {
+                propertyType: 'villa',
+                purpose: 'buy',
+                details: 'أبحث عن فيلا 350 متر',
+            },
+        });
+        const unifiedInquiry = mapRequestToUnified(inquiryRaw, partnersMap);
+        assert.strictEqual(unifiedInquiry.domain, 'real_estate');
+        assert.strictEqual(unifiedInquiry.context.serviceTitle, 'villa • buy');
+        assert.strictEqual(unifiedInquiry.assignedToName, 'مدير الوحدات');
+        assert.strictEqual(unifiedInquiry.operationalStatus, OperationalStatus.IN_PROGRESS);
+    });
+
+    useAuthStore.setState({ currentUser: null, permissions: [] });
+
     console.log('\n======================================================');
     console.log(`Results: ${passedCount} passed, ${failedCount} failed`);
     console.log('======================================================\n');
@@ -2609,4 +3628,5 @@ async function runTests() {
 }
 
 runTests();
+
 
