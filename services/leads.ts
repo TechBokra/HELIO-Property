@@ -31,6 +31,7 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
 
     return {
         id: row.id,
+        cityId: row.city_id || payload.cityId || 'heliopolis',
         partnerId: payload.partnerId || row.assigned_to,
         partnerName: payload.partnerName,
         managerId: payload.managerId,
@@ -338,6 +339,7 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
 
     const lead: Lead = {
         id: leadId,
+        cityId: dbPayload.city_id,
         partnerId: dbAssignedTo || routedPartner || '',
         partnerName: leadData.partnerName,
         managerId: leadData.managerId,
@@ -402,6 +404,7 @@ export const updateLead = async (leadId: string, updates: Partial<Lead>): Promis
     };
     if (updates.status) dbUpdates.status = updates.status;
     if (updates.assignedTo) dbUpdates.assigned_to = updates.assignedTo;
+    if (updates.cityId) dbUpdates.city_id = updates.cityId;
 
     // If payload attributes changed, merge with current payload
     const { data: currentReq, error: fetchErr } = await supabase
@@ -413,6 +416,7 @@ export const updateLead = async (leadId: string, updates: Partial<Lead>): Promis
     if (!fetchErr && currentReq) {
         const mergedPayload = { ...(currentReq.payload || {}) };
         if (updates.status) mergedPayload.status = updates.status;
+        if (updates.cityId) mergedPayload.cityId = updates.cityId;
         if (updates.designStage !== undefined) mergedPayload.designStage = updates.designStage;
         if (updates.customerNotes !== undefined) mergedPayload.customerNotes = updates.customerNotes;
         if (updates.contactTime !== undefined) mergedPayload.contactTime = updates.contactTime;

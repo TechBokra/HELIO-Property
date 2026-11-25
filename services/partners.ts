@@ -70,13 +70,26 @@ export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
         ? ADMIN_AVATAR_CDN
         : row.image_url || (resolvedRole === Role.SUPER_ADMIN ? 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=400&auto=format&fit=crop' : 'https://via.placeholder.com/150');
 
-    const rawAllowedCities = Array.isArray(row.allowed_cities)
-        ? row.allowed_cities
-        : Array.isArray(contactMethods?._allowedCities)
-            ? contactMethods._allowedCities
-            : resolvedRole === Role.SUPER_ADMIN
-                ? ['*']
-                : ['heliopolis'];
+    const explicitCities = Array.isArray(row.allowed_cities)
+        ? row.allowed_cities.map((c: any) => String(c).trim()).filter(Boolean)
+        : [];
+    const legacyCities = Array.isArray(contactMethods?._allowedCities)
+        ? contactMethods._allowedCities.map((c: any) => String(c).trim()).filter(Boolean)
+        : [];
+
+    const rawAllowedCities =
+        resolvedRole === Role.SUPER_ADMIN
+            ? ['*']
+            : explicitCities.length > 0
+                ? (explicitCities.length === 1 &&
+                    explicitCities[0] === 'heliopolis' &&
+                    legacyCities.length > 0 &&
+                    (legacyCities.length > 1 || legacyCities[0] !== 'heliopolis'))
+                    ? Array.from(new Set(legacyCities))
+                    : Array.from(new Set(explicitCities))
+                : legacyCities.length > 0
+                    ? Array.from(new Set(legacyCities))
+                    : ['heliopolis'];
 
     return {
         id: row.id,
@@ -246,27 +259,49 @@ export const createProfileForExistingUser = async (user: any): Promise<Partner> 
     return mapPartnerFromDb(data) as Partner;
 };
 
-export const addPartner = async (request: PartnerRequest, password?: string): Promise<Partner> => {
-    // Use Temporary Client to avoid logging out the current admin
-    const tempSupabase = getTemporaryClient();
+const isMissingAllowedCitiesColError = (err: any): boolean => {
+    const msg = `${err?.message || ''} ${err?.details || ''}`.toLowerCase();
+    return (
+        (err?.code === '42703' || err?.code === 'PGRST204' || msg.includes('schema cache')) &&
+        msg.includes('allowed_cities')
+    );
+};
 
-    const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-        email: request.contactEmail,
-        password: password || 'tempPass123!', 
-        options: {
-            data: {
-                name: request.companyName,
-                type: request.companyType
+export const addPartner = async (
+    request: PartnerRequest,
+    password?: string,
+    options?: { client?: any }
+): Promise<Partner> => {
+    let newPartnerId: string;
+    const dbClient = options?.client || supabase;
+
+    if (options?.client && (request as any).id && !String((request as any).id).startsWith('req-')) {
+        newPartnerId = (request as any).id;
+    } else {
+        // Use Temporary Client to avoid logging out the current admin
+        const tempSupabase = getTemporaryClient();
+        const { data: authData, error: authError } = await tempSupabase.auth.signUp({
+            email: request.contactEmail,
+            password: password || 'tempPass123!',
+            options: {
+                data: {
+                    name: request.companyName,
+                    type: request.companyType
+                }
             }
-        }
-    });
+        });
 
-    if (authError) throw authError;
-    if (!authData.user) throw new Error("Auth user creation failed");
+        if (authError) throw authError;
+        if (!authData.user) throw new Error("Auth user creation failed");
+        newPartnerId = authData.user.id;
+    }
 
-    const newPartnerId = authData.user.id;
-    
-    const dbPayload = {
+    const allowedCities =
+        Array.isArray(request.allowedCities) && request.allowedCities.length > 0
+            ? Array.from(new Set(request.allowedCities))
+            : [request.cityId || 'heliopolis'];
+
+    const dbPayload: any = {
         id: newPartnerId,
         email: request.contactEmail,
         type: request.companyType,
@@ -274,43 +309,60 @@ export const addPartner = async (request: PartnerRequest, password?: string): Pr
         subscription_plan: request.subscriptionPlan,
         display_type: 'standard',
         image_url: request.logo || 'https://via.placeholder.com/150',
-        name_ar: request.companyName, 
+        name_ar: request.companyName,
         name_en: request.companyName,
         description_ar: request.description,
         description_en: request.description,
-        contact_methods: { 
+        allowed_cities: allowedCities,
+        contact_methods: {
             whatsapp: { enabled: false, number: '' },
             phone: { enabled: true, number: request.contactPhone },
-            form: { enabled: true }
+            form: { enabled: true },
+            _allowedCities: allowedCities,
         }
     };
 
-    const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
-    
+    let { data, error } = await dbClient.from('partners').upsert(dbPayload).select().single();
+    if (error && isMissingAllowedCitiesColError(error)) {
+        const { allowed_cities: _omit, ...fallbackPayload } = dbPayload;
+        const retry = await dbClient.from('partners').upsert(fallbackPayload).select().single();
+        data = retry.data;
+        error = retry.error;
+    }
+
     if (error) throw error;
+    invalidatePartnersCache();
     return mapPartnerFromDb(data);
 };
 
-export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
+export const addInternalUser = async (userData: any, options?: { client?: any }): Promise<AdminPartner> => {
     requirePermission(Permission.MANAGE_USERS);
-    const tempSupabase = getTemporaryClient();
+    const dbClient = options?.client || supabase;
+    let newId: string;
 
-    const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-        email: userData.email,
-        password: userData.password,
-    });
+    if (options?.client && userData.id) {
+        newId = userData.id;
+    } else {
+        const tempSupabase = getTemporaryClient();
+        const { data: authData, error: authError } = await tempSupabase.auth.signUp({
+            email: userData.email,
+            password: userData.password,
+        });
 
-    if (authError) throw authError;
-    if (!authData.user) throw new Error("Auth user creation failed");
-
-    const newId = authData.user.id;
+        if (authError) throw authError;
+        if (!authData.user) throw new Error("Auth user creation failed");
+        newId = authData.user.id;
+    }
 
     const resolvedRole = mapPartnerTypeToRole(userData.type, userData.role || userData.type);
-    const allowedCities = Array.isArray(userData.allowedCities) && userData.allowedCities.length > 0
-        ? userData.allowedCities
-        : (resolvedRole === Role.SUPER_ADMIN ? ['*'] : ['heliopolis']);
+    const allowedCities =
+        resolvedRole === Role.SUPER_ADMIN
+            ? ['*']
+            : Array.isArray(userData.allowedCities) && userData.allowedCities.length > 0
+                ? Array.from(new Set(userData.allowedCities))
+                : ['heliopolis'];
 
-    const dbPayload = {
+    const dbPayload: any = {
         id: newId,
         email: userData.email,
         type: userData.type,
@@ -319,7 +371,8 @@ export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
         subscription_plan: 'basic',
         name_ar: userData.nameAr,
         name_en: userData.name,
-        image_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto.format&fit=crop',
+        allowed_cities: allowedCities,
+        image_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto=format&fit=crop',
         contact_methods: {
             whatsapp: { enabled: false, number: '' },
             phone: { enabled: false, number: '' },
@@ -328,27 +381,63 @@ export const addInternalUser = async (userData: any): Promise<AdminPartner> => {
         }
     };
 
-    const { data, error } = await supabase.from('partners').upsert(dbPayload).select().single();
+    let { data, error } = await dbClient.from('partners').upsert(dbPayload).select().single();
+    if (error && isMissingAllowedCitiesColError(error)) {
+        const { allowed_cities: _omit, ...fallbackPayload } = dbPayload;
+        const retry = await dbClient.from('partners').upsert(fallbackPayload).select().single();
+        data = retry.data;
+        error = retry.error;
+    }
     if (error) throw error;
     invalidatePartnersCache();
     return mapPartnerFromDb(data) as AdminPartner;
 };
 
-export const updatePartner = async (id: string, updates: any): Promise<boolean> => {
+export const updatePartner = async (
+    id: string,
+    updates: any,
+    options?: { client?: any; throwOnError?: boolean }
+): Promise<boolean> => {
+    const dbClient = options?.client || supabase;
     const dbUpdates: any = {};
-    if (updates.nameAr) dbUpdates.name_ar = updates.nameAr;
-    if (updates.nameEn) dbUpdates.name_en = updates.nameEn;
-    if (updates.name) dbUpdates.name_en = updates.name; 
-    if (updates.descriptionAr) dbUpdates.description_ar = updates.descriptionAr;
-    if (updates.descriptionEn) dbUpdates.description_en = updates.descriptionEn;
-    if (updates.imageUrl) dbUpdates.image_url = updates.imageUrl;
-    if (updates.status) dbUpdates.status = updates.status;
-    if (updates.contactMethods || updates.allowedCities) {
-        const baseContact = updates.contactMethods || { whatsapp: { enabled: false }, phone: { enabled: false }, form: { enabled: true } };
-        dbUpdates.contact_methods = updates.allowedCities
-            ? { ...baseContact, _allowedCities: updates.allowedCities }
+    if (updates.nameAr !== undefined) dbUpdates.name_ar = updates.nameAr;
+    if (updates.nameEn !== undefined) dbUpdates.name_en = updates.nameEn;
+    if (updates.name !== undefined) dbUpdates.name_en = updates.name;
+    if (updates.descriptionAr !== undefined) dbUpdates.description_ar = updates.descriptionAr;
+    if (updates.descriptionEn !== undefined) dbUpdates.description_en = updates.descriptionEn;
+    if (updates.description !== undefined && updates.descriptionEn === undefined) {
+        dbUpdates.description_en = updates.description;
+    }
+    if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.subscriptionPlan !== undefined) dbUpdates.subscription_plan = updates.subscriptionPlan;
+    if (updates.displayType !== undefined) dbUpdates.display_type = updates.displayType;
+
+    if (updates.allowedCities !== undefined) {
+        dbUpdates.allowed_cities = Array.isArray(updates.allowedCities) && updates.allowedCities.length > 0
+            ? Array.from(new Set(updates.allowedCities))
+            : ['heliopolis'];
+    }
+
+    if (updates.contactMethods !== undefined || updates.allowedCities !== undefined) {
+        let baseContact = updates.contactMethods;
+        if (!baseContact) {
+            const { data: existingRow } = await dbClient
+                .from('partners')
+                .select('contact_methods')
+                .eq('id', id)
+                .maybeSingle();
+            const existingRaw = existingRow?.contact_methods;
+            const parsed = typeof existingRaw === 'string' ? JSON.parse(existingRaw) : existingRaw;
+            baseContact = parsed && typeof parsed === 'object'
+                ? parsed
+                : { whatsapp: { enabled: false, number: '' }, phone: { enabled: false, number: '' }, form: { enabled: true } };
+        }
+        dbUpdates.contact_methods = updates.allowedCities !== undefined
+            ? { ...baseContact, _allowedCities: dbUpdates.allowed_cities }
             : baseContact;
     }
+
     if (updates.email) dbUpdates.email = updates.email;
     if (updates.type) {
         dbUpdates.type = updates.type;
@@ -357,11 +446,22 @@ export const updatePartner = async (id: string, updates: any): Promise<boolean> 
         dbUpdates.role = mapPartnerTypeToRole(undefined, updates.role);
     }
 
-    // Password management is handled strictly via dedicated credentials service and server-side APIs (Section 14)
+    let { error } = await dbClient.from('partners').update(dbUpdates).eq('id', id);
+    if (error && isMissingAllowedCitiesColError(error)) {
+        const { allowed_cities: _omit, ...fallbackUpdates } = dbUpdates;
+        const retry = await dbClient.from('partners').update(fallbackUpdates).eq('id', id);
+        error = retry.error;
+    }
 
-    const { error } = await supabase.from('partners').update(dbUpdates).eq('id', id);
-    if (!error) invalidatePartnersCache();
-    return !error;
+    if (error) {
+        if (options?.throwOnError) {
+            throw new Error(error.message || 'تعذر حفظ تحديثات الشريك');
+        }
+        return false;
+    }
+
+    invalidatePartnersCache();
+    return true;
 };
 
 export const updatePartnerStatus = async (id: string, status: PartnerStatus): Promise<boolean> => {

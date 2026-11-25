@@ -6,6 +6,7 @@ import { rolePermissions, mapPartnerTypeToRole } from '../data/permissions';
 import { partnersData } from '../data/partners';
 import { supabase } from '../lib/supabase';
 import { useFavoritesStore } from './useFavoritesStore';
+import { useCityStore } from './useCityStore';
 
 interface AuthState {
     currentUser: Partner | null;
@@ -46,6 +47,7 @@ export const useAuthStore = create<AuthState>()(
                             const custom = Array.isArray(existingUser.customPermissions) ? existingUser.customPermissions : [];
                             const mergedPermissions = Array.from(new Set([...basePermissions, ...custom]));
                             set({ permissions: mergedPermissions });
+                            useCityStore.getState().syncAdminScopeForUser(existingUser);
                             return;
                         }
                     }
@@ -81,6 +83,7 @@ export const useAuthStore = create<AuthState>()(
 
                         const updatedProfile = { ...userProfile, role: userRole };
                         set({ currentUser: updatedProfile, permissions: mergedPermissions });
+                        useCityStore.getState().syncAdminScopeForUser(updatedProfile);
                         useFavoritesStore.getState().syncWithCloud(session.user.id);
                     } else {
                         // Profile could not be verified
@@ -100,12 +103,15 @@ export const useAuthStore = create<AuthState>()(
                                 const custom = Array.isArray(profile.customPermissions) ? profile.customPermissions : [];
                                 const merged = Array.from(new Set([...base, ...custom]));
 
-                                set({ currentUser: { ...profile, role }, permissions: merged });
+                                const updatedProfile = { ...profile, role };
+                                set({ currentUser: updatedProfile, permissions: merged });
+                                useCityStore.getState().syncAdminScopeForUser(updatedProfile);
                                 useFavoritesStore.getState().syncWithCloud(currentSession.user.id);
                             }
                         } else if (event === 'SIGNED_OUT') {
                             if (!get().currentUser?.isDemo) {
                                 set({ currentUser: null, permissions: [] });
+                                useCityStore.getState().syncAdminScopeForUser(null);
                                 useFavoritesStore.getState().clearAuthenticatedFavorites();
                                 localStorage.removeItem('onlyhelio-auth-storage');
                             }
@@ -166,6 +172,7 @@ export const useAuthStore = create<AuthState>()(
                                 permissions: mergedPermissions, 
                                 isLoading: false 
                             });
+                            useCityStore.getState().syncAdminScopeForUser(updatedProfile);
                             useFavoritesStore.getState().syncWithCloud(supabaseUser.id);
                             return updatedProfile;
                         }
@@ -215,6 +222,7 @@ export const useAuthStore = create<AuthState>()(
                                 permissions: mergedPermissions,
                                 isLoading: false
                             });
+                            useCityStore.getState().syncAdminScopeForUser(demoUser);
                             return demoUser;
                         }
                     }
@@ -281,6 +289,7 @@ export const useAuthStore = create<AuthState>()(
                     console.warn("Sign out error", e);
                 } finally {
                     useFavoritesStore.getState().clearAuthenticatedFavorites();
+                    useCityStore.getState().syncAdminScopeForUser(null);
                     set({ currentUser: null, permissions: [], isLoading: false });
                     localStorage.removeItem('onlyhelio-auth-storage');
                 }
@@ -318,9 +327,12 @@ export const useAuthStore = create<AuthState>()(
                     const basePermissions = rolePermissions.get(resolvedRole) || (resolvedRole === Role.SUPER_ADMIN ? Object.values(Permission) : []);
                     const custom = Array.isArray(user.customPermissions) ? user.customPermissions : [];
                     const merged = Array.from(new Set([...basePermissions, ...custom]));
-                    set({ currentUser: { ...user, role: resolvedRole }, permissions: merged });
+                    const updated = { ...user, role: resolvedRole };
+                    set({ currentUser: updated, permissions: merged });
+                    useCityStore.getState().syncAdminScopeForUser(updated);
                 } else {
                     set({ currentUser: null, permissions: [] });
+                    useCityStore.getState().syncAdminScopeForUser(null);
                 }
             }
         }),

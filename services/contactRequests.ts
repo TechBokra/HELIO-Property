@@ -10,6 +10,7 @@ export const getAllContactRequests = async (): Promise<ContactRequest[]> => {
         .map(r => ({
             ...r.payload as any,
             id: r.id,
+            cityId: r.cityId || (r.payload as any)?.cityId || 'heliopolis',
             status: r.status,
             createdAt: r.createdAt,
             assignedTo: r.assignedTo,
@@ -21,9 +22,11 @@ export const getAllContactRequests = async (): Promise<ContactRequest[]> => {
 };
 
 export const addContactRequest = (data: Omit<ContactRequest, 'id' | 'status' | 'createdAt' | 'managerId'>): Promise<ContactRequest> => {
+    const resolvedCityId = (data as any).cityId || 'heliopolis';
     return addRequest(RequestType.CONTACT_MESSAGE, {
+        cityId: resolvedCityId,
         requesterInfo: { name: data.name, phone: data.phone },
-        payload: data
+        payload: { ...data, cityId: resolvedCityId }
     }) as Promise<any>;
 };
 

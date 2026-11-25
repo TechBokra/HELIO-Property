@@ -24,7 +24,7 @@ export const INITIAL_CITIES: CityPortalConfig[] = [
             en: 'East Cairo · Suez Road',
         },
         accentColor: '#F59E0B',
-        heroImageUrl: '/src/assets/images/city_portal_heliopolis_1794779920751.jpg',
+        heroImageUrl: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1400&q=80',
         isActive: true,
         isFeatured: true,
         stats: {
@@ -59,7 +59,7 @@ export const INITIAL_CITIES: CityPortalConfig[] = [
             en: 'East Cairo · Ismailia & Suez Corridor',
         },
         accentColor: '#059669',
-        heroImageUrl: '/src/assets/images/city_portal_shorouk_1794779921340.jpg',
+        heroImageUrl: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1400&q=80',
         isActive: true,
         isFeatured: true,
         stats: {
@@ -94,7 +94,7 @@ export const INITIAL_CITIES: CityPortalConfig[] = [
             en: 'East Cairo · New Capital Gateway',
         },
         accentColor: '#2563EB',
-        heroImageUrl: '/src/assets/images/city_portal_badr_1794779922365.jpg',
+        heroImageUrl: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1400&q=80',
         isActive: true,
         isFeatured: true,
         stats: {
@@ -110,22 +110,57 @@ export const INITIAL_CITIES: CityPortalConfig[] = [
     },
 ];
 
+export interface CityResolutionResult {
+    portalMode: 'hub' | 'city';
+    cityId: string;
+    unavailableCity?: CityPortalConfig;
+    unavailableSlug?: string;
+}
+
+const SUBDOMAIN_ALIASES: Record<string, string> = {
+    heliopolies: 'heliopolis',
+    shrouk: 'shorouk',
+};
+
 export const resolveCityFromEnvironment = (
     hostname: string,
     search: string,
     availableCities: CityPortalConfig[] = INITIAL_CITIES,
-): { portalMode: 'hub' | 'city'; cityId: string } => {
-    const activeSlugs = new Set(availableCities.filter((c) => c.isActive).map((c) => c.slug.toLowerCase()));
+): CityResolutionResult => {
+    const bySlug = new Map<string, CityPortalConfig>();
+    availableCities.forEach((c) => {
+        bySlug.set(c.slug.toLowerCase(), c);
+        bySlug.set(c.id.toLowerCase(), c);
+    });
+
+    const firstActiveCityId =
+        availableCities.find((c) => c.isActive)?.id || availableCities[0]?.id || 'heliopolis';
+
+    const resolveCandidate = (rawSlug: string): CityResolutionResult | null => {
+        const canonical = SUBDOMAIN_ALIASES[rawSlug] || rawSlug;
+        const found = bySlug.get(canonical);
+        if (!found) return null;
+        if (found.isActive) {
+            return { portalMode: 'city', cityId: found.id };
+        }
+        return {
+            portalMode: 'city',
+            cityId: found.id,
+            unavailableCity: found,
+            unavailableSlug: found.slug,
+        };
+    };
 
     // 1. Explicit URL Query Override (?city=hub or ?city=shorouk) for dev/preview
     if (search) {
         const params = new URLSearchParams(search);
         const cityParam = params.get('city')?.trim().toLowerCase();
         if (cityParam === 'hub' || cityParam === 'root' || cityParam === 'all') {
-            return { portalMode: 'hub', cityId: 'heliopolis' };
+            return { portalMode: 'hub', cityId: firstActiveCityId };
         }
-        if (cityParam && activeSlugs.has(cityParam)) {
-            return { portalMode: 'city', cityId: cityParam };
+        if (cityParam) {
+            const matched = resolveCandidate(cityParam);
+            if (matched) return matched;
         }
     }
 
@@ -137,23 +172,16 @@ export const resolveCityFromEnvironment = (
         normalizedHost === 'only-propoerty.com' ||
         normalizedHost === 'www.only-propoerty.com'
     ) {
-        return { portalMode: 'hub', cityId: 'heliopolis' };
+        return { portalMode: 'hub', cityId: firstActiveCityId };
     }
 
     const hostParts = normalizedHost.split('.');
     if (hostParts.length >= 2) {
         const candidateSubdomain = hostParts[0];
-        if (candidateSubdomain === 'heliopolies') {
-            return { portalMode: 'city', cityId: 'heliopolis' };
-        }
-        if (candidateSubdomain === 'shrouk') {
-            return { portalMode: 'city', cityId: 'shorouk' };
-        }
-        if (activeSlugs.has(candidateSubdomain)) {
-            return { portalMode: 'city', cityId: candidateSubdomain };
-        }
+        const matched = resolveCandidate(candidateSubdomain);
+        if (matched) return matched;
     }
 
-    // 3. Default fallback preserves existing New Heliopolis behavior
-    return { portalMode: 'city', cityId: 'heliopolis' };
+    // 3. Default fallback preserves active New Heliopolis / first active city behavior
+    return { portalMode: 'city', cityId: firstActiveCityId };
 };

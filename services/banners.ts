@@ -67,6 +67,7 @@ export const addBanner = async (banner: Omit<Banner, 'id'>): Promise<Banner> => 
         .upsert({ key: 'banners', content: newBanners });
 
     if (error) throw error;
+    invalidateBannersCache();
     return newBanner;
 };
 
@@ -85,6 +86,7 @@ export const updateBanner = async (bannerId: string, updates: Partial<Banner>): 
         .upsert({ key: 'banners', content: banners });
 
     if (error) throw error;
+    invalidateBannersCache();
     return updatedBanner;
 };
 
@@ -97,5 +99,6 @@ export const deleteBanner = async (bannerId: string): Promise<boolean> => {
         .from('site_content')
         .upsert({ key: 'banners', content: filteredBanners });
 
+    if (!error) invalidateBannersCache();
     return !error;
 };

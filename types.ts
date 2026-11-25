@@ -115,6 +115,7 @@ export enum Permission {
     VIEW_SETTINGS = 'view_settings',
     MANAGE_SETTINGS = 'manage_settings',
     MANAGE_FILTERS = 'manage_filters',
+    MANAGE_CITIES = 'manage_cities',
 
     // PARTNER SELF-SERVICE
     MANAGE_OWN_PROFILE = 'manage_own_profile',
@@ -161,6 +162,13 @@ export interface Partner {
 
 export type CitySlug = 'hub' | 'heliopolis' | 'shorouk' | 'badr' | string;
 
+export interface CityContentOverrides {
+    heroTitle?: { ar: string; en: string };
+    heroSubtitle?: { ar: string; en: string };
+    aboutTitle?: { ar: string; en: string };
+    aboutDescription?: { ar: string; en: string };
+}
+
 export interface CityPortalConfig {
     id: string;
     slug: string;
@@ -179,10 +187,11 @@ export interface CityPortalConfig {
         propertiesCount: number;
         projectsCount: number;
         partnersCount: number;
-        districtsCount: number;
+        districtsCount?: number;
     };
     coordinates?: { lat: number; lng: number };
     districts?: { ar: string[]; en: string[] };
+    contentOverrides?: CityContentOverrides;
 }
 
 export interface AdminPartner extends Partner {
@@ -308,6 +317,7 @@ export interface DecorationCategory {
 
 export interface Banner {
     id: string;
+    cityId?: string;
     title: string;
     imageUrl: string;
     link: string;
@@ -461,6 +471,7 @@ export interface OperationalMetrics {
 
 export interface Lead {
     id: string;
+    cityId?: string;
     partnerId: string;
     managerId?: string;
     propertyId?: string;
@@ -513,6 +524,8 @@ export interface Lead {
 
 export interface PartnerRequest {
     id: string;
+    cityId?: string;
+    allowedCities?: string[];
     companyName: string;
     companyType: PartnerType;
     description: string;
@@ -537,6 +550,7 @@ export interface OfficialDocument {
 
 export interface AddPropertyRequest {
     id: string;
+    cityId?: string;
     customerName: string;
     customerPhone: string;
     status: RequestStatus;
@@ -550,6 +564,7 @@ export interface AddPropertyRequest {
 
 export interface PropertyInquiryRequest {
     id: string;
+    cityId?: string;
     customerName: string;
     customerPhone: string;
     details: string;
@@ -559,6 +574,7 @@ export interface PropertyInquiryRequest {
 
 export interface ContactRequest {
     id: string;
+    cityId?: string;
     name: string;
     phone: string;
     message: string;

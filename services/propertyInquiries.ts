@@ -10,6 +10,7 @@ export const getAllPropertyInquiries = async (): Promise<PropertyInquiryRequest[
         .map(r => ({
             ...r.payload as any,
             id: r.id,
+            cityId: r.cityId || (r.payload as any)?.cityId || 'heliopolis',
             status: r.status,
             createdAt: r.createdAt,
             customerName: r.requesterInfo.name,
@@ -18,9 +19,11 @@ export const getAllPropertyInquiries = async (): Promise<PropertyInquiryRequest[
 };
 
 export const addPropertyInquiry = (data: Omit<PropertyInquiryRequest, 'id' | 'status' | 'createdAt'>): Promise<PropertyInquiryRequest> => {
+    const resolvedCityId = (data as any).cityId || 'heliopolis';
     return addRequest(RequestType.PROPERTY_INQUIRY, {
+        cityId: resolvedCityId,
         requesterInfo: { name: data.customerName, phone: data.customerPhone },
-        payload: data
+        payload: { ...data, cityId: resolvedCityId }
     }) as Promise<any>;
 };
 

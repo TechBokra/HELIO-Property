@@ -154,7 +154,9 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
     
     // DELEGATION: If it's a LEAD, delegate to addLead service which handles extra logic
     if (type === RequestType.LEAD) {
-        const payload = data.payload as any;
+        const payload = (data.payload || {}) as any;
+        const resolvedLeadCityId =
+            (data as any).cityId || payload.cityId || payload.propertyDetails?.cityId || 'heliopolis';
         const lead = await addLead({
             serviceType: payload.serviceType,
             serviceTitle: payload.serviceTitle,
@@ -167,12 +169,14 @@ export const addRequest = async (type: RequestType, data: Omit<Request, 'id' | '
             propertyId: payload.propertyId,
             referenceImage: payload.referenceImage,
             // Pass through other payload data
-            ...payload
+            ...payload,
+            cityId: resolvedLeadCityId,
         });
         
         // Return a Request wrapper
         return {
             id: lead.id,
+            cityId: lead.cityId || resolvedLeadCityId,
             type: RequestType.LEAD,
             status: 'new',
             createdAt: lead.createdAt,
@@ -751,6 +755,7 @@ export const mapRequestToUnified = (
 
 export interface UnifiedRequestsFilter {
     cityId?: string | 'all';
+    allowedCities?: string[];
     domain?: OperationalDomain | 'all';
     type?: RequestType | 'all';
     operationalStatus?: OperationalStatus | 'all';
@@ -806,8 +811,13 @@ export const matchesUnifiedRequestFilter = (
     const oneDayMs = 24 * 60 * 60 * 1000;
     const twoDaysMs = 48 * 60 * 60 * 1000;
 
+    const reqCity = String(req.cityId || req.rawPayload?.cityId || 'heliopolis').toLowerCase();
+    if (Array.isArray(filter.allowedCities) && filter.allowedCities.length > 0 && !filter.allowedCities.includes('*')) {
+        const normalizedAllowed = filter.allowedCities.map((c) => String(c).toLowerCase());
+        if (!normalizedAllowed.includes(reqCity)) return false;
+    }
+
     if (filter.cityId && filter.cityId !== 'all' && filter.cityId !== 'hub') {
-        const reqCity = String(req.cityId || req.rawPayload?.cityId || 'heliopolis').toLowerCase();
         if (reqCity !== filter.cityId.toLowerCase()) return false;
     }
 
@@ -1044,12 +1054,43 @@ export const getUnifiedRequestById = async (id: string): Promise<UnifiedRequest 
  * Section 4: Operations Center — True Server-Side Data Handling
  * Server-backed pagination, filtering, search, sorting, and metrics calculation
  */
+export const applyCityScopeToRequestQuery = (
+    initialQuery: any,
+    filter: Pick<UnifiedRequestsFilter, 'cityId' | 'allowedCities'> = {}
+) => {
+    let query = initialQuery;
+    const hasRestrictedCities =
+        Array.isArray(filter.allowedCities) &&
+        filter.allowedCities.length > 0 &&
+        !filter.allowedCities.includes('*');
+
+    const hasExplicitCity = Boolean(filter.cityId && filter.cityId !== 'all' && filter.cityId !== 'hub');
+
+    if (hasRestrictedCities) {
+        const allowed = filter.allowedCities!.map((c) => String(c).toLowerCase());
+        if (hasExplicitCity) {
+            const target = String(filter.cityId).toLowerCase();
+            if (allowed.includes(target)) {
+                query = query.eq('city_id', target);
+            } else {
+                query = query.in('city_id', ['__unauthorized_city__']);
+            }
+        } else {
+            query = query.in('city_id', allowed);
+        }
+    } else if (hasExplicitCity) {
+        query = query.eq('city_id', String(filter.cityId).toLowerCase());
+    }
+
+    return query;
+};
+
 export const applyUnifiedRequestsQueryFilters = (
     initialQuery: any,
     filter: UnifiedRequestsFilter = {},
     now: Date = new Date()
 ) => {
-    let query = initialQuery;
+    let query = applyCityScopeToRequestQuery(initialQuery, filter);
     const nowMs = now.getTime();
     const oneDayAgo = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
     const twoDaysAgo = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString();
@@ -1260,15 +1301,18 @@ export const getUnifiedRequests = async (
     }
 
     const allMappedRequests = (rawRows || []).map((r: any) => mapRequestToUnified(mapRequestFromDb(r), managersMap, nowMs));
-    const hasCityFilter = Boolean(filter.cityId && filter.cityId !== 'all' && filter.cityId !== 'hub');
-    const mappedRequests = hasCityFilter
-        ? allMappedRequests.filter((r: UnifiedRequest) => (r.cityId || 'heliopolis').toLowerCase() === String(filter.cityId).toLowerCase())
-        : allMappedRequests;
+    const mappedRequests = allMappedRequests.filter((r: UnifiedRequest) =>
+        matchesUnifiedRequestFilter(r, {
+            cityId: filter.cityId,
+            allowedCities: filter.allowedCities,
+        }, now)
+    );
 
-    // Calculate metrics via lightweight targeted counts aligned with canonical mappings
+    // Calculate metrics via lightweight targeted counts aligned with canonical mappings & city scope
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     const oneDayAgo = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
     const twoDaysAgo = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString();
+    const scopedMetricQuery = (q: any) => applyCityScopeToRequestQuery(q, filter);
 
     const [
         totalRes,
@@ -1281,32 +1325,32 @@ export const getUnifiedRequests = async (
         resolvedTodayRes,
         recentlyUpdatedRes
     ] = await Promise.all([
-        dbClient.from('requests').select('*', { count: 'exact', head: true }),
-        dbClient.from('requests').select('*', { count: 'exact', head: true }).is('assigned_to', null),
-        dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.NEW,and(payload->>operationalStatus.is.null,status.in.(new,pending),assigned_to.is.null)'),
-        dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.IN_PROGRESS,and(payload->>operationalStatus.is.null,status.in.(contacted,site-visit,in-progress,qualified))'),
-        dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.WAITING,and(payload->>operationalStatus.is.null,status.in.(quoted,waiting,viewing))'),
-        dbClient.from('requests').select('*', { count: 'exact', head: true }).lt('created_at', twoDaysAgo).not('status', 'in', TERMINAL_DB_STATUS_IN).or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`),
-        dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`).or(`payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo},payload->estimatedCost.gt.1000000`),
-        dbClient.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', todayMidnight).or(`status.in.(${RESOLVED_DB_STATUSES.join(',')}),and(status.not.in.${TERMINAL_DB_STATUS_IN},payload->>operationalStatus.eq.RESOLVED)`),
-        dbClient.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', oneDayAgo)
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true })),
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true }).is('assigned_to', null)),
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.NEW,and(payload->>operationalStatus.is.null,status.in.(new,pending),assigned_to.is.null)')),
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.IN_PROGRESS,and(payload->>operationalStatus.is.null,status.in.(contacted,site-visit,in-progress,qualified))')),
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or('payload->>operationalStatus.eq.WAITING,and(payload->>operationalStatus.is.null,status.in.(quoted,waiting,viewing))')),
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true }).lt('created_at', twoDaysAgo).not('status', 'in', TERMINAL_DB_STATUS_IN).or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`)),
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true }).not('status', 'in', TERMINAL_DB_STATUS_IN).or(`payload->>operationalStatus.is.null,payload->>operationalStatus.not.in.${TERMINAL_OP_STATUS_IN}`).or(`payload->>priority.eq.high,type.eq.${RequestType.PARTNER_APPLICATION},and(assigned_to.is.null,created_at.lt.${oneDayAgo}),created_at.lt.${twoDaysAgo},payload->estimatedCost.gt.1000000`)),
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', todayMidnight).or(`status.in.(${RESOLVED_DB_STATUSES.join(',')}),and(status.not.in.${TERMINAL_DB_STATUS_IN},payload->>operationalStatus.eq.RESOLVED)`)),
+        scopedMetricQuery(dbClient.from('requests').select('*', { count: 'exact', head: true }).gte('updated_at', oneDayAgo))
     ]);
 
     const metrics: OperationalMetrics = {
-        total: hasCityFilter ? mappedRequests.length : (totalRes.count || 0),
-        unassigned: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => !r.assignedTo).length : (unassignedRes.count || 0),
-        newCount: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.operationalStatus === OperationalStatus.NEW).length : (newRes.count || 0),
-        inProgress: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.operationalStatus === OperationalStatus.IN_PROGRESS).length : (inProgressRes.count || 0),
-        waiting: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.operationalStatus === OperationalStatus.WAITING).length : (waitingRes.count || 0),
-        agedRisk: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.isAged).length : (agedRes.count || 0),
-        highPriority: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.priority === 'high').length : (highPriorityRes.count || 0),
-        resolvedToday: hasCityFilter ? mappedRequests.filter((r: UnifiedRequest) => r.operationalStatus === OperationalStatus.RESOLVED).length : (resolvedTodayRes.count || 0),
-        recentlyUpdated: hasCityFilter ? mappedRequests.length : (recentlyUpdatedRes.count || 0)
+        total: totalRes.count || 0,
+        unassigned: unassignedRes.count || 0,
+        newCount: newRes.count || 0,
+        inProgress: inProgressRes.count || 0,
+        waiting: waitingRes.count || 0,
+        agedRisk: agedRes.count || 0,
+        highPriority: highPriorityRes.count || 0,
+        resolvedToday: resolvedTodayRes.count || 0,
+        recentlyUpdated: recentlyUpdatedRes.count || 0
     };
 
     return {
         requests: mappedRequests,
-        totalCount: hasCityFilter ? mappedRequests.length : (count ?? (rawRows?.length || 0)),
+        totalCount: count ?? mappedRequests.length,
         metrics
     };
 };

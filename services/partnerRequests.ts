@@ -10,6 +10,10 @@ export const getAllPartnerRequests = async (): Promise<PartnerRequest[]> => {
         .map(r => ({
             ...r.payload as any,
             id: r.id,
+            cityId: r.cityId || (r.payload as any)?.cityId || 'heliopolis',
+            allowedCities: Array.isArray((r.payload as any)?.allowedCities) && (r.payload as any).allowedCities.length > 0
+                ? (r.payload as any).allowedCities
+                : [r.cityId || (r.payload as any)?.cityId || 'heliopolis'],
             status: r.status,
             createdAt: r.createdAt,
             // Map contact info back if it was normalized
@@ -20,13 +24,18 @@ export const getAllPartnerRequests = async (): Promise<PartnerRequest[]> => {
 };
 
 export const addPartnerRequest = (data: Omit<PartnerRequest, 'id' | 'status' | 'createdAt'>): Promise<PartnerRequest> => {
+    const resolvedCityId = (data as any).cityId || (Array.isArray(data.allowedCities) && data.allowedCities[0]) || 'heliopolis';
+    const resolvedAllowedCities = Array.isArray(data.allowedCities) && data.allowedCities.length > 0
+        ? data.allowedCities
+        : [resolvedCityId];
     return addRequest(RequestType.PARTNER_APPLICATION, {
+        cityId: resolvedCityId,
         requesterInfo: { 
             name: data.contactName, 
             phone: data.contactPhone, 
             email: data.contactEmail 
         },
-        payload: data
+        payload: { ...data, cityId: resolvedCityId, allowedCities: resolvedAllowedCities }
     }) as Promise<any>;
 };
 

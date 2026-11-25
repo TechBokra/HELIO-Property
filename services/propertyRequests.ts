@@ -29,6 +29,7 @@ export const getAllPropertyRequests = async (): Promise<AddPropertyRequest[]> =>
         .map((r) => ({
             ...(r.payload as any),
             id: r.id,
+            cityId: r.cityId || (r.payload as any)?.cityId || (r.payload as any)?.propertyDetails?.cityId || 'heliopolis',
             status: r.status,
             createdAt: r.createdAt,
             assignedTo: r.assignedTo,
@@ -40,9 +41,11 @@ export const getAllPropertyRequests = async (): Promise<AddPropertyRequest[]> =>
 export const addPropertyRequest = (
     data: Omit<AddPropertyRequest, 'id' | 'status' | 'createdAt' | 'managerId'>
 ): Promise<AddPropertyRequest> => {
+    const resolvedCityId = (data as any).cityId || (data as any).propertyDetails?.cityId || 'heliopolis';
     return addRequest(RequestType.PROPERTY_LISTING_REQUEST, {
+        cityId: resolvedCityId,
         requesterInfo: { name: data.customerName, phone: data.customerPhone },
-        payload: data,
+        payload: { ...data, cityId: resolvedCityId },
     }) as Promise<any>;
 };
 

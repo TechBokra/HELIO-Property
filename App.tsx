@@ -56,13 +56,15 @@ const App = () => {
     const { t } = useLanguage();
     const initializeAuth = useAuthStore(state => state.initialize);
     const portalMode = useCityStore(state => state.portalMode);
+    const loadCities = useCityStore(state => state.loadCities);
     const syncFromLocation = useCityStore(state => state.syncFromLocation);
 
     useEffect(() => {
         initializeAuth();
         initAttribution();
         syncFromLocation();
-    }, [initializeAuth, syncFromLocation]);
+        loadCities().catch(() => {});
+    }, [initializeAuth, loadCities, syncFromLocation]);
 
     return (
         <div>
