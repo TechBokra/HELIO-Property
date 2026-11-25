@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAllForms, deleteForm } from '../../../services/forms';
 import type { FormDefinition, FormCategory } from '../../../types';
@@ -12,6 +13,7 @@ import { Card, CardContent, CardFooter } from '../../ui/Card';
 import { ClipboardDocumentListIcon, PlusIcon, TrashIcon } from '../../ui/Icons';
 import AdminFormBuilder from './AdminFormBuilder';
 import ConfirmationModal from '../../shared/ConfirmationModal';
+import { getFormUsageLocations } from '../../../utils/formUsageMap';
 
 const AdminFormsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -61,17 +63,55 @@ const AdminFormsPage: React.FC = () => {
         return <AdminFormBuilder formToEdit={formToEdit} onClose={handleCloseBuilder} />;
     }
 
+    const isAr = language === 'ar';
+
+    const renderUsageBadges = (slug: string) => {
+        const usages = getFormUsageLocations(slug);
+        if (usages.length === 0) {
+            return (
+                <span className="text-xs text-gray-400 italic">
+                    {isAr ? `نموذج مرن (slug: ${slug})` : `Custom / dynamic slug (${slug})`}
+                </span>
+            );
+        }
+
+        return (
+            <div className="space-y-1.5">
+                {usages.map((loc, idx) => (
+                    <div key={`${loc.route}-${idx}`} className="flex flex-wrap items-center gap-1.5 text-xs">
+                        {loc.isPublicRoute ? (
+                            <Link
+                                to={loc.route}
+                                className="font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 font-semibold"
+                            >
+                                {loc.route}
+                            </Link>
+                        ) : (
+                            <span className="font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 font-semibold">
+                                {loc.route}
+                            </span>
+                        )}
+                        <span className="text-gray-700 dark:text-gray-300 font-medium">
+                            {loc.pageName[language]}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
     const renderTable = (items: FormDefinition[]) => (
         <div className="bg-white dark:bg-gray-900 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Form Title</TableHead>
+                        <TableHead>{isAr ? 'عنوان النموذج' : 'Form Title'}</TableHead>
                         <TableHead>Slug (ID)</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Fields</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableHead>{isAr ? 'الصفحة والمسار المستخدم' : 'Used In (Page & Route)'}</TableHead>
+                        <TableHead>{isAr ? 'التصنيف' : 'Category'}</TableHead>
+                        <TableHead>{isAr ? 'الحقول' : 'Fields'}</TableHead>
+                        <TableHead>{isAr ? 'الحالة' : 'Status'}</TableHead>
+                        <TableHead>{isAr ? 'الإجراءات' : 'Actions'}</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -79,6 +119,7 @@ const AdminFormsPage: React.FC = () => {
                         <TableRow key={form.id}>
                             <TableCell className="font-bold text-gray-900 dark:text-white">{form.title[language]}</TableCell>
                             <TableCell className="font-mono text-xs">{form.slug}</TableCell>
+                            <TableCell>{renderUsageBadges(form.slug)}</TableCell>
                             <TableCell>
                                 <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs capitalize">
                                     {form.category.replace('_', ' ')}
@@ -87,7 +128,7 @@ const AdminFormsPage: React.FC = () => {
                             <TableCell>{form.fields.length}</TableCell>
                             <TableCell>
                                 <span className={`px-2 py-1 text-xs font-bold rounded-full ${form.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                    {form.isActive ? 'Active' : 'Inactive'}
+                                    {form.isActive ? (isAr ? 'نشط' : 'Active') : (isAr ? 'غير نشط' : 'Inactive')}
                                 </span>
                             </TableCell>
                             <TableCell>
@@ -109,10 +150,16 @@ const AdminFormsPage: React.FC = () => {
                 <div className="flex justify-between items-start">
                     <h3 className="font-bold text-gray-900 dark:text-white">{form.title[language]}</h3>
                     <span className={`px-2 py-1 text-xs font-bold rounded-full ${form.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {form.isActive ? 'Active' : 'Inactive'}
+                        {form.isActive ? (isAr ? 'نشط' : 'Active') : (isAr ? 'غير نشط' : 'Inactive')}
                     </span>
                 </div>
                 <p className="text-sm text-gray-500">{form.description?.[language]}</p>
+                <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/70 border border-gray-200 dark:border-gray-700 space-y-1">
+                    <p className="text-[11px] font-bold text-gray-500 uppercase">
+                        {isAr ? 'موضع الاستخدام في الموقع:' : 'Used On Page / Route:'}
+                    </p>
+                    {renderUsageBadges(form.slug)}
+                </div>
                 <div className="flex gap-2 text-xs mt-2">
                      <span className="font-mono bg-gray-100 dark:bg-gray-800 p-1 rounded">Slug: {form.slug}</span>
                      <span className="bg-blue-50 text-blue-600 p-1 rounded capitalize">{form.category.replace('_', ' ')}</span>

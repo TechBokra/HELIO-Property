@@ -18,13 +18,13 @@ import {
 } from '../../services/finishing';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import FinishingCostEstimator from './FinishingCostEstimator';
-import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
+import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../../utils/propertyFormShared';
 import { isExternalUrl, normalizeActionTarget } from '../../utils/siteContentHelpers';
 
 const ServicePackageCard: React.FC<{
     service: FinishingService;
-    onBookTier: (serviceTitle: string, tier: FinishingPricingTier) => void;
-    onRequestCustomQuote: (serviceTitle: string) => void;
+    onBookTier: (service: FinishingService, tier: FinishingPricingTier) => void;
+    onRequestCustomQuote: (service: FinishingService) => void;
     linkedPropertyArea?: number;
     language: Language;
     t: any;
@@ -148,7 +148,7 @@ const ServicePackageCard: React.FC<{
                                     </div>
                                     <Button 
                                         size="sm" 
-                                        onClick={() => onBookTier(titleLocalized, tier)}
+                                        onClick={() => onBookTier(service, tier)}
                                         className="whitespace-nowrap bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold shadow-md hover:shadow-lg"
                                     >
                                         {language === 'ar' ? 'طلب الباقة' : 'Book Tier'}
@@ -167,7 +167,7 @@ const ServicePackageCard: React.FC<{
                     </span>
                     <button
                         type="button"
-                        onClick={() => onRequestCustomQuote(titleLocalized)}
+                        onClick={() => onRequestCustomQuote(service)}
                         className="text-amber-600 dark:text-amber-400 hover:underline font-semibold"
                     >
                         {language === 'ar' ? 'طلب مقايسة خاصة' : 'Request Custom Quote'}
@@ -270,17 +270,23 @@ const FinishingPage: React.FC = () => {
     const rawType = (location.state?.propertyType || searchParams.get('propertyType') || '').toLowerCase();
     const linkedPropertyType = rawType.includes('villa') || rawType.includes('فيلا') || rawType.includes('townhouse') || rawType.includes('twin') ? 'villa' : 'apartment';
 
-    // Load canonical services from Supabase
+    // Load canonical services from Supabase (public active only)
     const { 
-        data: services = [], 
+        data: rawServices = [], 
         isLoading: isLoadingServices,
         isError: isServicesError,
         refetch: refetchServices
     } = useQuery({
         queryKey: ['canonicalFinishingServices'],
-        queryFn: getFinishingServices,
+        queryFn: () => getFinishingServices({ includeInactive: false }),
         staleTime: 60000
     });
+
+    const services = useMemo(
+        () => (rawServices || []).filter(s => s.isActive !== false),
+        [rawServices]
+    );
+    const safeServiceIndex = activeServiceIndex < services.length ? activeServiceIndex : 0;
 
     // Load verified finishing partners from Supabase
     const { 
@@ -306,6 +312,10 @@ const FinishingPage: React.FC = () => {
     const ctaButtonLabel = dynamicContent?.ctaButton || defaultContent.ctaButton;
     const ctaButtonLink = siteContent?.finishingPage?.ctaLink || '/request-service';
 
+    const heroImageUrl =
+        siteContent?.finishingPage?.heroImageUrl ||
+        'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?fm=webp&q=75&w=1600&auto=format&fit=crop';
+
     const handleActionOrRequest = (targetLink: string | undefined, defaultServiceTitle: string) => {
         const normalized = normalizeActionTarget(targetLink, '/request-service');
         if (normalized !== '/request-service') {
@@ -319,26 +329,41 @@ const FinishingPage: React.FC = () => {
         handleRequestService(defaultServiceTitle);
     };
 
-    // Direct routing to verified Platform Finishing Manager UUID
-    const handleRequestService = (serviceTitle: string, partnerId: string = PLATFORM_FINISHING_MANAGER_ID) => {
+    // Direct routing to service's target partner or Platform Finishing Manager UUID
+    const handleRequestService = (
+        serviceTitle: string,
+        partnerId: string = PLATFORM_FINISHING_MANAGER_ID,
+        service?: FinishingService
+    ) => {
+        const resolvedServiceId = service?.id;
+        const resolvedServiceRef = resolvedServiceId
+            ? resolveServiceReferenceCode('finishing', resolvedServiceId, service?.referenceNumber)
+            : undefined;
         navigate('/request-service', {
             state: {
                 serviceTitle,
-                partnerId: partnerId,
+                partnerId: service?.targetPartnerId || partnerId || PLATFORM_FINISHING_MANAGER_ID,
                 serviceType: 'finishing',
+                serviceId: resolvedServiceId,
+                serviceReference: resolvedServiceRef,
                 propertyId: linkedPropertyId || undefined,
                 propertyReference: linkedPropertyReference || undefined,
                 propertyTitle: linkedPropertyTitle || undefined,
             },
         });
     };
-    
-    const handleBookTier = (serviceTitle: string, tier: FinishingPricingTier) => {
+
+    const handleBookTier = (service: FinishingService, tier: FinishingPricingTier) => {
+        const serviceTitle = service.title[language] || service.title.en;
+        const resolvedServiceRef = resolveServiceReferenceCode('finishing', service.id, service.referenceNumber);
         navigate('/request-service', {
             state: {
                 serviceTitle,
-                partnerId: PLATFORM_FINISHING_MANAGER_ID,
+                partnerId: service.targetPartnerId || PLATFORM_FINISHING_MANAGER_ID,
                 serviceType: 'finishing',
+                serviceId: service.id,
+                serviceReference: resolvedServiceRef,
+                tierId: tier.id,
                 tier: tier,
                 isBooking: true,
                 propertyId: linkedPropertyId || undefined,
@@ -408,8 +433,7 @@ const FinishingPage: React.FC = () => {
             <section
                 className="relative h-[48vh] min-h-[380px] flex items-center justify-center text-center bg-cover bg-center"
                 style={{
-                    backgroundImage:
-                        "url('https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?fm=webp&q=75&w=1600&auto=format&fit=crop')",
+                    backgroundImage: `url('${heroImageUrl}')`,
                 }}
             >
                 <div className="absolute top-0 left-0 w-full h-full bg-black/70 z-10"></div>
@@ -518,10 +542,10 @@ const FinishingPage: React.FC = () => {
                                 <button
                                     key={service.id || index}
                                     role="tab"
-                                    aria-selected={activeServiceIndex === index}
+                                    aria-selected={safeServiceIndex === index}
                                     onClick={() => setActiveServiceIndex(index)}
                                     className={`px-5 py-2.5 rounded-full font-bold text-sm md:text-base transition-all duration-200 outline-none focus:ring-2 focus:ring-amber-500 ${
-                                        activeServiceIndex === index
+                                        safeServiceIndex === index
                                             ? 'bg-amber-500 text-gray-900 shadow-md transform -translate-y-0.5'
                                             : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
                                     }`}
@@ -533,12 +557,19 @@ const FinishingPage: React.FC = () => {
 
                         {/* Active Service Card with Canonical Decoupled Pricing */}
                         <div className="max-w-5xl mx-auto min-h-[420px]">
-                            {services[activeServiceIndex] && (
-                                <div key={activeServiceIndex} className="animate-fadeIn">
+                            {services[safeServiceIndex] && (
+                                <div key={services[safeServiceIndex].id || safeServiceIndex} className="animate-fadeIn">
                                     <ServicePackageCard
-                                        service={services[activeServiceIndex]}
+                                        service={services[safeServiceIndex]}
                                         onBookTier={handleBookTier}
-                                        onRequestCustomQuote={(title) => handleRequestService(`طلب مقايسة خاصة: ${title}`)}
+                                        onRequestCustomQuote={(svc) => {
+                                            const localized = svc.title[language] || svc.title.en;
+                                            handleRequestService(
+                                                language === 'ar' ? `طلب مقايسة خاصة: ${localized}` : `Custom Quote: ${localized}`,
+                                                svc.targetPartnerId || PLATFORM_FINISHING_MANAGER_ID,
+                                                svc
+                                            );
+                                        }}
                                         linkedPropertyArea={linkedPropertyArea}
                                         language={language}
                                         t={t}

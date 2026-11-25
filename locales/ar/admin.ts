@@ -287,6 +287,7 @@ export const admin = {
             "saveChanges": "حفظ التغييرات",
             "saving": "جاري الحفظ...",
             "tabs": {
+                "homeLayout": "ترتيب أقسام الرئيسية",
                 "hero": "القسم الرئيسي",
                 "homeListings": "قوائم الصفحة الرئيسية",
                 "socialProof": "الإثبات الاجتماعي",
@@ -299,8 +300,11 @@ export const admin = {
                 "services": "نظرة عامة على الخدمات",
                 "finishingPage": "صفحة التشطيبات",
                 "decorationsPage": "صفحة الديكورات",
+                "contactPage": "صفحة تواصل معنا",
                 "privacyPolicy": "سياسة الخصوصية",
                 "termsOfUse": "شروط الاستخدام",
+                "navigation": "روابط القائمة الرئيسية",
+                "actionButtons": "أزرار الإجراءات (CTAs)",
                 "quotes": "اقتباسات وحكم",
                 "footer": "تذييل الصفحة & تواصل"
             }

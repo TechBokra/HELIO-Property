@@ -5,7 +5,7 @@ import { addNotification } from './notifications';
 import { getAttribution } from '../utils/attribution';
 import { evaluateRoutingRules } from './routingRules';
 import { resolveEligibleManager } from './requests';
-import { resolvePropertyReferenceCode } from '../utils/propertyFormShared';
+import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../utils/propertyFormShared';
 
 const normalizeLeadStatus = (rawStatus: any): LeadStatus => {
     if (rawStatus === 'in_progress') return 'in-progress';
@@ -20,14 +20,34 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
         ? (typeof rawArea === 'number' ? rawArea : (!isNaN(Number(rawArea)) ? Number(rawArea) : rawArea))
         : undefined;
 
+    const resolvedServiceId = payload.serviceId || undefined;
+    const resolvedWorkItemId = payload.workItemId || undefined;
+    const resolvedServiceRef = resolvedServiceId
+        ? resolveServiceReferenceCode('finishing', resolvedServiceId, payload.serviceReference)
+        : (payload.serviceReference || undefined);
+    const resolvedWorkItemRef = resolvedWorkItemId
+        ? resolveServiceReferenceCode('decoration', resolvedWorkItemId, payload.workItemReference)
+        : (payload.workItemReference || undefined);
+
     return {
         id: row.id,
         partnerId: payload.partnerId || row.assigned_to,
+        partnerName: payload.partnerName,
         managerId: payload.managerId,
         propertyId: payload.propertyId,
         propertyReference: payload.propertyReference || (payload.propertyId ? resolvePropertyReferenceCode(payload.propertyId) : undefined),
         propertyTitle: payload.propertyTitle,
         propertyArea: normalizedArea,
+        serviceId: resolvedServiceId,
+        serviceReference: resolvedServiceRef,
+        tierId: payload.tierId,
+        workItemId: resolvedWorkItemId,
+        workItemTitle: payload.workItemTitle,
+        workItemReference: resolvedWorkItemRef,
+        workItemImage: payload.workItemImage || payload.referenceImage,
+        workItemPrice: payload.workItemPrice !== undefined ? Number(payload.workItemPrice) : undefined,
+        categoryId: payload.categoryId,
+        categoryName: payload.categoryName || payload.itemCategory,
         tierDetails: payload.tierDetails,
         pricingModel: payload.pricingModel,
         estimatedCost: payload.estimatedCost,
@@ -206,6 +226,12 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
     const resolvedPropertyReference =
         leadData.propertyReference ||
         (leadData.propertyId ? resolvePropertyReferenceCode(leadData.propertyId) : undefined);
+    const resolvedServiceReference =
+        leadData.serviceReference ||
+        (leadData.serviceId ? resolveServiceReferenceCode('finishing', leadData.serviceId) : undefined);
+    const resolvedWorkItemReference =
+        leadData.workItemReference ||
+        (leadData.workItemId ? resolveServiceReferenceCode('decoration', leadData.workItemId) : undefined);
 
     const payloadObj: any = {
         cityId: (leadData as any).cityId || 'heliopolis',
@@ -214,16 +240,27 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
         contactTime: leadData.contactTime,
         customerNotes: leadData.customerNotes,
         partnerId: routedPartner,
+        partnerName: leadData.partnerName,
         managerId: leadData.managerId,
         propertyId: leadData.propertyId,
         propertyReference: resolvedPropertyReference,
         propertyTitle: leadData.propertyTitle,
         propertyArea: (leadData as any).propertyArea ?? (leadData as any).unitArea,
+        serviceId: leadData.serviceId,
+        serviceReference: resolvedServiceReference,
+        tierId: leadData.tierId,
+        workItemId: leadData.workItemId,
+        workItemTitle: leadData.workItemTitle,
+        workItemReference: resolvedWorkItemReference,
+        workItemImage: leadData.workItemImage || leadData.referenceImage,
+        workItemPrice: leadData.workItemPrice,
+        categoryId: leadData.categoryId,
+        categoryName: leadData.categoryName || leadData.itemCategory,
         tierDetails: (leadData as any).tierDetails,
         pricingModel: (leadData as any).pricingModel,
         estimatedCost: (leadData as any).estimatedCost,
-        referenceImage: leadData.referenceImage,
-        itemCategory: leadData.itemCategory,
+        referenceImage: leadData.referenceImage || leadData.workItemImage,
+        itemCategory: leadData.itemCategory || leadData.categoryName,
         dimensions: leadData.dimensions,
         source: leadData.source || currentAttribution.source || 'inquiry_form',
         utmSource: leadData.utmSource || currentAttribution.utmSource,
@@ -302,11 +339,22 @@ export const addLead = async (leadData: Omit<Lead, 'id' | 'status' | 'createdAt'
     const lead: Lead = {
         id: leadId,
         partnerId: dbAssignedTo || routedPartner || '',
+        partnerName: leadData.partnerName,
         managerId: leadData.managerId,
         propertyId: leadData.propertyId,
         propertyReference: resolvedPropertyReference,
         propertyTitle: leadData.propertyTitle,
         propertyArea: (leadData as any).propertyArea ?? (leadData as any).unitArea,
+        serviceId: leadData.serviceId,
+        serviceReference: resolvedServiceReference,
+        tierId: leadData.tierId,
+        workItemId: leadData.workItemId,
+        workItemTitle: leadData.workItemTitle,
+        workItemReference: resolvedWorkItemReference,
+        workItemImage: leadData.workItemImage || leadData.referenceImage,
+        workItemPrice: leadData.workItemPrice,
+        categoryId: leadData.categoryId,
+        categoryName: leadData.categoryName || leadData.itemCategory,
         tierDetails: (leadData as any).tierDetails,
         pricingModel: (leadData as any).pricingModel,
         estimatedCost: (leadData as any).estimatedCost,

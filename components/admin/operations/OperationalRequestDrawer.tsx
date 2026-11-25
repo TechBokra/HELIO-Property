@@ -216,6 +216,16 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
                                         {request.context.createdPropertyReference}
                                     </span>
                                 )}
+                                {request.context.workItemReference && (
+                                    <span className="font-mono text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+                                        {request.context.workItemReference}
+                                    </span>
+                                )}
+                                {request.context.serviceReference && (
+                                    <span className="font-mono text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                        {request.context.serviceReference}
+                                    </span>
+                                )}
                                 {request.isAged && (
                                     <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.2 rounded border border-red-200">
                                         {isAr ? 'تجاوز المهلة (SLA Risk)' : 'SLA Exceeded'}
@@ -411,18 +421,82 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
                                     </div>
                                 </div>
 
-                                {/* Linked Property & Service Reference */}
-                                {(request.context.propertyId || request.context.propertyReference || request.context.createdPropertyId || request.context.propertyTitle || request.context.serviceTitle || request.context.partnerName) && (
+                                {/* Linked Property & Service / Decoration Work Reference */}
+                                {(request.context.propertyId ||
+                                  request.context.propertyReference ||
+                                  request.context.createdPropertyId ||
+                                  request.context.propertyTitle ||
+                                  request.context.serviceId ||
+                                  request.context.serviceReference ||
+                                  request.context.serviceTitle ||
+                                  request.context.workItemId ||
+                                  request.context.workItemReference ||
+                                  request.context.workItemTitle ||
+                                  request.context.categoryName ||
+                                  request.context.partnerName) && (
                                     <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-200 space-y-2.5 text-xs">
                                         <h3 className="text-xs font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
                                             <BuildingIcon className="w-4 h-4 text-blue-600" />
-                                            <span>{isAr ? 'مرجع العقار / الخدمة' : 'Property & Service Reference'}</span>
+                                            <span>{isAr ? 'مرجع العقار / الخدمة / العمل' : 'Property, Service & Item Reference'}</span>
                                         </h3>
 
                                         {request.context.serviceTitle && (
                                             <div className="flex items-start justify-between gap-2">
                                                 <span className="text-gray-500 shrink-0">{isAr ? 'الخدمة / الموضوع:' : 'Service / Subject:'}</span>
                                                 <span className="font-semibold text-gray-900 text-end">{request.context.serviceTitle}</span>
+                                            </div>
+                                        )}
+
+                                        {(request.context.workItemId || request.context.workItemReference || request.context.workItemTitle || request.context.serviceId || request.context.serviceReference) && (
+                                            <div className="p-2.5 bg-white rounded-lg border border-purple-200 flex items-center gap-3">
+                                                {request.context.workItemImage && (
+                                                    <img
+                                                        src={request.context.workItemImage}
+                                                        alt={request.context.workItemTitle || 'Work item'}
+                                                        className="w-12 h-12 rounded-lg object-cover border border-gray-200 shrink-0"
+                                                    />
+                                                )}
+                                                <div className="min-w-0 flex-1 space-y-1">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        {request.context.workItemReference && (
+                                                            <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
+                                                                {request.context.workItemReference}
+                                                            </span>
+                                                        )}
+                                                        {request.context.serviceReference && (
+                                                            <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                                                                {request.context.serviceReference}
+                                                            </span>
+                                                        )}
+                                                        {request.context.categoryName && (
+                                                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                                                                {request.context.categoryName}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {(request.context.workItemTitle || request.context.serviceTitle) && (
+                                                        <p className="font-semibold text-gray-900 truncate">
+                                                            {request.context.workItemTitle || request.context.serviceTitle}
+                                                        </p>
+                                                    )}
+                                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
+                                                        {(request.context.workItemId || request.context.serviceId) && (
+                                                            <span className="font-mono">
+                                                                ID: {request.context.workItemId || request.context.serviceId}
+                                                            </span>
+                                                        )}
+                                                        {request.context.tierId && (
+                                                            <span className="font-mono">
+                                                                Tier: {request.context.tierId}
+                                                            </span>
+                                                        )}
+                                                        {request.context.workItemPrice != null && (
+                                                            <span className="font-bold text-amber-700">
+                                                                {request.context.workItemPrice.toLocaleString()} EGP
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
 
@@ -590,16 +664,42 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
                                                 <span className="font-semibold text-gray-900">{request.context.propertyTitle}</span>
                                             </div>
                                         )}
+                                        {(request.context.workItemTitle || request.context.workItemReference) && (
+                                            <div>
+                                                <span className="text-gray-400">{isAr ? 'عمل الديكور:' : 'Decoration Work:'} </span>
+                                                <span className="font-semibold text-gray-900">
+                                                    {request.context.workItemReference ? `${request.context.workItemReference} — ` : ''}
+                                                    {request.context.workItemTitle || request.context.workItemId}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {(request.context.serviceReference || request.context.serviceId) && (
+                                            <div>
+                                                <span className="text-gray-400">{isAr ? 'مرجع الخدمة:' : 'Service Ref:'} </span>
+                                                <span className="font-mono font-semibold text-gray-900">
+                                                    {request.context.serviceReference || request.context.serviceId}
+                                                    {request.context.tierId ? ` (${request.context.tierId})` : ''}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {request.context.categoryName && (
+                                            <div>
+                                                <span className="text-gray-400">{isAr ? 'التصنيف:' : 'Category:'} </span>
+                                                <span className="font-semibold text-gray-900">{request.context.categoryName}</span>
+                                            </div>
+                                        )}
                                         {request.context.partnerName && (
                                             <div>
                                                 <span className="text-gray-400">{isAr ? 'الشريك:' : 'Partner:'} </span>
                                                 <span className="font-semibold text-gray-900">{request.context.partnerName}</span>
                                             </div>
                                         )}
-                                        {request.context.estimatedCost && (
+                                        {(request.context.estimatedCost || request.context.workItemPrice) && (
                                             <div>
-                                                <span className="text-gray-400">{isAr ? 'الميزانية / التكلفة:' : 'Budget/Cost:'} </span>
-                                                <span className="font-bold text-emerald-600">{request.context.estimatedCost.toLocaleString()} EGP</span>
+                                                <span className="text-gray-400">{isAr ? 'الميزانية / السعر:' : 'Budget/Price:'} </span>
+                                                <span className="font-bold text-emerald-600">
+                                                    {(request.context.estimatedCost || request.context.workItemPrice || 0).toLocaleString()} EGP
+                                                </span>
                                             </div>
                                         )}
                                     </div>

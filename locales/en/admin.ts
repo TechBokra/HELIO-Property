@@ -287,6 +287,7 @@ export const admin = {
             "saveChanges": "Save Changes",
             "saving": "Saving...",
             "tabs": {
+                "homeLayout": "Home Layout & Order",
                 "hero": "Hero Section",
                 "homeListings": "Home Listings",
                 "socialProof": "Social Proof",
@@ -299,8 +300,11 @@ export const admin = {
                 "services": "Services Overview",
                 "finishingPage": "Finishing Page",
                 "decorationsPage": "Decorations Page",
+                "contactPage": "Contact Page",
                 "privacyPolicy": "Privacy Policy",
                 "termsOfUse": "Terms of Use",
+                "navigation": "Navigation Menu",
+                "actionButtons": "Action Buttons (CTAs)",
                 "quotes": "Quotes",
                 "footer": "Footer & Contact"
             }

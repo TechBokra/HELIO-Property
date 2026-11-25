@@ -7,7 +7,7 @@ import { requireAnyPermission } from './authGuard';
 import { getPartnerById, getAllPartnersForAdmin, mapPartnerFromDb } from './partners';
 import { addLead } from './leads';
 import { evaluateRoutingRules } from './routingRules';
-import { resolvePropertyReferenceCode } from '../utils/propertyFormShared';
+import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../utils/propertyFormShared';
 
 export const isValidUUID = (id?: string): boolean => {
     if (!id) return false;
@@ -673,6 +673,25 @@ export const mapRequestToUnified = (
         payload.propertyDetails?.title?.ar ||
         payload.propertyDetails?.title?.en;
 
+    const resolvedServiceId = payload.serviceId || undefined;
+    const resolvedServiceRef = resolvedServiceId
+        ? resolveServiceReferenceCode('finishing', resolvedServiceId, payload.serviceReference)
+        : (payload.serviceReference || undefined);
+    const resolvedWorkItemId = payload.workItemId || payload.workItem?.id || undefined;
+    const resolvedWorkItemRef = resolvedWorkItemId
+        ? resolveServiceReferenceCode('decoration', resolvedWorkItemId, payload.workItemReference)
+        : (payload.workItemReference || undefined);
+    const resolvedWorkItemTitle = payload.workItemTitle || payload.workItem?.title?.ar || payload.workItem?.title?.en || undefined;
+    const resolvedWorkItemImage = payload.workItemImage || payload.workItem?.imageUrl || payload.referenceImage || undefined;
+    const resolvedWorkItemPrice = payload.workItemPrice !== undefined
+        ? Number(payload.workItemPrice)
+        : (payload.workItem?.price !== undefined ? Number(payload.workItem.price) : undefined);
+    const resolvedCategoryName = payload.categoryName || payload.itemCategory || payload.workItem?.category?.ar || payload.workItem?.category?.en || undefined;
+    const resolvedPartnerName = payload.partnerName
+        || (payload.partnerId && partnersMap?.get(payload.partnerId))
+        || payload.companyName
+        || undefined;
+
     return {
         id: req.id,
         cityId: req.cityId || payload.cityId || payload.propertyDetails?.cityId || 'heliopolis',
@@ -699,14 +718,24 @@ export const mapRequestToUnified = (
             projectId: payload.projectId,
             projectTitle: payload.projectName?.ar || payload.projectName?.en,
             partnerId: payload.partnerId,
-            partnerName: payload.partnerName || payload.companyName,
+            partnerName: resolvedPartnerName,
             serviceType: payload.serviceType,
             serviceTitle: resolvedServiceTitle,
+            serviceId: resolvedServiceId,
+            serviceReference: resolvedServiceRef,
+            tierId: payload.tierId || payload.tierDetails?.id,
+            workItemId: resolvedWorkItemId,
+            workItemTitle: resolvedWorkItemTitle,
+            workItemReference: resolvedWorkItemRef,
+            workItemImage: resolvedWorkItemImage,
+            workItemPrice: resolvedWorkItemPrice,
+            categoryId: payload.categoryId,
+            categoryName: resolvedCategoryName,
             estimatedCost: payload.estimatedCost ? Number(payload.estimatedCost) : undefined,
             source: payload.source || 'web_form',
             utmSource: payload.utmSource || payload.utm_source,
             details: payload.message || payload.details || payload.customerNotes || (typeof payload.description === 'string' ? payload.description : (payload.description?.ar || payload.description?.en)),
-            images: payload.images || (payload.referenceImage ? [payload.referenceImage] : []),
+            images: payload.images || (resolvedWorkItemImage ? [resolvedWorkItemImage] : []),
         },
         domainStatus,
         operationalStatus,
@@ -857,6 +886,11 @@ export const matchesUnifiedRequestFilter = (
             req.context.propertyTitle,
             req.context.createdPropertyReference,
             req.context.serviceTitle,
+            req.context.serviceReference,
+            req.context.workItemTitle,
+            req.context.workItemReference,
+            req.context.categoryName,
+            req.context.partnerName,
         ].filter(Boolean).map(v => String(v).toLowerCase());
         if (!haystacks.some(h => h.includes(term))) return false;
     }

@@ -2,14 +2,15 @@
 
 
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Language, PortfolioItem } from '../../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Role, type PortfolioItem } from '../../types';
 import FormField, { inputClasses, selectClasses } from '../ui/FormField';
 import { CloseIcon } from '../ui/Icons';
-import { getDecorationCategories } from '../../services/decorations';
+import { getDecorationCategories, DECORATION_MANAGER_ID } from '../../services/decorations';
 import { addPortfolioItem, updatePortfolioItem } from '../../services/portfolio';
-import { useQuery } from '@tanstack/react-query';
+import { getAllPartnersForAdmin } from '../../services/partners';
+import { uploadFile } from '../../services/upload';
 import { useLanguage } from '../shared/LanguageContext';
 import { Button } from '../ui/Button';
 import { useToast } from '../shared/ToastContext';
@@ -21,14 +22,8 @@ interface AdminPortfolioItemFormModalProps {
     onSave: () => void;
 }
 
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
+const isValidUUID = (id?: string) =>
+    Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
 
 const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = ({ itemToEdit, onClose, onSave }) => {
     const { language, t } = useLanguage();
@@ -36,47 +31,86 @@ const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = 
     const t_dash = t.dashboard;
     const t_admin = t.adminDashboard.decorationsManagement;
     const t_shared = t.adminShared;
-    const { data: decorationCategories, isLoading: categoriesLoading } = useQuery({ queryKey: ['decorationCategories'], queryFn: getDecorationCategories });
+
+    const { data: decorationCategories, isLoading: categoriesLoading } = useQuery({
+        queryKey: ['decorationCategories'],
+        queryFn: () => getDecorationCategories()
+    });
+    const { data: partners = [] } = useQuery({
+        queryKey: ['allPartnersAdmin'],
+        queryFn: getAllPartnersForAdmin
+    });
+
+    const eligiblePartners = useMemo(() => {
+        return partners.filter(p =>
+            p.status === 'active' && (
+                p.type === 'finishing' ||
+                p.type === 'decoration_manager' ||
+                p.role === Role.FINISHING_PARTNER ||
+                p.role === Role.DECORATION_MANAGER ||
+                p.role === Role.SUPER_ADMIN
+            )
+        );
+    }, [partners]);
+
     const queryClient = useQueryClient();
     const { showToast } = useToast();
     const modalRef = useRef<HTMLDivElement>(null);
 
+    const matchedInitialCategory = decorationCategories?.find(
+        c => (itemToEdit?.categoryId && c.id === itemToEdit.categoryId) ||
+            c.name.en.trim().toLowerCase() === (itemToEdit?.category?.en || '').trim().toLowerCase() ||
+            c.name.ar.trim().toLowerCase() === (itemToEdit?.category?.ar || '').trim().toLowerCase()
+    );
+
     const [formData, setFormData] = useState({
         title: { ar: itemToEdit?.title?.ar || '', en: itemToEdit?.title?.en || '' },
-        categoryId: decorationCategories?.find(c => c.name.en === itemToEdit?.category.en)?.id || '',
-        price: itemToEdit?.price || '',
+        categoryId: matchedInitialCategory?.id || itemToEdit?.categoryId || '',
+        partnerId: itemToEdit?.partnerId || DECORATION_MANAGER_ID,
+        imageUrl: itemToEdit?.imageUrl || '',
+        price: itemToEdit?.price ?? '',
         dimensions: itemToEdit?.dimensions || '',
         availability: itemToEdit?.availability || 'In Stock',
     });
 
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(itemToEdit?.imageUrl || null);
-    
+    const [isUploading, setIsUploading] = useState(false);
+
     useEffect(() => {
         if (decorationCategories && decorationCategories.length > 0 && !formData.categoryId) {
-            setFormData(prev => ({...prev, categoryId: decorationCategories[0].id}));
+            setFormData(prev => ({ ...prev, categoryId: matchedInitialCategory?.id || decorationCategories[0].id }));
         }
-    }, [decorationCategories, formData.categoryId]);
+    }, [decorationCategories, formData.categoryId, matchedInitialCategory]);
 
     const handleSuccess = () => {
-        showToast(`Portfolio item ${itemToEdit ? 'updated' : 'added'} successfully!`, 'success');
+        queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+        showToast(language === 'ar' ? 'تم حفظ العنصر بنجاح!' : `Portfolio item ${itemToEdit ? 'updated' : 'added'} successfully!`, 'success');
         onSave();
     };
 
     const addMutation = useMutation({
-        mutationFn: addPortfolioItem,
+        mutationFn: (item: Omit<PortfolioItem, 'id'>) => addPortfolioItem(item),
         onSuccess: handleSuccess,
-        onError: () => showToast('Failed to add item.', 'error'),
+        onError: (err: any) => showToast(err?.message || 'Failed to add item.', 'error'),
     });
-    
+
     const updateMutation = useMutation({
-        mutationFn: (data: { id: string, updates: Partial<PortfolioItem> }) => updatePortfolioItem(data.id, data.updates),
+        mutationFn: (data: { id: string; updates: Partial<PortfolioItem> }) => updatePortfolioItem(data.id, data.updates),
         onSuccess: handleSuccess,
-        onError: () => showToast('Failed to update item.', 'error'),
+        onError: (err: any) => showToast(err?.message || 'Failed to update item.', 'error'),
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        if (name === 'imageUrl') {
+            setFormData(prev => ({ ...prev, imageUrl: value }));
+            if (value) {
+                setImageFile(null);
+                setImagePreview(value);
+            }
+            return;
+        }
         if (name.includes('.')) {
             const [field, lang] = name.split('.');
             setFormData(prev => ({ ...prev, [field]: { ...(prev as any)[field], [lang]: value } }));
@@ -84,7 +118,7 @@ const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = 
             setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
-    
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -96,30 +130,46 @@ const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        let imageSrc = itemToEdit?.imageUrl || '';
-        if (imageFile) {
-            imageSrc = await fileToBase64(imageFile);
-        }
-        
         const selectedCategory = decorationCategories?.find(c => c.id === formData.categoryId);
         if (!selectedCategory) {
-            showToast("Please select a valid category.", "error");
+            showToast(language === 'ar' ? 'يرجى اختيار تصنيف صحيح.' : 'Please select a valid category.', 'error');
             return;
         }
 
-        const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
-        const isValidUUID = (id?: string) => id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : false;
-        const effectivePartnerId = itemToEdit?.partnerId && isValidUUID(itemToEdit.partnerId) 
-            ? itemToEdit.partnerId 
+        let imageSrc = formData.imageUrl.trim() || itemToEdit?.imageUrl || '';
+        if (imageFile) {
+            setIsUploading(true);
+            try {
+                imageSrc = await uploadFile(imageFile);
+            } catch (err: any) {
+                showToast(err?.message || 'Failed to upload image', 'error');
+                setIsUploading(false);
+                return;
+            }
+            setIsUploading(false);
+        }
+
+        if (!imageSrc) {
+            showToast(language === 'ar' ? 'يرجى رفع صورة أو إدخال رابط صورة.' : 'Please upload or enter an image URL.', 'error');
+            return;
+        }
+
+        const effectivePartnerId = isValidUUID(formData.partnerId)
+            ? formData.partnerId
             : (currentUser?.id && isValidUUID(currentUser.id) ? currentUser.id : DECORATION_MANAGER_ID);
+
+        const parsedPrice = formData.price !== '' && formData.price !== null && formData.price !== undefined
+            ? Number(formData.price)
+            : undefined;
 
         const dataToSave = {
             title: formData.title,
             partnerId: effectivePartnerId,
+            categoryId: selectedCategory.id,
             category: selectedCategory.name,
             imageUrl: imageSrc,
-            alt: formData.title.en || 'Decoration work',
-            price: formData.price ? parseInt(String(formData.price), 10) : undefined,
+            alt: formData.title.en || formData.title.ar || 'Decoration work',
+            price: parsedPrice !== undefined && Number.isFinite(parsedPrice) ? parsedPrice : undefined,
             dimensions: formData.dimensions || undefined,
             availability: formData.availability as 'In Stock' | 'Made to Order',
         };
@@ -130,8 +180,8 @@ const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = 
             addMutation.mutate(dataToSave as Omit<PortfolioItem, 'id'>);
         }
     };
-    
-    const isLoading = addMutation.isPending || updateMutation.isPending;
+
+    const isLoading = addMutation.isPending || updateMutation.isPending || isUploading;
 
     return (
         <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 animate-fadeIn" onClick={onClose}>
@@ -143,19 +193,33 @@ const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = 
                     </div>
                     <div className="flex-grow overflow-y-auto p-6 space-y-6">
                         <FormField label={t_dash.workImageURL} id="imageUrl">
-                            <div className="flex items-center gap-4">
-                                {imagePreview && <img src={imagePreview} alt="Preview" className="w-20 h-20 rounded-md object-cover border-2" />}
-                                <input type="file" id="imageUrl" accept="image/*" onChange={handleFileChange} className={`${inputClasses} p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100`} required={!itemToEdit} />
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                                {imagePreview && <img src={imagePreview} alt="Preview" className="w-20 h-20 rounded-md object-cover border-2 flex-shrink-0" />}
+                                <div className="flex-1 w-full space-y-2">
+                                    <input type="url" name="imageUrl" value={formData.imageUrl} onChange={handleChange} className={inputClasses} dir="ltr" placeholder="https://..." />
+                                    <input type="file" id="imageFileUpload" accept="image/*" onChange={handleFileChange} className={`${inputClasses} p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100`} />
+                                </div>
                             </div>
                         </FormField>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <FormField label={t_dash.workTitleAr} id="title.ar"><input type="text" name="title.ar" value={formData.title.ar} onChange={handleChange} className={inputClasses} required /></FormField>
-                            <FormField label={t_dash.workTitleEn} id="title.en"><input type="text" name="title.en" value={formData.title.en} onChange={handleChange} className={inputClasses} required /></FormField>
+                            <FormField label={t_dash.workTitleAr} id="title.ar"><input type="text" name="title.ar" value={formData.title.ar} onChange={handleChange} className={inputClasses} dir="rtl" required /></FormField>
+                            <FormField label={t_dash.workTitleEn} id="title.en"><input type="text" name="title.en" value={formData.title.en} onChange={handleChange} className={inputClasses} dir="ltr" required /></FormField>
                         </div>
-                         <div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField label={t_admin.itemCategory} id="categoryId">
-                               <select name="categoryId" value={formData.categoryId} onChange={handleChange} className={selectClasses} required disabled={categoriesLoading}>
+                                <select name="categoryId" value={formData.categoryId} onChange={handleChange} className={selectClasses} required disabled={categoriesLoading}>
+                                    <option value="">{language === 'ar' ? '-- اختر التصنيف --' : '-- Select Category --'}</option>
                                     {(decorationCategories || []).map(c => <option key={c.id} value={c.id}>{c.name[language]}</option>)}
+                                </select>
+                            </FormField>
+                            <FormField label={language === 'ar' ? 'الشريك المرتبط' : 'Linked Partner'} id="partnerId">
+                                <select name="partnerId" value={formData.partnerId} onChange={handleChange} className={selectClasses}>
+                                    <option value={DECORATION_MANAGER_ID}>{language === 'ar' ? 'إدارة الديكورات بالمنصة' : 'Platform Decorations Studio'}</option>
+                                    {eligiblePartners.filter(p => p.id !== DECORATION_MANAGER_ID).map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {language === 'ar' ? (p.nameAr || p.name) : p.name}
+                                        </option>
+                                    ))}
                                 </select>
                             </FormField>
                         </div>

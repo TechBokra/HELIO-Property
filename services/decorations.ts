@@ -1,6 +1,8 @@
 import { supabase, supabasePublic } from '../lib/supabase';
 import type { DecorationCategory } from '../types';
 
+export const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
+
 // Helper to map DB row to DecorationCategory
 const mapCategoryFromDb = (row: any): DecorationCategory => ({
     id: row.id,
@@ -8,15 +10,19 @@ const mapCategoryFromDb = (row: any): DecorationCategory => ({
     description: { ar: row.description_ar, en: row.description_en }
 });
 
-export const getDecorationCategories = async (): Promise<DecorationCategory[]> => {
+export const getDecorationCategories = async (options?: { client?: any; throwOnError?: boolean }): Promise<DecorationCategory[]> => {
+    const readClient = options?.client || supabasePublic;
     try {
-        const { data, error } = await supabasePublic
+        const { data, error } = await readClient
             .from('decoration_categories')
             .select('*')
             .order('created_at', { ascending: true });
 
         if (error) {
             console.error('Error fetching decoration categories from Supabase:', error.message);
+            if (options?.throwOnError) {
+                throw new Error(`Failed to fetch decoration categories: ${error.message}`);
+            }
             return [];
         }
 
@@ -27,6 +33,9 @@ export const getDecorationCategories = async (): Promise<DecorationCategory[]> =
         return data.map(mapCategoryFromDb);
     } catch (err: any) {
         console.error('Exception loading decoration categories from Supabase:', err?.message);
+        if (options?.throwOnError) {
+            throw err;
+        }
         return [];
     }
 };

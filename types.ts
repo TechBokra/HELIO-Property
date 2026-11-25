@@ -287,6 +287,8 @@ export interface Property {
 export interface PortfolioItem {
     id: string;
     partnerId: string;
+    categoryId?: string;
+    referenceNumber?: string;
     imageUrl: string;
     alt: string;
     title: { ar: string; en: string };
@@ -418,6 +420,16 @@ export interface UnifiedRequest {
         partnerName?: string;
         serviceType?: string;
         serviceTitle?: string;
+        serviceId?: string;
+        serviceReference?: string;
+        tierId?: string;
+        workItemId?: string;
+        workItemTitle?: string;
+        workItemReference?: string;
+        workItemImage?: string;
+        workItemPrice?: number;
+        categoryId?: string;
+        categoryName?: string;
         estimatedCost?: number;
         source?: string;
         utmSource?: string;
@@ -455,6 +467,16 @@ export interface Lead {
     propertyReference?: string;
     propertyTitle?: string;
     propertyArea?: number | string;
+    serviceId?: string;
+    serviceReference?: string;
+    tierId?: string;
+    workItemId?: string;
+    workItemTitle?: string;
+    workItemReference?: string;
+    workItemImage?: string;
+    workItemPrice?: number;
+    categoryId?: string;
+    categoryName?: string;
     serviceType: 'finishing' | 'decorations' | 'property' | 'general' | 'property_search' | string;
     customerName: string;
     customerPhone: string;
@@ -792,6 +814,8 @@ export interface FinishingService {
     isActive?: boolean;
     displayOrder?: number;
     targetPartnerId?: string;
+    imageUrl?: string;
+    referenceNumber?: string;
     createdAt?: string;
     updatedAt?: string;
 }

@@ -13,7 +13,7 @@ import { addNotification } from './notifications';
 import { uploadFile } from './upload';
 import { getAttribution } from '../utils/attribution';
 import { resolveEligibleManager } from './requests';
-import { resolvePropertyReferenceCode } from '../utils/propertyFormShared';
+import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../utils/propertyFormShared';
 
 export class IntakeValidationError extends Error {
     public errors: Record<string, { ar: string; en: string }>;
@@ -330,6 +330,16 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
         formData.propertyReference ||
         contextData.propertyReference ||
         (resolvedPropertyId ? resolvePropertyReferenceCode(resolvedPropertyId) : undefined);
+    const resolvedServiceId = formData.serviceId || contextData.serviceId;
+    const resolvedServiceReference =
+        formData.serviceReference ||
+        contextData.serviceReference ||
+        (resolvedServiceId ? resolveServiceReferenceCode('finishing', resolvedServiceId) : undefined);
+    const resolvedWorkItemId = formData.workItemId || contextData.workItemId || contextData.workItem?.id;
+    const resolvedWorkItemReference =
+        formData.workItemReference ||
+        contextData.workItemReference ||
+        (resolvedWorkItemId ? resolveServiceReferenceCode('decoration', resolvedWorkItemId) : undefined);
     const resolvedCityId =
         contextData.cityId ||
         formData.cityId ||
@@ -342,6 +352,10 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
         cityId: resolvedCityId,
         ...(resolvedPropertyId ? { propertyId: resolvedPropertyId } : {}),
         ...(resolvedPropertyReference ? { propertyReference: resolvedPropertyReference } : {}),
+        ...(resolvedServiceId ? { serviceId: resolvedServiceId } : {}),
+        ...(resolvedServiceReference ? { serviceReference: resolvedServiceReference } : {}),
+        ...(resolvedWorkItemId ? { workItemId: resolvedWorkItemId } : {}),
+        ...(resolvedWorkItemReference ? { workItemReference: resolvedWorkItemReference } : {}),
         formSlug: formSlug || 'direct_intake',
         formVersion: formDef?.version || 1,
         domain,
@@ -383,6 +397,7 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
 
     const dbPayload = {
         id: requestId,
+        city_id: resolvedCityId,
         type: requestType,
         status: 'new',
         customer_id: customerId,

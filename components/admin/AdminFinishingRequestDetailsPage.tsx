@@ -27,7 +27,7 @@ import { FinishingQuoteComparison } from '../finishing/FinishingQuoteComparison'
 import { FinishingRequestTimeline } from '../finishing/FinishingRequestTimeline';
 import { SubmitFinishingQuoteModal } from '../finishing/SubmitFinishingQuoteModal';
 import { FinishingMilestonesTracker } from '../finishing/FinishingMilestonesTracker';
-import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
+import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../../utils/propertyFormShared';
 
 const AdminFinishingRequestDetailsPage: React.FC = () => {
     const { requestId } = useParams<{ requestId: string }>();
@@ -146,8 +146,19 @@ const AdminFinishingRequestDetailsPage: React.FC = () => {
                 <StatusBadge status={status} className="px-3 py-1 text-sm" />
              </div>
             
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{lead.serviceTitle}</h1>
-            <p className="text-gray-500 mb-8">Request ID: {lead.id}</p>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{lead.serviceTitle}</h1>
+                {(lead.serviceId || lead.serviceReference) && (
+                    <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-md bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                        {resolveServiceReferenceCode('finishing', lead.serviceId, lead.serviceReference)}
+                    </span>
+                )}
+            </div>
+            <p className="text-gray-500 mb-6 flex flex-wrap items-center gap-3 text-sm">
+                <span className="font-mono">Request ID: {lead.id}</span>
+                {lead.serviceId && <span className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">Service ID: {lead.serviceId}</span>}
+                {lead.tierId && <span className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">Tier: {lead.tierId}</span>}
+            </p>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">

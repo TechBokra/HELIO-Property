@@ -112,12 +112,31 @@ const RequestPayloadViewer: React.FC<RequestPayloadViewerProps> = ({ request }) 
                 <div className="space-y-4 animate-fadeIn">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <DetailItem label="Service Type" value={l.serviceType} />
-                        <DetailItem label="Partner ID" value={l.partnerId} />
+                        {(l.workItemReference || l.serviceReference) && (
+                            <DetailItem
+                                label={language === 'ar' ? 'مرجع العنصر / الخدمة' : 'Item / Service Reference'}
+                                value={<span className="font-mono font-bold text-amber-700 dark:text-amber-400">{l.workItemReference || l.serviceReference}</span>}
+                            />
+                        )}
+                        {l.propertyReference && (
+                            <DetailItem
+                                label={language === 'ar' ? 'مرجع العقار' : 'Property Reference'}
+                                value={<span className="font-mono font-bold text-blue-700 dark:text-blue-400">{l.propertyReference}</span>}
+                            />
+                        )}
+                        <DetailItem label={language === 'ar' ? 'الشريك المرتبط' : 'Partner'} value={l.partnerName || l.partnerId} />
                         <DetailItem label="Manager ID" value={l.managerId || 'N/A'} />
                         <DetailItem label="Preferred Time" value={l.contactTime} />
-                        
-                        {/* Decoration Specifics */}
-                        {l.itemCategory && <DetailItem label="Category" value={t.formOptions?.[l.itemCategory] || l.itemCategory} className="capitalize" />}
+                        {l.tierId && <DetailItem label="Tier ID" value={<span className="font-mono">{l.tierId}</span>} />}
+                        {l.workItemTitle && <DetailItem label={language === 'ar' ? 'العمل المرجعي' : 'Reference Work'} value={l.workItemTitle} />}
+                        {(l.categoryName || l.itemCategory) && (
+                            <DetailItem
+                                label={language === 'ar' ? 'التصنيف' : 'Category'}
+                                value={l.categoryName || t.formOptions?.[l.itemCategory] || l.itemCategory}
+                                className="capitalize"
+                            />
+                        )}
+                        {l.workItemPrice != null && <DetailItem label={language === 'ar' ? 'السعر المرجعي' : 'Reference Price'} value={`${Number(l.workItemPrice).toLocaleString()} EGP`} />}
                         {l.dimensions && <DetailItem label="Dimensions" value={l.dimensions} />}
                     </div>
                     

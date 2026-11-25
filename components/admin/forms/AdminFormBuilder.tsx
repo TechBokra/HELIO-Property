@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { useMutation } from '@tanstack/react-query';
 import type { FormDefinition, FormFieldType, ValidationRuleType, OperationalDomain } from '../../../types';
@@ -13,7 +14,8 @@ import { Select } from '../../ui/Select';
 import { Checkbox } from '../../ui/Checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 import FormField, { inputClasses, selectClasses } from '../../ui/FormField';
-import { TrashIcon, ArrowUpIcon, ArrowDownIcon, CloseIcon, PlusIcon, CogIcon, ShieldCheckIcon } from '../../ui/Icons';
+import { TrashIcon, ArrowUpIcon, ArrowDownIcon, CloseIcon, PlusIcon, CogIcon, ShieldCheckIcon, GlobeAltIcon } from '../../ui/Icons';
+import { getFormUsageLocations } from '../../../utils/formUsageMap';
 
 interface AdminFormBuilderProps {
     formToEdit?: FormDefinition;
@@ -47,7 +49,8 @@ const validationTypes: {value: ValidationRuleType, label: string}[] = [
 ];
 
 const AdminFormBuilder: React.FC<AdminFormBuilderProps> = ({ formToEdit, onClose }) => {
-    const { t } = useLanguage();
+    const { language, t } = useLanguage();
+    const isAr = language === 'ar';
     const { showToast } = useToast();
     const [expandedField, setExpandedField] = useState<number | null>(null);
 
@@ -113,7 +116,66 @@ const AdminFormBuilder: React.FC<AdminFormBuilderProps> = ({ formToEdit, onClose
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-                
+                {/* Active Website Usage Panel */}
+                {(() => {
+                    const currentSlug = watch('slug');
+                    const usages = getFormUsageLocations(currentSlug);
+                    return (
+                        <Card className="border-amber-200 dark:border-amber-800/50 bg-amber-50/40 dark:bg-amber-950/10">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                                    <GlobeAltIcon className="w-5 h-5" />
+                                    {isAr
+                                        ? 'مواضع استخدام هذا النموذج في الموقع والمسار المرتبط به'
+                                        : 'Active Website Usage (Pages & Routes Using This Form)'}
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {usages.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {usages.map((loc, idx) => (
+                                            <div
+                                                key={`${loc.route}-${idx}`}
+                                                className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-amber-200/80 dark:border-amber-800/40 space-y-1.5"
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-bold text-sm text-gray-900 dark:text-white">
+                                                        {loc.pageName[language]}
+                                                    </span>
+                                                    {loc.isPublicRoute ? (
+                                                        <Link
+                                                            to={loc.route}
+                                                            className="font-mono text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 font-semibold"
+                                                        >
+                                                            {loc.route}
+                                                        </Link>
+                                                    ) : (
+                                                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 font-semibold">
+                                                            {loc.route}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-gray-600 dark:text-gray-400">
+                                                    {loc.triggerContext[language]}
+                                                </p>
+                                                <p className="text-[11px] font-mono text-gray-400">
+                                                    {loc.componentName}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                        {isAr
+                                            ? `لا يوجد مسار ثابت مرتبط بالمعرّف (${currentSlug || '—'}) حالياً. يمكن استدعاء النموذج برمجياً عبر <DynamicForm slug="${currentSlug || 'your-slug'}" />.`
+                                            : `No fixed public route is bound to slug "${currentSlug || '—'}" yet. Render this form via <DynamicForm slug="${currentSlug || 'your-slug'}" />.`}
+                                    </p>
+                                )}
+                            </CardContent>
+                        </Card>
+                    );
+                })()}
+
                 {/* Basic Info */}
                 <Card>
                     <CardHeader><CardTitle>General Configuration</CardTitle></CardHeader>

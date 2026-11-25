@@ -7,6 +7,7 @@ import { getLeadById, getAllLeads, updateLead } from '../../../services/leads';
 import { getAllPortfolioItems } from '../../../services/portfolio';
 import { getAllPartnersForAdmin } from '../../../services/partners';
 import { ArrowLeftIcon, CheckCircleIcon, UserPlusIcon, ClockIcon, InformationCircleIcon, ChatBubbleLeftRightIcon } from '../../ui/Icons';
+import { resolveServiceReferenceCode } from '../../../utils/propertyFormShared';
 import ConversationThread from '../../shared/ConversationThread';
 import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
@@ -141,11 +142,22 @@ const AdminDecorationRequestDetailsPage: React.FC = () => {
     const assignedPartner = allPartners.find(p => p.id === lead.assignedTo || p.id === lead.partnerId);
     const assignedPartnerTitle = assignedPartner
         ? ((language === 'ar' && assignedPartner.nameAr) ? assignedPartner.nameAr : (assignedPartner.name || assignedPartner.email))
-        : null;
+        : (lead.partnerName || null);
 
-    const isCustomRequest = lead.serviceTitle.includes(i18n.customDecorationRequestModal.serviceTitle);
-    const referenceWorkTitle = !isCustomRequest ? lead.serviceTitle.replace(`${i18n.decorationRequestModal.reference} `, '') : '';
-    const referenceItem = portfolioItems?.find(item => item.title.ar === referenceWorkTitle || item.title.en === referenceWorkTitle);
+    const isCustomRequest = lead.serviceTitle.includes(i18n.customDecorationRequestModal.serviceTitle) && !lead.workItemId;
+    const referenceWorkTitle = !isCustomRequest ? lead.serviceTitle.replace(`${i18n.decorationRequestModal.reference} `, '').trim() : '';
+    const referenceItem =
+        (lead.workItemId ? portfolioItems?.find(item => item.id === lead.workItemId) : undefined) ||
+        (referenceWorkTitle
+            ? portfolioItems?.find(item => item.title.ar === referenceWorkTitle || item.title.en === referenceWorkTitle)
+            : undefined);
+    const resolvedWorkRef = (referenceItem || lead.workItemId || lead.workItemReference)
+        ? resolveServiceReferenceCode('decoration', referenceItem?.id || lead.workItemId, lead.workItemReference || referenceItem?.referenceNumber)
+        : undefined;
+    const resolvedWorkTitle = referenceItem?.title?.[language] || lead.workItemTitle || referenceWorkTitle || '';
+    const resolvedCategoryName = referenceItem?.category?.[language] || lead.categoryName || '';
+    const resolvedWorkImage = referenceItem?.imageUrl || lead.workItemImage || lead.referenceImage;
+    const resolvedWorkPrice = referenceItem?.price ?? lead.workItemPrice;
 
     const requestMock: Request = {
         id: lead.id,
@@ -191,7 +203,7 @@ const AdminDecorationRequestDetailsPage: React.FC = () => {
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs space-y-4">
                 <div className="flex flex-wrap justify-between items-start gap-4">
                     <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs uppercase tracking-wider font-mono text-amber-600 font-bold">
                                 {isCustomRequest ? (isAr ? 'تصميم داخلي مخصص' : 'Custom Interior Design') : (isAr ? 'طلب منتج ديكور' : 'Decor Product Request')}
                             </span>
@@ -199,6 +211,11 @@ const AdminDecorationRequestDetailsPage: React.FC = () => {
                             <span className="text-xs text-gray-500 font-mono tabular-nums">
                                 #{lead.id.slice(0, 8)}
                             </span>
+                            {resolvedWorkRef && (
+                                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+                                    {resolvedWorkRef}
+                                </span>
+                            )}
                         </div>
                         <h1 className="text-2xl font-black text-gray-900 dark:text-white mt-1">
                             {lead.serviceTitle}
@@ -282,29 +299,52 @@ const AdminDecorationRequestDetailsPage: React.FC = () => {
                             </CardHeader>
                             <CardContent className="pt-4 space-y-4">
                                 <RequestPayloadViewer request={requestMock} />
-                                {referenceItem && (
+                                {(referenceItem || lead.workItemId || lead.workItemReference || lead.workItemTitle) && (
                                     <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                        <h3 className="font-semibold mb-3 text-sm text-gray-700 dark:text-gray-300">
-                                            {isAr ? 'القطعة المرجعية من المعرض' : 'Reference Portfolio Item'}
-                                        </h3>
+                                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                            <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-300">
+                                                {isAr ? 'القطعة المرجعية من المعرض' : 'Reference Portfolio Item'}
+                                            </h3>
+                                            {resolvedWorkRef && (
+                                                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+                                                    {resolvedWorkRef}
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="flex gap-4 items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                                            <img
-                                                src={referenceItem.imageUrl}
-                                                alt={referenceItem.alt}
-                                                className="w-20 h-20 object-cover rounded-lg shadow-xs"
-                                            />
-                                            <div>
+                                            {resolvedWorkImage && (
+                                                <img
+                                                    src={resolvedWorkImage}
+                                                    alt={referenceItem?.alt || resolvedWorkTitle || 'Work item'}
+                                                    className="w-20 h-20 object-cover rounded-lg shadow-xs shrink-0"
+                                                />
+                                            )}
+                                            <div className="min-w-0 space-y-1">
                                                 <p className="font-bold text-gray-900 dark:text-white">
-                                                    {referenceItem.title[language]}
+                                                    {resolvedWorkTitle || '—'}
                                                 </p>
-                                                <p className="text-xs text-gray-500">
-                                                    {referenceItem.category[language]}
-                                                </p>
-                                                {referenceItem.price && (
-                                                    <p className="text-amber-600 font-bold text-sm mt-1">
-                                                        {referenceItem.price.toLocaleString()} EGP
+                                                {resolvedCategoryName && (
+                                                    <p className="text-xs text-gray-500">
+                                                        {resolvedCategoryName}
                                                     </p>
                                                 )}
+                                                <div className="flex flex-wrap items-center gap-3 text-xs">
+                                                    {resolvedWorkPrice != null && (
+                                                        <span className="text-amber-600 font-bold">
+                                                            {resolvedWorkPrice.toLocaleString()} EGP
+                                                        </span>
+                                                    )}
+                                                    {(referenceItem?.id || lead.workItemId) && (
+                                                        <span className="font-mono text-gray-400">
+                                                            ID: {referenceItem?.id || lead.workItemId}
+                                                        </span>
+                                                    )}
+                                                    {assignedPartnerTitle && (
+                                                        <span className="text-gray-600 dark:text-gray-300 font-medium">
+                                                            {assignedPartnerTitle}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

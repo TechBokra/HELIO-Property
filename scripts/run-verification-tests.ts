@@ -3616,6 +3616,523 @@ async function runTests() {
         assert.strictEqual(unifiedInquiry.operationalStatus, OperationalStatus.IN_PROGRESS);
     });
 
+    // ========================================================================
+    // Suite 12: Phase 4 — Extended CMS Controls, Layout Order, Contact & Form Usage Map
+    // ========================================================================
+    console.log('\n--- Suite 12: Phase 4 — Extended CMS Controls & Form Usage Tests ---');
+
+    await test('P12.1: normalizeSiteContent preserves legacy partial DB payload and hydrates navigation, homeSections, contactPage & CTA defaults', async () => {
+        const { normalizeSiteContent } = await import('../services/content');
+        const { resolveNavigationLinks, resolveHomeSections } = await import('../utils/siteContentHelpers');
+
+        const legacyNormalized = normalizeSiteContent({
+            hero: { ar: { title: 'عنوان قديم محفوظ' } },
+            footer: { phone: '01551234567' },
+            services: { enabled: false },
+        });
+
+        assert.strictEqual(legacyNormalized.hero.ar.title, 'عنوان قديم محفوظ');
+        assert.strictEqual(legacyNormalized.footer.phone, '01551234567');
+        assert.ok(Array.isArray(legacyNormalized.navigation) && legacyNormalized.navigation.length >= 6);
+        assert.ok(legacyNormalized.headerCta?.text?.ar && legacyNormalized.headerCta?.link);
+        assert.ok(Array.isArray(legacyNormalized.homeSections) && legacyNormalized.homeSections.length === 10);
+        assert.ok(legacyNormalized.contactPage?.ar?.title && legacyNormalized.contactPage?.en?.title);
+        assert.ok(legacyNormalized.hero.primaryButton?.text?.ar && legacyNormalized.hero.secondaryButton?.link);
+        assert.ok(legacyNormalized.homeListings?.viewAllButton?.text?.ar);
+        assert.ok(legacyNormalized.homeCTA?.secondaryButton?.text?.ar);
+        assert.ok(legacyNormalized.finishingPage?.ar?.heroButton && legacyNormalized.decorationsPage?.ar?.customRequestButton);
+
+        // Legacy services.enabled = false must still disable the services section in resolved home sections
+        const resolvedSections = resolveHomeSections(legacyNormalized);
+        const servicesSection = resolvedSections.find((s) => s.id === 'services');
+        assert.strictEqual(servicesSection, undefined, 'Legacy services.enabled=false should hide services section');
+
+        const navLinks = resolveNavigationLinks(legacyNormalized);
+        assert.ok(navLinks.length >= 6, 'Default visible navigation links should hydrate for legacy DB rows');
+    });
+
+    await test('P12.2: Hiding a navigation link and reordering two HomePage sections persist via buildContentPatch and reflect on public resolvers', async () => {
+        setupAdminAuthForContentTests();
+        const {
+            getContent,
+            updateContent,
+            buildContentPatch,
+            invalidateContentCache,
+        } = await import('../services/content');
+        const { resolveNavigationLinks, resolveHomeSections } = await import('../utils/siteContentHelpers');
+
+        invalidateContentCache();
+        const db = createIsolatedSiteContentDb({
+            footer: { phone: '01099001122' },
+        });
+
+        const baseline = await getContent({ forceRefresh: true, client: db });
+        const modified = JSON.parse(JSON.stringify(baseline));
+
+        // 1. Hide "nav-decorations" nav link and move "nav-finishing" ahead of "nav-projects"
+        modified.navigation = modified.navigation.map((item: any) => {
+            if (item.id === 'nav-decorations') return { ...item, visible: false };
+            if (item.id === 'nav-finishing') return { ...item, order: 3 };
+            if (item.id === 'nav-projects') return { ...item, order: 4 };
+            return item;
+        });
+
+        // 2. Reorder HomePage sections: swap whyNewHeliopolis (5) and services (4)
+        modified.homeSections = modified.homeSections.map((sec: any) => {
+            if (sec.id === 'whyNewHeliopolis') return { ...sec, order: 4 };
+            if (sec.id === 'services') return { ...sec, order: 5 };
+            return sec;
+        });
+
+        const patch = buildContentPatch(baseline, modified, {
+            navigation: true,
+            homeSections: true,
+        });
+
+        assert.strictEqual('footer' in patch, false, 'Unedited footer must not be included in patch');
+        await updateContent(patch, { client: db });
+
+        // Simulate full page reload
+        invalidateContentCache();
+        const reloaded = await getContent({ forceRefresh: true, client: db });
+
+        const activeNav = resolveNavigationLinks(reloaded);
+        assert.strictEqual(activeNav.some((l) => l.id === 'nav-decorations'), false, 'Hidden link must be excluded on desktop & mobile');
+        const finIdx = activeNav.findIndex((l) => l.id === 'nav-finishing');
+        const projIdx = activeNav.findIndex((l) => l.id === 'nav-projects');
+        assert.ok(finIdx >= 0 && projIdx >= 0 && finIdx < projIdx, 'Updated navigation order must apply');
+
+        const activeSections = resolveHomeSections(reloaded);
+        const whyIdx = activeSections.findIndex((s) => s.id === 'whyNewHeliopolis');
+        const srvIdx = activeSections.findIndex((s) => s.id === 'services');
+        assert.ok(whyIdx >= 0 && srvIdx >= 0 && whyIdx < srvIdx, 'Swapped HomePage section order must persist after reload');
+        assert.strictEqual(reloaded.footer.phone, '01099001122', 'Sibling footer phone must stay untouched');
+    });
+
+    await test('P12.3: Bilingual Contact page titles/descriptions and action button targets persist across reload without clobbering siblings', async () => {
+        setupAdminAuthForContentTests();
+        const {
+            getContent,
+            updateContent,
+            buildContentPatch,
+            invalidateContentCache,
+        } = await import('../services/content');
+
+        invalidateContentCache();
+        const db = createIsolatedSiteContentDb({
+            footer: { phone: '01144556677', email: 'contact@onlyhelio.com' },
+        });
+
+        const baseline = await getContent({ forceRefresh: true, client: db });
+        const modified = JSON.parse(JSON.stringify(baseline));
+
+        modified.contactPage.ar.title = 'تواصل مع فريق هليوبوليس الجديدة';
+        modified.contactPage.en.title = 'Connect With Our Advisory Team';
+        modified.contactPage.ar.formDescription = 'املأ النموذج وسيقوم فريقنا بالرد خلال ساعات.';
+        modified.contactPage.en.formDescription = 'Fill in the form and our team will reply shortly.';
+        modified.headerCta.text.ar = 'أرسل عقارك';
+        modified.headerCta.link = '/add-property';
+        modified.homeListings.viewAllButton.text.ar = 'استعرض جميع العروض';
+        modified.homeListings.viewAllButton.link = '/properties?featured=true';
+
+        const patch = buildContentPatch(baseline, modified, {
+            contactPage: {
+                ar: { title: true, formDescription: true },
+                en: { title: true, formDescription: true },
+            },
+            headerCta: {
+                text: { ar: true },
+                link: true,
+            },
+            homeListings: {
+                viewAllButton: {
+                    text: { ar: true },
+                    link: true,
+                },
+            },
+        });
+
+        await updateContent(patch, { client: db });
+        invalidateContentCache();
+        const reloaded = await getContent({ forceRefresh: true, client: db });
+
+        assert.strictEqual(reloaded.contactPage.ar.title, 'تواصل مع فريق هليوبوليس الجديدة');
+        assert.strictEqual(reloaded.contactPage.en.title, 'Connect With Our Advisory Team');
+        assert.strictEqual(reloaded.contactPage.ar.formDescription, 'املأ النموذج وسيقوم فريقنا بالرد خلال ساعات.');
+        assert.strictEqual(reloaded.headerCta.text.ar, 'أرسل عقارك');
+        assert.strictEqual(reloaded.homeListings.viewAllButton.text.ar, 'استعرض جميع العروض');
+        assert.strictEqual(reloaded.homeListings.viewAllButton.link, '/properties?featured=true');
+        assert.strictEqual(reloaded.footer.phone, '01144556677');
+    });
+
+    await test('P12.4: Form Builder usage map identifies page & route for every built-in dynamic form slug', async () => {
+        const { formsData } = await import('../data/forms');
+        const { getFormUsageLocations } = await import('../utils/formUsageMap');
+
+        assert.ok(formsData.length >= 7, 'Expected all built-in forms to exist');
+        for (const form of formsData) {
+            const locations = getFormUsageLocations(form.slug);
+            assert.ok(locations.length >= 1, `Form slug "${form.slug}" must map to at least one page/route`);
+            for (const loc of locations) {
+                assert.ok(loc.route.startsWith('/'), `Invalid route for "${form.slug}": ${loc.route}`);
+                assert.ok(loc.pageName.ar.trim().length > 0 && loc.pageName.en.trim().length > 0);
+                assert.ok(loc.triggerContext.ar.trim().length > 0 && loc.triggerContext.en.trim().length > 0);
+            }
+        }
+    });
+
+    // ========================================================================
+    // Suite 13: Phase 5 — Finishing Catalog Authority, Decorations Linking & Request References
+    // ========================================================================
+    console.log('\n--- Suite 13: Phase 5 — Finishing & Decorations Operational Linking Tests ---');
+
+    await test('P13.1: finishing_services acts as authoritative catalog for edits, pricing, visibility, deletion & legacy transition', async () => {
+        const {
+            getFinishingServices,
+            saveFinishingServices,
+            deleteFinishingService,
+            invalidateFinishingServicesCache,
+        } = await import('../services/finishing');
+        const { resolveServiceReferenceCode } = await import('../utils/propertyFormShared');
+
+        invalidateFinishingServicesCache();
+
+        let finishingRows: any[] = [];
+        const legacySiteContent = {
+            finishingServices: [
+                {
+                    id: 'legacy-finish-1',
+                    title: { ar: 'باقة التأسيس التراثية', en: 'Legacy Core Package' },
+                    description: { ar: 'وصف قديم', en: 'Legacy desc' },
+                    pricingModel: 'per_sqm',
+                    basePrice: 3200,
+                    isActive: true,
+                    displayOrder: 1,
+                },
+            ],
+        };
+        let simulateQueryError = false;
+
+        const mockDb: any = {
+            rpc: async (fnName: string) => {
+                if (fnName === 'finishing_catalog_exists') {
+                    return { data: finishingRows.length > 0, error: null };
+                }
+                return { data: null, error: null };
+            },
+            from: (table: string) => {
+                if (table === 'site_content') {
+                    return {
+                        select: () => ({
+                            eq: () => ({
+                                maybeSingle: async () => ({ data: { content: legacySiteContent }, error: null }),
+                                single: async () => ({ data: { content: legacySiteContent }, error: null }),
+                            }),
+                        }),
+                    };
+                }
+                if (table === 'finishing_services') {
+                    return {
+                        select: () => {
+                            const run = async () => {
+                                if (simulateQueryError) {
+                                    return { data: null, error: { code: '500', message: 'Simulated DB read outage' } };
+                                }
+                                return { data: JSON.parse(JSON.stringify(finishingRows)), error: null };
+                            };
+                            return {
+                                order: async () => run(),
+                                then: (res: any, rej: any) => run().then(res, rej),
+                            };
+                        },
+                        upsert: (rows: any[]) => ({
+                            select: async () => {
+                                const now = new Date().toISOString();
+                                for (const row of rows) {
+                                    const idx = finishingRows.findIndex((r) => r.id === row.id);
+                                    const stored = { created_at: now, ...JSON.parse(JSON.stringify(row)) };
+                                    if (idx >= 0) {
+                                        finishingRows[idx] = { ...finishingRows[idx], ...stored };
+                                    } else {
+                                        finishingRows.push(stored);
+                                    }
+                                }
+                                return { data: JSON.parse(JSON.stringify(finishingRows)), error: null };
+                            },
+                        }),
+                        delete: () => ({
+                            in: async (_col: string, ids: string[]) => {
+                                finishingRows = finishingRows.filter((r) => !ids.includes(r.id));
+                                return { error: null };
+                            },
+                            eq: async (_col: string, id: string) => {
+                                finishingRows = finishingRows.filter((r) => r.id !== id);
+                                return { error: null };
+                            },
+                        }),
+                    };
+                }
+                throw new Error(`Unexpected table ${table}`);
+            },
+        };
+
+        // 1. Empty finishing_services transitions cleanly from legacy site_content
+        const transitioned = await getFinishingServices({ includeInactive: true, forceRefresh: true, client: mockDb });
+        assert.strictEqual(transitioned.length, 1);
+        assert.strictEqual(transitioned[0].title.en, 'Legacy Core Package');
+        assert.strictEqual(transitioned[0].basePrice, 3200);
+        assert.ok(transitioned[0].referenceNumber?.startsWith('FIN-'));
+
+        // 2. Save two authoritative packages (one visible, one updated price)
+        const srv1Id = 'aaaaaaaa-1111-4111-8111-111111111111';
+        const srv2Id = 'bbbbbbbb-2222-4222-8222-222222222222';
+        const saved = await saveFinishingServices(
+            [
+                {
+                    id: srv1Id,
+                    title: { ar: 'باقة الفخامة المحدثة', en: 'Updated Luxury Package' },
+                    description: { ar: 'وصف محدث', en: 'Updated description' },
+                    pricingModel: 'per_sqm',
+                    basePrice: 5400,
+                    currency: 'EGP',
+                    pricingTiers: [],
+                    features: [],
+                    isActive: true,
+                    displayOrder: 1,
+                },
+                {
+                    id: srv2Id,
+                    title: { ar: 'باقة خاصة مخفية', en: 'Hidden Private Package' },
+                    description: { ar: 'وصف', en: 'Desc' },
+                    pricingModel: 'fixed_package',
+                    basePrice: 120000,
+                    currency: 'EGP',
+                    pricingTiers: [],
+                    features: [],
+                    isActive: false,
+                    displayOrder: 2,
+                },
+            ],
+            { client: mockDb }
+        );
+        assert.strictEqual(saved.length, 2);
+        assert.strictEqual(saved[0].referenceNumber, resolveServiceReferenceCode('finishing', srv1Id));
+
+        // 3. Public query hides inactive service, Admin query sees both
+        const publicList = await getFinishingServices({ includeInactive: false, forceRefresh: true, client: mockDb });
+        const adminList = await getFinishingServices({ includeInactive: true, forceRefresh: true, client: mockDb });
+        assert.strictEqual(publicList.length, 1);
+        assert.strictEqual(publicList[0].id, srv1Id);
+        assert.strictEqual(publicList[0].basePrice, 5400);
+        assert.strictEqual(adminList.length, 2);
+
+        // 4. Hiding ALL services in DB must yield [] publicly via finishing_catalog_exists RPC (NOT fallback)
+        await saveFinishingServices(
+            adminList.map((s) => ({ ...s, isActive: false })),
+            { client: mockDb }
+        );
+        const publicWhenAllHidden = await getFinishingServices({ includeInactive: false, forceRefresh: true, client: mockDb });
+        assert.strictEqual(publicWhenAllHidden.length, 0, 'All-inactive DB catalog must render 0 services instead of legacy fallback');
+
+        // 5. Diff-delete removes omitted items, explicit delete removes remaining
+        await saveFinishingServices([adminList[0]], { client: mockDb });
+        assert.strictEqual(finishingRows.length, 1);
+        await deleteFinishingService(srv1Id, { client: mockDb });
+        assert.strictEqual(finishingRows.length, 0);
+
+        // 6. Non-missing-table DB errors propagate loudly
+        simulateQueryError = true;
+        await assert.rejects(
+            () => getFinishingServices({ includeInactive: true, forceRefresh: true, client: mockDb }),
+            /Simulated DB read outage/
+        );
+    });
+
+    await test('P13.2: Portfolio items persist category_id & partner_id and hydrate canonical DEC reference codes', async () => {
+        const {
+            addPortfolioItem,
+            updatePortfolioItem,
+            getAllPortfolioItems,
+            getPortfolioItemById,
+        } = await import('../services/portfolio');
+        const { resolveServiceReferenceCode } = await import('../utils/propertyFormShared');
+
+        const rows: any[] = [];
+        const itemUuid = 'cccccccc-3333-4333-8333-333333333333';
+        const catUuid = 'dddddddd-4444-4444-8444-444444444444';
+        const partnerUuid = 'eeeeeeee-5555-4555-8555-555555555555';
+
+        const mockPortfolioDb: any = {
+            from: (table: string) => {
+                assert.strictEqual(table, 'portfolio_items');
+                return {
+                    insert: (payload: any) => ({
+                        select: () => ({
+                            single: async () => {
+                                const inserted = { id: itemUuid, ...JSON.parse(JSON.stringify(payload)) };
+                                rows.push(inserted);
+                                return { data: JSON.parse(JSON.stringify(inserted)), error: null };
+                            },
+                        }),
+                    }),
+                    update: (patch: any) => ({
+                        eq: (_col: string, val: string) => ({
+                            select: () => ({
+                                single: async () => {
+                                    const idx = rows.findIndex((r) => r.id === val);
+                                    if (idx < 0) return { data: null, error: { message: 'Not found' } };
+                                    rows[idx] = { ...rows[idx], ...JSON.parse(JSON.stringify(patch)) };
+                                    return { data: JSON.parse(JSON.stringify(rows[idx])), error: null };
+                                },
+                            }),
+                        }),
+                    }),
+                    select: () => {
+                        const preds: ((r: any) => boolean)[] = [];
+                        const run = async () => ({
+                            data: JSON.parse(JSON.stringify(rows.filter((r) => preds.every((fn) => fn(r))))),
+                            error: null,
+                        });
+                        const builder: any = {
+                            eq: (c: string, v: any) => {
+                                preds.push((r) => r?.[c] === v);
+                                return builder;
+                            },
+                            order: async () => run(),
+                            maybeSingle: async () => {
+                                const res = await run();
+                                return { data: res.data[0] || null, error: null };
+                            },
+                        };
+                        return builder;
+                    },
+                };
+            },
+        };
+
+        const created = await addPortfolioItem(
+            {
+                partnerId: partnerUuid,
+                categoryId: catUuid,
+                imageUrl: 'https://example.com/lamp.jpg',
+                alt: 'Brass Lamp',
+                title: { ar: 'أباجورة نحاس مودرن', en: 'Modern Brass Lamp' },
+                category: { ar: 'إضاءة', en: 'Lighting' },
+                price: 4500,
+                dimensions: '45x30 cm',
+                availability: 'In Stock',
+            },
+            { client: mockPortfolioDb }
+        );
+
+        assert.strictEqual(created.id, itemUuid);
+        assert.strictEqual(created.categoryId, catUuid);
+        assert.strictEqual(created.partnerId, partnerUuid);
+        assert.strictEqual(created.referenceNumber, resolveServiceReferenceCode('decoration', itemUuid));
+        assert.strictEqual(rows[0].category_id, catUuid);
+
+        const newCatUuid = 'ffffffff-6666-4666-8666-666666666666';
+        const updated = await updatePortfolioItem(
+            itemUuid,
+            { categoryId: newCatUuid, price: 4900 },
+            { client: mockPortfolioDb }
+        );
+        assert.strictEqual(updated?.categoryId, newCatUuid);
+        assert.strictEqual(updated?.price, 4900);
+
+        const list = await getAllPortfolioItems({ client: mockPortfolioDb, throwOnError: true });
+        assert.strictEqual(list.length, 1);
+        assert.strictEqual(list[0].categoryId, newCatUuid);
+
+        const fetched = await getPortfolioItemById(itemUuid, { client: mockPortfolioDb });
+        assert.strictEqual(fetched?.referenceNumber, created.referenceNumber);
+    });
+
+    await test('P13.3: Decoration work & Finishing service references hydrate into UnifiedRequest and match Operations Center search', async () => {
+        const { resolveServiceReferenceCode } = await import('../utils/propertyFormShared');
+
+        const workId = '11111111-aaaa-4aaa-8aaa-111111111111';
+        const partnerId = '22222222-bbbb-4bbb-8bbb-222222222222';
+        const finishingId = '33333333-cccc-4ccc-8ccc-333333333333';
+
+        const partnersMap = new Map<string, string>([
+            [partnerId, 'استوديو هليوبوليس للديكور'],
+        ]);
+
+        const decorationRow = {
+            id: '44444444-dddd-4ddd-8ddd-444444444444',
+            city_id: 'heliopolis',
+            type: RequestType.LEAD,
+            status: 'new',
+            requester_name: 'عميل تجريبي ديكور',
+            requester_phone: '01012345678',
+            assigned_to: partnerId,
+            payload: {
+                domain: 'decorations',
+                serviceType: 'decorations',
+                serviceTitle: 'طلب ديكور - أباجورة نحاس مودرن',
+                partnerId,
+                workItemId: workId,
+                workItemTitle: 'أباجورة نحاس مودرن',
+                workItemReference: resolveServiceReferenceCode('decoration', workId),
+                workItemImage: 'https://example.com/lamp.jpg',
+                workItemPrice: 4900,
+                categoryId: 'cat-lighting',
+                categoryName: 'إضاءة',
+                dimensions: '45x30 cm',
+            },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        };
+
+        const mappedDec = mapRequestToUnified(mapRequestFromDb(decorationRow), partnersMap);
+        assert.strictEqual(mappedDec.domain, 'decorations');
+        assert.strictEqual(mappedDec.detailRoute, `/admin/platform-decorations/requests/${decorationRow.id}`);
+        assert.strictEqual(mappedDec.context.workItemId, workId);
+        assert.strictEqual(mappedDec.context.workItemReference, resolveServiceReferenceCode('decoration', workId));
+        assert.strictEqual(mappedDec.context.workItemTitle, 'أباجورة نحاس مودرن');
+        assert.strictEqual(mappedDec.context.workItemPrice, 4900);
+        assert.strictEqual(mappedDec.context.categoryName, 'إضاءة');
+        assert.strictEqual(mappedDec.context.partnerName, 'استوديو هليوبوليس للديكور');
+
+        assert.strictEqual(
+            matchesUnifiedRequestFilter(mappedDec, { searchTerm: mappedDec.context.workItemReference }),
+            true,
+            'Operations search must find decoration request by DEC- reference code'
+        );
+
+        const finishingRow = {
+            id: '55555555-eeee-4eee-8eee-555555555555',
+            city_id: 'heliopolis',
+            type: RequestType.LEAD,
+            status: 'new',
+            requester_name: 'عميل تجريبي تشطيب',
+            requester_phone: '01098765432',
+            payload: {
+                domain: 'finishing',
+                serviceType: 'finishing',
+                serviceTitle: 'باقة الفخامة المحدثة',
+                serviceId: finishingId,
+                tierId: 'tier-lux-150',
+                propertyId: 'prop-999',
+            },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        };
+
+        const mappedFin = mapRequestToUnified(mapRequestFromDb(finishingRow), partnersMap);
+        assert.strictEqual(mappedFin.domain, 'finishing');
+        assert.strictEqual(mappedFin.context.serviceId, finishingId);
+        assert.strictEqual(mappedFin.context.serviceReference, resolveServiceReferenceCode('finishing', finishingId));
+        assert.strictEqual(mappedFin.context.tierId, 'tier-lux-150');
+        assert.ok(mappedFin.context.propertyReference?.startsWith('HEL-'));
+        assert.strictEqual(
+            matchesUnifiedRequestFilter(mappedFin, { searchTerm: mappedFin.context.serviceReference }),
+            true,
+            'Operations search must find finishing request by FIN- reference code'
+        );
+    });
+
     useAuthStore.setState({ currentUser: null, permissions: [] });
 
     console.log('\n======================================================');

@@ -383,6 +383,7 @@ export let siteContentData: SiteContent = {
       }
     ],
   finishingPage: {
+      heroImageUrl: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?fm=webp&q=75&w=1600&auto=format&fit=crop',
       heroButtonLink: '/request-service',
       ctaLink: '/request-service',
       ar: {
@@ -417,6 +418,7 @@ export let siteContentData: SiteContent = {
       }
   },
   decorationsPage: {
+      heroImageUrl: 'https://images.unsplash.com/photo-1616046229478-9901c5536a45?fm=webp&q=75&w=1600&auto=format&fit=crop',
       customRequestLink: '/request-service',
       ar: {
           heroTitle: 'إبداعات فنية تزين جدرانك',

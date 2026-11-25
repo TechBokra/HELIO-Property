@@ -14,9 +14,8 @@ import DynamicForm from '../shared/DynamicForm';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { getAttribution } from '../../utils/attribution';
 import { PLATFORM_FINISHING_MANAGER_ID } from '../../services/finishing';
-import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
-
-const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
+import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../../utils/propertyFormShared';
+import { DECORATION_MANAGER_ID } from '../../services/decorations';
 
 const ServiceRequestPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -33,16 +32,26 @@ const ServiceRequestPage: React.FC = () => {
     
     const { 
         serviceTitle, 
-        partnerId: rawPartnerId, 
+        partnerId: rawPartnerId,
+        partnerName: rawPartnerName,
         propertyId, 
         propertyReference: rawPropertyReference,
         propertyTitle,
-        workItem, 
+        serviceId,
+        serviceReference: rawServiceReference,
+        tierId,
+        workItem,
+        workItemId: rawWorkItemId,
+        workItemTitle: rawWorkItemTitle,
+        workItemReference: rawWorkItemReference,
+        workItemImage: rawWorkItemImage,
+        workItemPrice: rawWorkItemPrice,
         isCustom, 
         serviceType, 
         tier, 
         isBooking, 
         isPurchase, 
+        categoryId,
         categoryName 
     } = location.state || {};
 
@@ -50,6 +59,18 @@ const ServiceRequestPage: React.FC = () => {
     const propertyReference = propertyId
         ? resolvePropertyReferenceCode(propertyId, rawPropertyReference)
         : rawPropertyReference;
+    const serviceReference = serviceId
+        ? resolveServiceReferenceCode('finishing', serviceId, rawServiceReference)
+        : rawServiceReference;
+    const resolvedWorkItemId = rawWorkItemId || workItem?.id;
+    const workItemReference = resolvedWorkItemId
+        ? resolveServiceReferenceCode('decoration', resolvedWorkItemId, rawWorkItemReference || workItem?.referenceNumber)
+        : rawWorkItemReference;
+    const resolvedWorkItemTitle = rawWorkItemTitle || (workItem ? (workItem.title?.[language] || workItem.title?.en) : undefined);
+    const resolvedWorkItemImage = rawWorkItemImage || workItem?.imageUrl;
+    const resolvedWorkItemPrice = rawWorkItemPrice !== undefined ? rawWorkItemPrice : workItem?.price;
+    const resolvedCategoryId = categoryId || workItem?.categoryId;
+    const resolvedCategoryName = categoryName || (workItem ? (workItem.category?.[language] || workItem.category?.en) : undefined);
 
     // Route finishing without specific partner directly to Platform Finishing Manager; keep real-estate property partner or resolve eligible manager dynamically
     const partnerId = useMemo(() => {
@@ -145,6 +166,24 @@ const ServiceRequestPage: React.FC = () => {
             customerNotes: finalNotes
         };
 
+        const resolvedPartnerObj = allPartners?.find(p => p.id === partnerId);
+        const resolvedPartnerName = rawPartnerName || (resolvedPartnerObj ? (language === 'ar' ? (resolvedPartnerObj.nameAr || resolvedPartnerObj.name) : resolvedPartnerObj.name) : undefined);
+
+        const sourceReferencePayload = {
+            serviceId,
+            serviceReference,
+            tierId: tierId || tier?.id,
+            workItemId: resolvedWorkItemId,
+            workItemTitle: resolvedWorkItemTitle,
+            workItemReference,
+            workItemImage: resolvedWorkItemImage,
+            workItemPrice: resolvedWorkItemPrice,
+            categoryId: resolvedCategoryId,
+            categoryName: resolvedCategoryName,
+            partnerName: resolvedPartnerName,
+            ...(workItem ? { workItem } : {}),
+        };
+
         if (isBooking && tier) {
             // Redirect to Payment Page
             const bookingTitle = `${serviceTitle} - ${tier.unitType[language]} (${tier.areaRange[language]})`;
@@ -157,6 +196,7 @@ const ServiceRequestPage: React.FC = () => {
                     userName: formData.customerName,
                     data: {
                         ...submissionData,
+                        ...sourceReferencePayload,
                         serviceType: effectiveServiceType,
                         serviceTitle: bookingTitle,
                         partnerId: partnerId,
@@ -182,11 +222,14 @@ const ServiceRequestPage: React.FC = () => {
                     userName: formData.customerName,
                     data: {
                         ...submissionData,
+                        ...sourceReferencePayload,
                         serviceType: serviceType || 'decorations',
                         serviceTitle: `Order: ${workItem.title[language]}`,
                         partnerId: partnerId,
-                        managerId: DECORATION_MANAGER_ID, 
-                        workItem: workItem,
+                        managerId: DECORATION_MANAGER_ID,
+                        referenceImage: formData.referenceImage || resolvedWorkItemImage,
+                        itemCategory: formData.itemCategory || resolvedCategoryName,
+                        dimensions: formData.dimensions || workItem.dimensions,
                         status: 'new',
                         ...attribution,
                     }
@@ -210,6 +253,7 @@ const ServiceRequestPage: React.FC = () => {
                     customerNotes: finalNotes,
                 },
                 contextData: {
+                    ...sourceReferencePayload,
                     partnerId,
                     serviceTitle,
                     managerId: managerId || (effectiveServiceType === 'finishing' ? PLATFORM_FINISHING_MANAGER_ID : (effectiveServiceType === 'decorations' ? DECORATION_MANAGER_ID : undefined)),
@@ -219,9 +263,9 @@ const ServiceRequestPage: React.FC = () => {
                     serviceType: effectiveServiceType,
                     tierDetails: tier,
                     pricingModel: tier?.priceModel,
-                    referenceImage: formData.referenceImage,
-                    dimensions: formData.dimensions,
-                    itemCategory: formData.itemCategory,
+                    referenceImage: formData.referenceImage || resolvedWorkItemImage,
+                    dimensions: formData.dimensions || workItem?.dimensions,
+                    itemCategory: formData.itemCategory || resolvedCategoryName,
                     ...attribution,
                 }
             }).then(() => {
@@ -259,14 +303,22 @@ const ServiceRequestPage: React.FC = () => {
              )}
 
              {workItem && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-sm text-gray-600 mb-2">{isPurchase ? (language === 'ar' ? 'المنتج' : 'Product') : t_decor_modal.reference}</p>
+                <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <p className="text-sm text-gray-600 dark:text-gray-300">{isPurchase ? (language === 'ar' ? 'المنتج' : 'Product') : t_decor_modal.reference}</p>
+                        {workItemReference && (
+                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                                {workItemReference}
+                            </span>
+                        )}
+                    </div>
                     <div className="flex gap-4 items-start">
                         <img src={workItem.imageUrl} alt={workItem.alt} className="w-24 h-24 object-cover rounded-lg flex-shrink-0 shadow-md" />
                         <div className="space-y-1 text-sm flex-grow">
-                            <h3 className="font-bold text-gray-900 text-base">{workItem.title[language]}</h3>
-                            {workItem.dimensions && <p className="text-gray-500">{t_decor.dimensions}: {workItem.dimensions}</p>}
-                            {workItem.availability && <p className="text-gray-500">{t_decor.availability}: {workItem.availability === 'In Stock' ? t_decor.inStock : t_decor.madeToOrder}</p>}
+                            <h3 className="font-bold text-gray-900 dark:text-white text-base">{workItem.title[language]}</h3>
+                            {resolvedCategoryName && <p className="text-xs text-gray-500 dark:text-gray-400">{resolvedCategoryName}</p>}
+                            {workItem.dimensions && <p className="text-gray-500 dark:text-gray-400">{t_decor.dimensions}: {workItem.dimensions}</p>}
+                            {workItem.availability && <p className="text-gray-500 dark:text-gray-400">{t_decor.availability}: {workItem.availability === 'In Stock' ? t_decor.inStock : t_decor.madeToOrder}</p>}
                         </div>
                         {isPurchase && workItem.price && (
                             <div className="text-right">
@@ -311,6 +363,7 @@ const ServiceRequestPage: React.FC = () => {
 
         if (workItem) {
              vals.itemCategory = mapCategoryToKey(workItem.category?.en) || mapCategoryToKey(workItem.category?.ar);
+             if (workItem.dimensions) vals.dimensions = workItem.dimensions;
         } else if (isCustom && categoryName) {
              vals.itemCategory = mapCategoryToKey(categoryName);
         }

@@ -169,11 +169,25 @@ const DashboardPortfolioPage: React.FC = () => {
                                     <img src={item.imageUrl} alt={item.alt} className="w-full h-full object-cover" />
                                 </picture>
                             </div>
-                            <CardContent className="p-4 flex-grow">
+                            <CardContent className="p-4 flex-grow space-y-1">
                                 <h3 className="font-bold text-gray-900 dark:text-white truncate" title={item.title[language]}>
                                     {item.title[language]}
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-400">{item.category[language]}</p>
+                                {(item.price != null || item.availability) && (
+                                    <div className="flex items-center justify-between pt-2 text-xs">
+                                        {item.price != null ? (
+                                            <span className="font-bold text-amber-600 dark:text-amber-400">
+                                                {item.price.toLocaleString()} EGP
+                                            </span>
+                                        ) : <span />}
+                                        {item.availability && (
+                                            <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                                                {item.availability === 'In Stock' ? t.decorationsPage.inStock : t.decorationsPage.madeToOrder}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                             </CardContent>
                             <CardFooter className="p-3 border-t border-gray-200 dark:border-gray-700 justify-end gap-2 bg-gray-50 dark:bg-gray-800/50">
                                 <button

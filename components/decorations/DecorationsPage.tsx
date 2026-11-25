@@ -1,11 +1,14 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import type { PortfolioItem } from '../../types';
 import BannerDisplay from '../shared/BannerDisplay';
 import SEO from '../shared/SEO';
 import { usePortfolioItems } from '../../hooks/usePortfolioItems';
 import { useDecorationCategories } from '../../hooks/useDecorationCategories';
+import { getAllPartners } from '../../services/partners';
+import { DECORATION_MANAGER_ID } from '../../services/decorations';
 import { useLanguage } from '../shared/LanguageContext';
 import { useFavorites } from '../shared/FavoritesContext';
 import { useToast } from '../shared/ToastContext';
@@ -13,6 +16,7 @@ import { HeartIcon, HeartIconSolid, ShareIcon, WhatsAppIcon, ShoppingCartIcon, S
 import { Button } from '../ui/Button';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { isExternalUrl, normalizeActionTarget } from '../../utils/siteContentHelpers';
+import { resolveServiceReferenceCode } from '../../utils/propertyFormShared';
 
 const DecorationsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -27,23 +31,38 @@ const DecorationsPage: React.FC = () => {
     const { data: siteContent } = useSiteContent();
     const { data: allWorks, isLoading: isLoadingWorks } = usePortfolioItems();
     const { data: decorationCategories, isLoading: isLoadingCats } = useDecorationCategories();
-    
+    const { data: publicPartners = [] } = useQuery({
+        queryKey: ['allPartnersPublic'],
+        queryFn: () => getAllPartners(),
+        staleTime: 120000
+    });
+
     const isLoading = isLoadingWorks || isLoadingCats;
 
     // Use dynamic content if available, fallback to translation file
     const content = siteContent?.decorationsPage?.[language] || t_decor_page;
+    const heroImageUrl =
+        siteContent?.decorationsPage?.heroImageUrl ||
+        'https://images.unsplash.com/photo-1616046229478-9901c5536a45?fm=webp&q=75&w=1600&auto=format&fit=crop';
+
+    const partnersMap = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const p of publicPartners) {
+            map.set(p.id, language === 'ar' ? (p.nameAr || p.name) : p.name);
+        }
+        return map;
+    }, [publicPartners, language]);
 
     // Dynamic Tabs based on API Data
     const tabs = useMemo(() => (decorationCategories || []).map(cat => ({
-        id: cat.id, 
+        id: cat.id,
         name: cat.name[language],
         desc: cat.description[language]
     })), [decorationCategories, language]);
-    
+
     const [activeTabId, setActiveTabId] = useState('');
     const [shareModalOpen, setShareModalOpen] = useState(false);
 
-    // Set initial active tab once categories are loaded
     useEffect(() => {
         if (tabs.length > 0 && !activeTabId) {
             setActiveTabId(tabs[0].id);
@@ -52,47 +71,58 @@ const DecorationsPage: React.FC = () => {
 
     const activeTabInfo = useMemo(() => tabs.find(t => t.id === activeTabId), [tabs, activeTabId]);
 
-    // Filter works based on category
+    // Filter works based on categoryId first, fallback to bilingual category name
     const filteredWorks = useMemo(() => {
         if (!activeTabId || !allWorks || !decorationCategories) return [];
-        
+
         const currentCategory = decorationCategories.find(c => c.id === activeTabId);
         if (!currentCategory) return [];
 
-        // Normalize names for comparison (DB stores category names in items)
-        const categoryNameAr = currentCategory.name.ar.trim().toLowerCase();
-        const categoryNameEn = currentCategory.name.en.trim().toLowerCase();
+        const categoryNameAr = (currentCategory.name.ar || '').trim().toLowerCase();
+        const categoryNameEn = (currentCategory.name.en || '').trim().toLowerCase();
 
         return allWorks.filter(work => {
+            if (work.categoryId && work.categoryId === currentCategory.id) {
+                return true;
+            }
             const workCatAr = (work.category.ar || '').trim().toLowerCase();
             const workCatEn = (work.category.en || '').trim().toLowerCase();
-            
             return workCatAr === categoryNameAr || workCatEn === categoryNameEn;
         });
     }, [allWorks, activeTabId, decorationCategories]);
 
-    const DECORATION_MANAGER_ID = 'f476c295-e80a-41ca-a63b-61ff2f579f71';
     const isValidUUID = (id?: string) => id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : false;
 
     const openRequestPage = (work: PortfolioItem) => {
-        const isBuyNow = work.availability === 'In Stock' && work.price;
-        const serviceTitle = isBuyNow 
-            ? `${language === 'ar' ? 'شراء:' : 'Purchase:'} ${work.title[language]}`
-            : `${t_decor_modal.reference} ${work.title[language]}`;
-            
+        const isBuyNow = Boolean(work.availability === 'In Stock' && work.price);
+        const workTitle = work.title[language] || work.title.en;
+        const serviceTitle = isBuyNow
+            ? `${language === 'ar' ? 'شراء:' : 'Purchase:'} ${workTitle}`
+            : `${t_decor_modal.reference} ${workTitle}`;
+
         const resolvedPartnerId = isValidUUID(work.partnerId) ? work.partnerId : DECORATION_MANAGER_ID;
+        const resolvedPartnerName = partnersMap.get(resolvedPartnerId);
+        const workRef = resolveServiceReferenceCode('decoration', work.id, work.referenceNumber);
 
         navigate('/request-service', {
             state: {
                 serviceTitle,
                 partnerId: resolvedPartnerId,
+                partnerName: resolvedPartnerName,
                 workItem: work,
+                workItemId: work.id,
+                workItemTitle: workTitle,
+                workItemReference: workRef,
+                workItemImage: work.imageUrl,
+                workItemPrice: work.price,
+                categoryId: work.categoryId || activeTabId,
+                categoryName: activeTabInfo?.name || work.category[language],
                 serviceType: 'decorations',
                 isPurchase: isBuyNow
             }
         });
     };
-    
+
     const customRequestLabel = siteContent?.decorationsPage?.[language]?.customRequestButton || t_decor_page.requestCustomDesign;
     const customRequestLink = siteContent?.decorationsPage?.customRequestLink || '/request-service';
 
@@ -111,6 +141,7 @@ const DecorationsPage: React.FC = () => {
             state: {
                 serviceTitle,
                 partnerId: DECORATION_MANAGER_ID,
+                categoryId: activeTabId,
                 categoryName: activeTabInfo?.name,
                 isCustom: true,
                 serviceType: 'decorations'
@@ -162,7 +193,7 @@ const DecorationsPage: React.FC = () => {
             )}
             
             {/* Hero Section */}
-            <section className="relative h-[50vh] flex items-center justify-center text-center bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1616046229478-9901c5536a45?fm=webp&q=75&w=1600&auto=format&fit=crop')" }}>
+            <section className="relative h-[50vh] flex items-center justify-center text-center bg-cover bg-center" style={{ backgroundImage: `url('${heroImageUrl}')` }}>
                 <div className="absolute top-0 left-0 w-full h-full bg-black/70 z-10"></div>
                 <div className="relative z-20 px-4 container mx-auto text-white">
                     <h1 className="text-4xl md:text-6xl font-extrabold text-shadow">{content.heroTitle}</h1>
@@ -233,21 +264,24 @@ const DecorationsPage: React.FC = () => {
                                     showToast(isFav ? t.favoritesPage.removedFromFavorites : t.favoritesPage.addedToFavorites, 'success');
                                 };
                                 
+                               const partnerDisplayName = work.partnerId ? partnersMap.get(work.partnerId) : undefined;
+                               const workRefCode = resolveServiceReferenceCode('decoration', work.id, work.referenceNumber);
+
                                return (
-                                   <div key={`${work.imageUrl}-${index}`} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden flex flex-col transform hover:-translate-y-2 transition-all duration-300 hover:shadow-lg">
+                                   <div key={work.id || `${work.imageUrl}-${index}`} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden flex flex-col transform hover:-translate-y-2 transition-all duration-300 hover:shadow-lg">
                                        <div className="relative overflow-hidden">
                                            <div className="aspect-[4/5] bg-gray-100 dark:bg-gray-700">
                                                <picture>
                                                    <source type="image/webp" srcSet={`${work.imageUrl}&fm=webp`} />
-                                                   <img 
-                                                       src={work.imageUrl} 
-                                                       alt={work.alt} 
-                                                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                                                       loading="lazy" 
+                                                   <img
+                                                       src={work.imageUrl}
+                                                       alt={work.alt}
+                                                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                                       loading="lazy"
                                                    />
                                                </picture>
                                            </div>
-                                           
+
                                            {/* Availability Badge */}
                                            {work.availability && (
                                                <span className={`absolute top-3 ${language === 'ar' ? 'left-3' : 'right-3'} text-xs font-bold px-2.5 py-1 rounded-full text-white shadow-sm ${work.availability === 'In Stock' ? 'bg-green-600' : 'bg-sky-600'}`}>
@@ -255,19 +289,32 @@ const DecorationsPage: React.FC = () => {
                                                </span>
                                            )}
 
+                                           {/* Reference Code */}
+                                           <span className="absolute bottom-2 left-2 bg-black/65 text-white font-mono text-[10px] px-2 py-0.5 rounded backdrop-blur-sm">
+                                               {workRefCode}
+                                           </span>
+
                                            {/* Favorite Button */}
-                                           <button 
-                                                onClick={handleFavoriteClick} 
+                                           <button
+                                                onClick={handleFavoriteClick}
                                                 className="absolute top-3 left-3 p-2 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-sm transition-all z-10 opacity-0 group-hover:opacity-100"
                                                 aria-label={isFav ? t.favoritesPage.removeFromFavorites : t.favoritesPage.addToFavorites}
                                            >
                                                 {isFav ? <HeartIconSolid className="w-5 h-5 text-red-500" /> : <HeartIcon className="w-5 h-5 text-white" />}
                                            </button>
                                        </div>
-                                       
+
                                        <div className="p-5 flex flex-col flex-grow">
                                            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate mb-1 group-hover:text-amber-500 transition-colors">{work.title[language]}</h3>
-                                           
+                                           {partnerDisplayName && (
+                                               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">
+                                                   {language === 'ar' ? 'تنفيذ:' : 'By:'}{' '}
+                                                   <Link to={`/partners/${work.partnerId}`} className="font-semibold text-amber-600 dark:text-amber-400 hover:underline">
+                                                       {partnerDisplayName}
+                                                   </Link>
+                                               </p>
+                                           )}
+
                                            <div className="flex justify-between items-end mb-4 mt-auto pt-2">
                                                 <div>
                                                     {work.dimensions && <p className="text-xs text-gray-500 dark:text-gray-400">{t_decor_page.dimensions}: {work.dimensions}</p>}
@@ -278,8 +325,8 @@ const DecorationsPage: React.FC = () => {
                                                     </span>
                                                 )}
                                            </div>
-                                           
-                                           <button 
+
+                                           <button
                                                onClick={() => openRequestPage(work)}
                                                className={`w-full py-3 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 ${isBuyNow ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-900 dark:bg-gray-700 text-white hover:bg-amber-500 dark:hover:bg-amber-500 hover:text-gray-900'}`}
                                            >

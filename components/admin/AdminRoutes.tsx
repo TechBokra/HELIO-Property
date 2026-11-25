@@ -57,6 +57,10 @@ const ContentPrivacyPolicyPage = React.lazy(() => import('./content/ContentPriva
 const ContentTermsOfUsePage = React.lazy(() => import('./content/ContentTermsOfUsePage'));
 const ContentQuotesPage = React.lazy(() => import('./content/ContentQuotesPage'));
 const ContentFooterPage = React.lazy(() => import('./content/ContentFooterPage'));
+const ContentHomeLayoutPage = React.lazy(() => import('./content/ContentHomeLayoutPage'));
+const ContentContactPage = React.lazy(() => import('./content/ContentContactPage'));
+const ContentNavigationPage = React.lazy(() => import('./content/ContentNavigationPage'));
+const ContentActionButtonsPage = React.lazy(() => import('./content/ContentActionButtonsPage'));
 
 const AdminBannersPage = React.lazy(() => import('./banners/AdminBannersPage'));
 const AdminBannerFormPage = React.lazy(() => import('./content/AdminBannerFormPage'));
@@ -402,6 +406,7 @@ const AdminRoutes: React.FC = () => {
                     }
                 >
                     <Route index element={<ContentHeroPage />} />
+                    <Route path="home-layout" element={<ContentHomeLayoutPage />} />
                     <Route path="hero" element={<ContentHeroPage />} />
                     <Route path="home-listings" element={<ContentHomeListingsPage />} />
                     <Route path="social-proof" element={<ContentSocialProofPage />} />
@@ -410,12 +415,15 @@ const AdminRoutes: React.FC = () => {
                     <Route path="partners" element={<ContentPartnersPage />} />
                     <Route path="testimonials" element={<ContentTestimonialsPage />} />
                     <Route path="home-cta" element={<ContentCTAPage />} />
+                    <Route path="contact-page" element={<ContentContactPage />} />
                     <Route path="projects-page" element={<ContentProjectsPage />} />
                     <Route path="services" element={<ContentServicesPage />} />
                     <Route path="finishing-page" element={<ContentFinishingPage />} />
                     <Route path="decorations-page" element={<ContentDecorationsPage />} />
                     <Route path="privacy-policy" element={<ContentPrivacyPolicyPage />} />
                     <Route path="terms-of-use" element={<ContentTermsOfUsePage />} />
+                    <Route path="navigation" element={<ContentNavigationPage />} />
+                    <Route path="action-buttons" element={<ContentActionButtonsPage />} />
                     <Route path="quotes" element={<ContentQuotesPage />} />
                     <Route path="footer" element={<ContentFooterPage />} />
                 </Route>

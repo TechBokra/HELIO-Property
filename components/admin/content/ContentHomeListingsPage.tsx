@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 type ContentFormContext = UseFormReturn<SiteContent>;
 
 const ContentHomeListingsPage: React.FC = () => {
-    const { register } = useOutletContext<ContentFormContext>();
+    const { register, watch, setValue } = useOutletContext<ContentFormContext>();
 
     return (
         <div className="space-y-6 animate-fadeIn">
@@ -43,6 +43,34 @@ const ContentHomeListingsPage: React.FC = () => {
                             <div>
                                 <label className="block text-sm font-medium mb-1">Section Title</label>
                                 <Input {...register('homeListings.en.title')} dir="ltr" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h4 className="font-semibold text-sm text-gray-800 dark:text-gray-200">View All Action Link</h4>
+                            <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                                <Checkbox
+                                    id="listings-viewall-visible"
+                                    checked={watch('homeListings.viewAllButton.visible') !== false}
+                                    onChange={(e) => setValue('homeListings.viewAllButton.visible', e.target.checked, { shouldDirty: true })}
+                                />
+                                <span>Visible</span>
+                            </label>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Text (AR)</label>
+                                <Input {...register('homeListings.viewAllButton.text.ar')} dir="rtl" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Text (EN)</label>
+                                <Input {...register('homeListings.viewAllButton.text.en')} dir="ltr" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Target Link</label>
+                                <Input {...register('homeListings.viewAllButton.link')} dir="ltr" className="font-mono text-sm" placeholder="/properties" />
                             </div>
                         </div>
                     </div>

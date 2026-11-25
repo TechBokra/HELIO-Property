@@ -183,6 +183,14 @@ const sanitizeContentPayload = (content: any): any => {
         cloned.logoUrl = LOGO_CDN;
     }
 
+    // Sanitize finishingPage & decorationsPage editorial heroImageUrl if huge data URI
+    if (cloned.finishingPage && typeof cloned.finishingPage.heroImageUrl === 'string' && cloned.finishingPage.heroImageUrl.startsWith('data:')) {
+        cloned.finishingPage.heroImageUrl = fallbackData.finishingPage?.heroImageUrl || HELIOPOLIS_GATE_CDN;
+    }
+    if (cloned.decorationsPage && typeof cloned.decorationsPage.heroImageUrl === 'string' && cloned.decorationsPage.heroImageUrl.startsWith('data:')) {
+        cloned.decorationsPage.heroImageUrl = fallbackData.decorationsPage?.heroImageUrl || HELIOPOLIS_GATE_CDN;
+    }
+
     return cloned;
 };
 

@@ -1,13 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
-import type { FinishingService, FinishingPricingModel } from '../../types';
+import type { FinishingService } from '../../types';
 import { inputClasses } from '../ui/FormField';
-import { TrashIcon, PlusIcon, BanknotesIcon, CheckCircleIcon } from '../ui/Icons';
-import { getFinishingServices, saveFinishingServices } from '../../services/finishing';
-import { useQuery } from '@tanstack/react-query';
+import { TrashIcon, PlusIcon, BanknotesIcon, ExclamationTriangleIcon } from '../ui/Icons';
+import { getFinishingServices, getFinishingPartners, saveFinishingServices } from '../../services/finishing';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../shared/ToastContext';
 import { useLanguage } from '../shared/LanguageContext';
 import { Button } from '../ui/Button';
+import { resolveServiceReferenceCode } from '../../utils/propertyFormShared';
 
 interface FinishingServicesForm {
     finishingServices: FinishingService[];
@@ -15,21 +16,36 @@ interface FinishingServicesForm {
 
 const AdminFinishingServicesPage: React.FC = () => {
     const { language } = useLanguage();
-    const { data: services, isLoading: dataLoading, refetch } = useQuery({ 
-        queryKey: ['adminFinishingServices'], 
-        queryFn: getFinishingServices 
+    const queryClient = useQueryClient();
+    const [saveError, setSaveError] = useState<string | null>(null);
+
+    const {
+        data: services,
+        isLoading: dataLoading,
+        isError: loadFailed,
+        error: loadError,
+        refetch
+    } = useQuery({
+        queryKey: ['adminFinishingServices'],
+        queryFn: () => getFinishingServices({ includeInactive: true, forceRefresh: true })
     });
+
+    const { data: finishingPartners = [] } = useQuery({
+        queryKey: ['finishingPartnersForAdmin'],
+        queryFn: getFinishingPartners
+    });
+
     const { showToast } = useToast();
-    
-    const { register, control, handleSubmit, reset, formState: { isSubmitting, isDirty } } = useForm<FinishingServicesForm>({
+
+    const { register, control, watch, handleSubmit, reset, formState: { isSubmitting, isDirty } } = useForm<FinishingServicesForm>({
         defaultValues: { finishingServices: [] }
     });
-    
+
     const { fields: serviceFields, append: appendService, remove: removeService } = useFieldArray({
         control,
         name: "finishingServices"
     });
-    
+
     useEffect(() => {
         if (services) {
             reset({ finishingServices: services });
@@ -37,12 +53,19 @@ const AdminFinishingServicesPage: React.FC = () => {
     }, [services, reset]);
 
     const onSubmit = async (formData: FinishingServicesForm) => {
+        setSaveError(null);
         try {
-            await saveFinishingServices(formData.finishingServices);
-            await refetch();
+            const saved = await saveFinishingServices(formData.finishingServices);
+            reset({ finishingServices: saved });
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['adminFinishingServices'] }),
+                queryClient.invalidateQueries({ queryKey: ['canonicalFinishingServices'] }),
+            ]);
             showToast(language === 'ar' ? 'تم حفظ وتحديث باقات التشطيب بنجاح!' : 'Finishing packages saved successfully!', 'success');
-        } catch {
-            showToast(language === 'ar' ? 'فشل حفظ الباقات. حاول مجدداً.' : 'Failed to save packages.', 'error');
+        } catch (err: any) {
+            const msg = err?.message || (language === 'ar' ? 'تعذر حفظ التعديلات في قاعدة البيانات.' : 'Failed to save changes to database.');
+            setSaveError(msg);
+            showToast(language === 'ar' ? `فشل الحفظ: ${msg}` : `Save failed: ${msg}`, 'error');
         }
     };
 
@@ -153,16 +176,17 @@ const AdminFinishingServicesPage: React.FC = () => {
                         {language === 'ar' ? 'إدارة باقات ونماذج تسعير التشطيبات' : 'Finishing Packages & Pricing Models'}
                     </h2>
                     <p className="text-sm text-gray-500">
-                        {language === 'ar' 
-                            ? 'التحكم بالباقات المعروضة وفصل نموذج التسعير (بالمتر / باقة ثابتة) عن الأسعار' 
-                            : 'Manage canonical finishing domain services with decoupled pricing models.'}
+                        {language === 'ar'
+                            ? 'المصدر التشغيلي للخدمات المعروضة للجمهور: التعديل، التسعير، الإظهار أو الإخفاء، وتعيين الشريك المنفذ.'
+                            : 'Authoritative operational catalog for finishing packages, pricing, visibility, and partner routing.'}
                     </p>
                 </div>
-                <Button 
-                    onClick={() => appendService({ 
+                <Button
+                    type="button"
+                    onClick={() => appendService({
                         id: `fs-${Date.now()}`,
-                        title: { ar: 'خدمة تشطيب جديدة', en: 'New Finishing Package' }, 
-                        description: { ar: '', en: '' }, 
+                        title: { ar: 'خدمة تشطيب جديدة', en: 'New Finishing Package' },
+                        description: { ar: '', en: '' },
                         category: 'turnkey',
                         pricingModel: 'per_sqm',
                         basePrice: 0,
@@ -173,7 +197,7 @@ const AdminFinishingServicesPage: React.FC = () => {
                         ],
                         isActive: true,
                         displayOrder: serviceFields.length + 1
-                    })} 
+                    })}
                     className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold"
                 >
                     <PlusIcon className="w-5 h-5" />
@@ -181,26 +205,78 @@ const AdminFinishingServicesPage: React.FC = () => {
                 </Button>
             </div>
 
+            {loadFailed && (
+                <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 text-red-700 dark:text-red-300 text-sm">
+                        <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0" />
+                        <span>
+                            {language === 'ar'
+                                ? `تعذر تحميل خدمات التشطيب: ${(loadError as Error)?.message || 'خطأ غير معروف'}`
+                                : `Failed to load finishing services: ${(loadError as Error)?.message || 'Unknown error'}`}
+                        </span>
+                    </div>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => refetch()}>
+                        {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                    </Button>
+                </div>
+            )}
+
+            {saveError && (
+                <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 flex items-start gap-3 text-red-800 dark:text-red-200 text-sm">
+                    <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-bold">
+                            {language === 'ar' ? 'فشل حفظ التعديلات — تم الإبقاء على مدخلاتك للمراجعة' : 'Save failed — your unsaved edits were preserved'}
+                        </p>
+                        <p className="font-mono text-xs mt-1 opacity-90">{saveError}</p>
+                    </div>
+                </div>
+            )}
+
             <form onSubmit={handleSubmit(onSubmit)}>
                 <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                     <div className="space-y-8">
-                        {serviceFields.map((service, serviceIndex) => (
-                            <div key={service.id} className="p-6 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50/50 dark:bg-gray-800/40 relative group transition-all hover:border-amber-300">
-                                <button 
-                                    type="button" 
-                                    onClick={() => removeService(serviceIndex)} 
+                        {serviceFields.map((service, serviceIndex) => {
+                            const isServiceActive = watch(`finishingServices.${serviceIndex}.isActive`) !== false;
+                            const refCode = resolveServiceReferenceCode('finishing', service.id);
+
+                            return (
+                            <div key={service.id} className={`p-6 border rounded-xl relative group transition-all ${isServiceActive ? 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/40 hover:border-amber-300' : 'border-gray-300 dark:border-gray-700 bg-gray-100/80 dark:bg-gray-800/70 opacity-85'}`}>
+                                <button
+                                    type="button"
+                                    onClick={() => removeService(serviceIndex)}
                                     className="absolute top-4 right-4 text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors z-10"
+                                    title={language === 'ar' ? 'حذف الباقة' : 'Remove Package'}
                                 >
                                     <TrashIcon className="w-5 h-5" />
                                 </button>
-                                
-                                <div className="flex items-center gap-3 mb-6 pb-2 border-b border-gray-200 dark:border-gray-700">
-                                    <span className="bg-amber-500 text-gray-950 font-bold w-7 h-7 rounded-full flex items-center justify-center text-xs">
-                                        {serviceIndex + 1}
-                                    </span>
-                                    <h4 className="font-bold text-gray-900 dark:text-white text-lg">
-                                        {language === 'ar' ? 'بيانات الباقة الأساسية' : 'Package Specifications'}
-                                    </h4>
+
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-3 border-b border-gray-200 dark:border-gray-700 pe-10">
+                                    <div className="flex items-center gap-3">
+                                        <span className="bg-amber-500 text-gray-950 font-bold w-7 h-7 rounded-full flex items-center justify-center text-xs">
+                                            {serviceIndex + 1}
+                                        </span>
+                                        <h4 className="font-bold text-gray-900 dark:text-white text-lg">
+                                            {language === 'ar' ? 'بيانات الباقة الأساسية' : 'Package Specifications'}
+                                        </h4>
+                                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                                            {refCode}
+                                        </span>
+                                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${isServiceActive ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
+                                            {isServiceActive
+                                                ? (language === 'ar' ? 'نشط وظاهر للعامة' : 'Active (Public)')
+                                                : (language === 'ar' ? 'مخفي عن العامة' : 'Hidden from Public')}
+                                        </span>
+                                    </div>
+
+                                    <label className="inline-flex items-center gap-2 cursor-pointer select-none px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs font-bold">
+                                        <input
+                                            type="checkbox"
+                                            {...register(`finishingServices.${serviceIndex}.isActive` as const)}
+                                            className="rounded border-gray-300 text-amber-600 focus:ring-amber-500 h-4 w-4"
+                                        />
+                                        <span>{language === 'ar' ? 'إظهار في صفحة التشطيبات العامة' : 'Visible on Public Page'}</span>
+                                    </label>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -239,13 +315,52 @@ const AdminFinishingServicesPage: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                            {language === 'ar' ? 'السعر الأساسي / يبدأ من' : 'Base / Starting Price (EGP)'}
+                                            {language === 'ar' ? 'السعر الأساسي / يبدأ من (ج.م)' : 'Base / Starting Price (EGP)'}
                                         </label>
-                                        <input 
-                                            type="number" 
-                                            {...register(`finishingServices.${serviceIndex}.basePrice` as const, { valueAsNumber: true })} 
-                                            className={inputClasses} 
-                                            placeholder="4500" 
+                                        <input
+                                            type="number"
+                                            {...register(`finishingServices.${serviceIndex}.basePrice` as const, { valueAsNumber: true })}
+                                            className={inputClasses}
+                                            placeholder="4500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            {language === 'ar' ? 'ترتيب العرض' : 'Display Order'}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            {...register(`finishingServices.${serviceIndex}.displayOrder` as const, { valueAsNumber: true })}
+                                            className={inputClasses}
+                                            placeholder="1"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            {language === 'ar' ? 'الشريك المنفذ الافتراضي (اختياري)' : 'Target Partner (Optional)'}
+                                        </label>
+                                        <select {...register(`finishingServices.${serviceIndex}.targetPartnerId` as const)} className={inputClasses}>
+                                            <option value="">{language === 'ar' ? 'إدارة التشطيبات بالمنصة (افتراضي)' : 'Platform Finishing Manager (Default)'}</option>
+                                            {finishingPartners.map(p => (
+                                                <option key={p.id} value={p.id}>
+                                                    {language === 'ar' ? (p.nameAr || p.name) : p.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            {language === 'ar' ? 'رابط صورة الباقة (اختياري)' : 'Package Image URL (Optional)'}
+                                        </label>
+                                        <input
+                                            type="url"
+                                            {...register(`finishingServices.${serviceIndex}.imageUrl` as const)}
+                                            className={inputClasses}
+                                            dir="ltr"
+                                            placeholder="https://..."
                                         />
                                     </div>
                                 </div>
@@ -260,10 +375,11 @@ const AdminFinishingServicesPage: React.FC = () => {
                                         <textarea {...register(`finishingServices.${serviceIndex}.description.en` as const)} className={inputClasses} rows={3} dir="ltr"/>
                                     </div>
                                 </div>
-                                
+
                                 <PricingTiersEditor serviceIndex={serviceIndex} />
                             </div>
-                        ))}
+                        );
+                        })}
                         
                         {serviceFields.length === 0 && (
                             <div className="text-center py-12 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl">

@@ -44,6 +44,21 @@ export const resolvePropertyReferenceCode = (
     return `HEL-${suffix}`;
 };
 
+export const resolveServiceReferenceCode = (
+    domain: 'finishing' | 'decoration',
+    itemId?: string | null,
+    explicitRef?: string | null
+): string | undefined => {
+    if (explicitRef && String(explicitRef).trim()) {
+        return String(explicitRef).trim();
+    }
+    if (!itemId) return undefined;
+    const prefix = domain === 'decoration' ? 'DEC' : 'FIN';
+    const clean = String(itemId).replace(/[^a-zA-Z0-9]/g, '');
+    const suffix = clean.slice(-5).toUpperCase() || '1001';
+    return `${prefix}-${suffix}`;
+};
+
 export const validateEgyptPhone = (
     value: string | undefined | null,
     language: 'ar' | 'en' = 'ar'

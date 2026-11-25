@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 type ContentFormContext = UseFormReturn<SiteContent>;
 
 const ContentServicesPage: React.FC = () => {
-    const { register, control } = useOutletContext<ContentFormContext>();
+    const { register, control, setValue, getValues } = useOutletContext<ContentFormContext>();
     const { fields: serviceFields, append, remove } = useFieldArray({ control, name: 'services.en.features' });
     const { remove: removeAr } = useFieldArray({ control, name: 'services.ar.features' });
 
@@ -75,8 +75,8 @@ const ContentServicesPage: React.FC = () => {
                         onClick={() => {
                             const newFeature = { title: '', description: '', link: '/', icon: 'SparklesIcon' };
                             append(newFeature);
-                            // Manually sync the second language array
-                            (control as any)._formValues.services.ar.features.push(newFeature);
+                            const currentAr = getValues('services.ar.features') || [];
+                            setValue('services.ar.features', [...currentAr, newFeature], { shouldDirty: true });
                         }}
                     >
                         Add Service Card
@@ -84,38 +84,57 @@ const ContentServicesPage: React.FC = () => {
                 </div>
                 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    {serviceFields.map((field, index) => (
-                        <div key={field.id} className="relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                             <div className="absolute top-0 right-0 p-2 bg-gray-50 dark:bg-gray-900/50 rounded-bl-xl border-l border-b border-gray-200 dark:border-gray-700 z-10">
-                                <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => { remove(index); removeAr(index); }}><TrashIcon className="w-4 h-4"/></Button>
-                            </div>
-                            
-                            <div className="p-6 space-y-6">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                     <div className="space-y-3">
-                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Arabic</span>
-                                        <div><label className="text-xs mb-1 block text-gray-500">Title</label><Input {...register(`services.ar.features.${index}.title`)} dir="rtl" /></div>
-                                        <div><label className="text-xs mb-1 block text-gray-500">Description</label><Textarea {...register(`services.ar.features.${index}.description`)} rows={3} dir="rtl"/></div>
+                    {serviceFields.map((field, index) => {
+                        const linkReg = register(`services.en.features.${index}.link`);
+                        const iconReg = register(`services.en.features.${index}.icon`);
+                        return (
+                            <div key={field.id} className="relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                                <div className="absolute top-0 right-0 p-2 bg-gray-50 dark:bg-gray-900/50 rounded-bl-xl border-l border-b border-gray-200 dark:border-gray-700 z-10">
+                                    <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => { remove(index); removeAr(index); }}><TrashIcon className="w-4 h-4"/></Button>
+                                </div>
+                                
+                                <div className="p-6 space-y-6">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                         <div className="space-y-3">
+                                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Arabic</span>
+                                            <div><label className="text-xs mb-1 block text-gray-500">Title</label><Input {...register(`services.ar.features.${index}.title`)} dir="rtl" /></div>
+                                            <div><label className="text-xs mb-1 block text-gray-500">Description</label><Textarea {...register(`services.ar.features.${index}.description`)} rows={3} dir="rtl"/></div>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">English</span>
+                                            <div><label className="text-xs mb-1 block text-gray-500">Title</label><Input {...register(`services.en.features.${index}.title`)} dir="ltr" /></div>
+                                            <div><label className="text-xs mb-1 block text-gray-500">Description</label><Textarea {...register(`services.en.features.${index}.description`)} rows={3} dir="ltr"/></div>
+                                        </div>
                                     </div>
-                                    <div className="space-y-3">
-                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">English</span>
-                                        <div><label className="text-xs mb-1 block text-gray-500">Title</label><Input {...register(`services.en.features.${index}.title`)} dir="ltr" /></div>
-                                        <div><label className="text-xs mb-1 block text-gray-500">Description</label><Textarea {...register(`services.en.features.${index}.description`)} rows={3} dir="ltr"/></div>
+                                    <div className="pt-4 border-t border-gray-100 dark:border-gray-700 grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1 text-gray-500">Link (e.g., /properties)</label>
+                                            <Input
+                                                {...linkReg}
+                                                className="font-mono text-sm"
+                                                onChange={(e) => {
+                                                    linkReg.onChange(e);
+                                                    setValue(`services.ar.features.${index}.link` as any, e.target.value, { shouldDirty: true });
+                                                }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1 text-gray-500">Icon Name</label>
+                                            <Input
+                                                {...iconReg}
+                                                className="font-mono text-sm"
+                                                placeholder="e.g. BuildingIcon"
+                                                onChange={(e) => {
+                                                    iconReg.onChange(e);
+                                                    setValue(`services.ar.features.${index}.icon` as any, e.target.value, { shouldDirty: true });
+                                                }}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="pt-4 border-t border-gray-100 dark:border-gray-700 grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-medium mb-1 text-gray-500">Link (e.g., /properties)</label>
-                                        <Input {...register(`services.en.features.${index}.link`)} className="font-mono text-sm" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium mb-1 text-gray-500">Icon Name</label>
-                                        <Input {...register(`services.en.features.${index}.icon`)} className="font-mono text-sm" placeholder="e.g. BuildingIcon" />
-                                    </div>
-                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
                  {serviceFields.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl">

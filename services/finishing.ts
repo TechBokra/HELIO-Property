@@ -1,10 +1,11 @@
-import { supabase } from '../lib/supabase';
+import { supabase, supabasePublic } from '../lib/supabase';
 import { 
     FinishingService, 
     FinishingPricingTier, 
     FinishingPricingModel, 
     AdminPartner,
     Role,
+    Permission,
     FinishingCategoryDefinition,
     PartnerFinishingCapability,
     FinishingQuote,
@@ -18,11 +19,43 @@ import {
     FinishingPropertyType,
     ExecutionAttachment
 } from '../types';
-import { getContent, updateContent } from './content';
+import { getContent } from './content';
 import { updateLead } from './leads';
+import { requireAnyPermission } from './authGuard';
 import { siteContentData as fallbackData } from '../data/content';
+import { resolveServiceReferenceCode } from '../utils/propertyFormShared';
 
 export const PLATFORM_FINISHING_MANAGER_ID = '3e554896-eee8-4545-9c7f-0a79a4c1a9f1';
+
+const isUuidString = (val?: string): boolean =>
+    Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val));
+
+const toDeterministicUuid = (seed: string): string => {
+    const hash32 = (str: string, init: number) => {
+        let h = init >>> 0;
+        for (let i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h = Math.imul(h, 0x01000193);
+        }
+        return (h >>> 0).toString(16).padStart(8, '0');
+    };
+    const p1 = hash32(`a:${seed}`, 0x811c9dc5);
+    const p2 = hash32(`b:${seed}`, 0x9e3779b9);
+    const p3 = hash32(`c:${seed}`, 0x85ebca6b);
+    const p4 = hash32(`d:${seed}`, 0xc2b2ae35);
+    const hex = `${p1}${p2}${p3}${p4}`;
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+};
+
+const isMissingTableError = (error: any): boolean => {
+    const code = String(error?.code || '').toUpperCase();
+    const msg = String(error?.message || '').toLowerCase();
+    return (
+        code === '42P01' ||
+        code === 'PGRST205' ||
+        (msg.includes('finishing_services') && (msg.includes('does not exist') || msg.includes('could not find')))
+    );
+};
 
 // Canonical Categories Catalog (P1)
 export const FINISHING_CATEGORIES: FinishingCategoryDefinition[] = [
@@ -160,8 +193,10 @@ export const normalizeFinishingService = (raw: any, index: number = 0): Finishin
         ? Number(raw.basePrice) 
         : (lowestTierPrice === Infinity ? 0 : lowestTierPrice);
 
+    const serviceId = raw.id || `finishing-srv-${index + 1}`;
     return {
-        id: raw.id || `finishing-srv-${index + 1}`,
+        id: serviceId,
+        referenceNumber: raw.referenceNumber || resolveServiceReferenceCode('finishing', serviceId),
         title: {
             ar: raw.title?.ar || 'خدمة تشطيب',
             en: raw.title?.en || 'Finishing Service'
@@ -183,6 +218,7 @@ export const normalizeFinishingService = (raw: any, index: number = 0): Finishin
         isActive: raw.isActive !== undefined ? Boolean(raw.isActive) : true,
         displayOrder: raw.displayOrder !== undefined ? Number(raw.displayOrder) : index,
         targetPartnerId: raw.targetPartnerId || undefined,
+        imageUrl: raw.imageUrl || undefined,
         createdAt: raw.createdAt || raw.created_at,
         updatedAt: raw.updatedAt || raw.updated_at
     };
@@ -190,6 +226,7 @@ export const normalizeFinishingService = (raw: any, index: number = 0): Finishin
 
 const mapRowToService = (row: any): FinishingService => ({
     id: row.id,
+    referenceNumber: resolveServiceReferenceCode('finishing', row.id),
     title: {
         en: row.title_en,
         ar: row.title_ar
@@ -198,8 +235,8 @@ const mapRowToService = (row: any): FinishingService => ({
         en: row.description_en || '',
         ar: row.description_ar || ''
     },
-    category: row.category,
-    pricingModel: row.pricing_model as FinishingPricingModel,
+    category: row.category || 'turnkey',
+    pricingModel: (row.pricing_model || 'fixed_package') as FinishingPricingModel,
     basePrice: Number(row.base_price) || 0,
     currency: row.currency || 'EGP',
     pricingTiers: Array.isArray(row.pricing_tiers) ? row.pricing_tiers : [],
@@ -207,125 +244,247 @@ const mapRowToService = (row: any): FinishingService => ({
     isActive: row.is_active ?? true,
     displayOrder: row.display_order ?? 0,
     targetPartnerId: row.target_partner_id || undefined,
+    imageUrl: row.image_url || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
 });
 
 /**
  * Get canonical finishing services from Supabase
- * Prioritizes live public.finishing_services table, falls back to Supabase site_content
+ * Uses public.finishing_services as authoritative catalog; transitions from site_content if table is empty/unmigrated.
  */
-// In-memory cache for finishing services
-let cachedFinishingServices: { data: FinishingService[]; timestamp: number } | null = null;
-let inFlightFinishingPromise: Promise<FinishingService[]> | null = null;
-let finishingTableChecked = false;
-let finishingTableExists = false;
+let cachedFinishingServices: { data: FinishingService[]; includeInactive: boolean; timestamp: number } | null = null;
+let inFlightFinishingPromises: Partial<Record<'all' | 'active', Promise<FinishingService[]>>> = {};
 const FINISHING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export const invalidateFinishingServicesCache = () => {
     cachedFinishingServices = null;
-    inFlightFinishingPromise = null;
+    inFlightFinishingPromises = {};
 };
 
-export const getFinishingServices = async (): Promise<FinishingService[]> => {
+export interface GetFinishingServicesOptions {
+    includeInactive?: boolean;
+    forceRefresh?: boolean;
+    client?: any;
+    allowLegacyFallback?: boolean;
+}
+
+export const getFinishingServices = async (
+    options?: GetFinishingServicesOptions
+): Promise<FinishingService[]> => {
+    const includeInactive = Boolean(options?.includeInactive);
+    const forceRefresh = Boolean(options?.forceRefresh);
+    const customClient = options?.client;
+    const cacheKey = includeInactive ? 'all' : 'active';
     const now = Date.now();
-    if (cachedFinishingServices && (now - cachedFinishingServices.timestamp) < FINISHING_CACHE_TTL) {
+
+    if (
+        !forceRefresh &&
+        !customClient &&
+        cachedFinishingServices &&
+        cachedFinishingServices.includeInactive === includeInactive &&
+        (now - cachedFinishingServices.timestamp) < FINISHING_CACHE_TTL
+    ) {
         return cachedFinishingServices.data;
     }
 
-    if (inFlightFinishingPromise) {
-        return inFlightFinishingPromise;
+    if (!forceRefresh && !customClient && inFlightFinishingPromises[cacheKey]) {
+        return inFlightFinishingPromises[cacheKey]!;
     }
 
-    inFlightFinishingPromise = (async () => {
+    const fetchPromise = (async (): Promise<FinishingService[]> => {
         try {
-            // 1. Try public.finishing_services table if not already known to be missing
-            if (!finishingTableChecked || finishingTableExists) {
-                try {
-                    const { data, error } = await supabase
-                        .from('finishing_services')
-                        .select('*')
-                        .order('display_order', { ascending: true });
+            const readClient = customClient || (includeInactive ? supabase : supabasePublic);
+            const { data, error } = await readClient
+                .from('finishing_services')
+                .select('*')
+                .order('display_order', { ascending: true });
 
-                    finishingTableChecked = true;
-                    if (!error && data && data.length > 0) {
-                        finishingTableExists = true;
-                        const mapped = data.map(mapRowToService);
-                        cachedFinishingServices = { data: mapped, timestamp: Date.now() };
-                        return mapped;
-                    } else if (error) {
-                        finishingTableExists = false;
+            if (error) {
+                if (!isMissingTableError(error)) {
+                    throw new Error(`Failed to load finishing services: ${error.message || 'Database query error'}`);
+                }
+            } else if (data && data.length > 0) {
+                const mapped: FinishingService[] = data
+                    .map(mapRowToService)
+                    .sort((a: FinishingService, b: FinishingService) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+                const filtered = includeInactive ? mapped : mapped.filter((s: FinishingService) => s.isActive !== false);
+                if (!customClient) {
+                    cachedFinishingServices = { data: filtered, includeInactive, timestamp: Date.now() };
+                }
+                return filtered;
+            } else {
+                // Table returned 0 rows: check if catalog exists with all rows inactive (under anon RLS)
+                if (!includeInactive && typeof readClient.rpc === 'function') {
+                    try {
+                        const { data: catalogExists } = await readClient.rpc('finishing_catalog_exists');
+                        if (catalogExists === true) {
+                            if (!customClient) {
+                                cachedFinishingServices = { data: [], includeInactive, timestamp: Date.now() };
+                            }
+                            return [];
+                        }
+                    } catch {
+                        // RPC not yet deployed; proceed to legacy transition check
                     }
-                } catch {
-                    finishingTableChecked = true;
-                    finishingTableExists = false;
                 }
             }
 
-            // 2. Fall through to Supabase site_content
-            const siteContent = await getContent();
-            const rawServices = siteContent?.finishingServices || [];
-            if (rawServices.length > 0) {
-                const mapped = rawServices.map((s: any, idx: number) => normalizeFinishingService(s, idx));
-                cachedFinishingServices = { data: mapped, timestamp: Date.now() };
-                return mapped;
+            if (options?.allowLegacyFallback === false) {
+                return [];
             }
 
-            // 3. Fall through to canonical fallback data
-            const fallbackServices = (fallbackData.finishingServices || []).map((s: any, idx: number) => 
-                normalizeFinishingService(s, idx)
-            );
-            cachedFinishingServices = { data: fallbackServices, timestamp: Date.now() };
-            return fallbackServices;
+            // Transition / fallback from legacy site_content.finishingServices or canonical seed
+            const siteContent = await getContent({ forceRefresh, client: customClient });
+            const rawServices = (siteContent?.finishingServices && siteContent.finishingServices.length > 0)
+                ? siteContent.finishingServices
+                : (fallbackData.finishingServices || []);
+
+            const mappedLegacy = rawServices.map((s: any, idx: number) => normalizeFinishingService(s, idx));
+            const filteredLegacy = includeInactive ? mappedLegacy : mappedLegacy.filter(s => s.isActive !== false);
+            if (!customClient) {
+                cachedFinishingServices = { data: filteredLegacy, includeInactive, timestamp: Date.now() };
+            }
+            return filteredLegacy;
         } finally {
-            inFlightFinishingPromise = null;
+            if (!forceRefresh && !customClient) {
+                delete inFlightFinishingPromises[cacheKey];
+            }
         }
     })();
 
-    return inFlightFinishingPromise;
+    if (!forceRefresh && !customClient) {
+        inFlightFinishingPromises[cacheKey] = fetchPromise;
+    }
+
+    return fetchPromise;
 };
 
 /**
  * Get a specific finishing service by ID
  */
-export const getFinishingServiceById = async (id: string): Promise<FinishingService | undefined> => {
-    const all = await getFinishingServices();
+export const getFinishingServiceById = async (
+    id: string,
+    options?: GetFinishingServicesOptions
+): Promise<FinishingService | undefined> => {
+    const all = await getFinishingServices({ ...options, includeInactive: options?.includeInactive ?? true });
     return all.find(s => s.id === id);
 };
 
 /**
- * Save / Update canonical finishing services in Supabase
+ * Save / Update canonical finishing services in public.finishing_services
  */
-export const saveFinishingServices = async (services: FinishingService[]): Promise<FinishingService[]> => {
-    const normalized = services.map((s, idx) => normalizeFinishingService(s, idx));
-
-    // Try saving directly to table if available
-    try {
-        const rows = normalized.map(s => ({
-            id: s.id.startsWith('finishing-srv-') ? undefined : s.id,
-            title_en: s.title.en,
-            title_ar: s.title.ar,
-            description_en: s.description.en,
-            description_ar: s.description.ar,
-            category: s.category || 'turnkey',
-            pricing_model: s.pricingModel,
-            base_price: s.basePrice || 0,
-            currency: s.currency || 'EGP',
-            pricing_tiers: s.pricingTiers,
-            features: s.features || [],
-            is_active: s.isActive ?? true,
-            display_order: s.displayOrder ?? 0,
-            target_partner_id: s.targetPartnerId || null
-        }));
-
-        await supabase.from('finishing_services').upsert(rows);
-    } catch {
-        // Ignore table error if migration is pending
+export const saveFinishingServices = async (
+    services: FinishingService[],
+    options?: { client?: any }
+): Promise<FinishingService[]> => {
+    if (!options?.client) {
+        requireAnyPermission([
+            Permission.MANAGE_PLATFORM_FINISHING_PACKAGES,
+            Permission.MANAGE_SITE_CONTENT,
+        ]);
     }
 
-    // Always synchronize into Supabase site_content for instant availability
-    await updateContent({ finishingServices: normalized });
+    const dbClient = options?.client || supabase;
+    const nowIso = new Date().toISOString();
+
+    const normalized = services.map((s, idx) => {
+        const base = normalizeFinishingService({ ...s, displayOrder: s.displayOrder ?? idx + 1 }, idx);
+        const authoritativeId = isUuidString(base.id) ? base.id : toDeterministicUuid(base.id || `fs-${idx + 1}`);
+        return {
+            ...base,
+            id: authoritativeId,
+            referenceNumber: resolveServiceReferenceCode('finishing', authoritativeId),
+        };
+    });
+
+    const { data: existingRows, error: existingErr } = await dbClient
+        .from('finishing_services')
+        .select('id');
+
+    if (existingErr) {
+        throw new Error(`Failed to verify existing finishing services: ${existingErr.message}`);
+    }
+
+    const nextIdSet = new Set(normalized.map(s => s.id));
+    const removedIds = (existingRows || [])
+        .map((r: any) => r.id)
+        .filter((id: string) => id && !nextIdSet.has(id));
+
+    if (removedIds.length > 0) {
+        const { error: deleteErr } = await dbClient
+            .from('finishing_services')
+            .delete()
+            .in('id', removedIds);
+        if (deleteErr) {
+            throw new Error(`Failed to delete removed finishing services: ${deleteErr.message}`);
+        }
+    }
+
+    if (normalized.length > 0) {
+        const rows = normalized.map((s, idx) => ({
+            id: s.id,
+            title_en: s.title.en,
+            title_ar: s.title.ar,
+            description_en: s.description.en || '',
+            description_ar: s.description.ar || '',
+            category: s.category || 'turnkey',
+            pricing_model: s.pricingModel,
+            base_price: Number(s.basePrice) || 0,
+            currency: s.currency || 'EGP',
+            pricing_tiers: s.pricingTiers || [],
+            features: s.features || [],
+            is_active: s.isActive !== false,
+            display_order: Number.isFinite(Number(s.displayOrder)) ? Number(s.displayOrder) : idx + 1,
+            target_partner_id: isUuidString(s.targetPartnerId) ? s.targetPartnerId : null,
+            image_url: s.imageUrl || null,
+            updated_at: nowIso,
+        }));
+
+        const { data: savedRows, error: upsertErr } = await dbClient
+            .from('finishing_services')
+            .upsert(rows, { onConflict: 'id' })
+            .select('*');
+
+        if (upsertErr) {
+            throw new Error(`Failed to save finishing services: ${upsertErr.message}`);
+        }
+
+        invalidateFinishingServicesCache();
+        if (savedRows && savedRows.length > 0) {
+            return savedRows
+                .map(mapRowToService)
+                .sort((a: FinishingService, b: FinishingService) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+        }
+    } else {
+        invalidateFinishingServicesCache();
+    }
+
     return normalized;
+};
+
+export const deleteFinishingService = async (
+    id: string,
+    options?: { client?: any }
+): Promise<boolean> => {
+    if (!options?.client) {
+        requireAnyPermission([
+            Permission.MANAGE_PLATFORM_FINISHING_PACKAGES,
+            Permission.MANAGE_SITE_CONTENT,
+        ]);
+    }
+    const dbClient = options?.client || supabase;
+    const { error } = await dbClient
+        .from('finishing_services')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        throw new Error(`Failed to delete finishing service: ${error.message}`);
+    }
+
+    invalidateFinishingServicesCache();
+    return true;
 };
 
 /**

@@ -11,7 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 type ContentFormContext = UseFormReturn<SiteContent>;
 
 const ContentCTAPage: React.FC = () => {
-    const { register } = useOutletContext<ContentFormContext>();
+    const { register, watch, setValue } = useOutletContext<ContentFormContext>();
+    const enLinkReg = register('homeCTA.en.link');
 
     return (
         <div className="space-y-6 animate-fadeIn">
@@ -57,8 +58,43 @@ const ContentCTAPage: React.FC = () => {
                         </div>
                     </div>
                      <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium mb-1">Button Link</label>
-                        <Input {...register('homeCTA.en.link')} dir="ltr" placeholder="/contact" />
+                        <label className="block text-sm font-medium mb-1">Primary Button Link (AR & EN)</label>
+                        <Input
+                            {...enLinkReg}
+                            dir="ltr"
+                            placeholder="/contact"
+                            onChange={(e) => {
+                                enLinkReg.onChange(e);
+                                setValue('homeCTA.ar.link', e.target.value, { shouldDirty: true });
+                            }}
+                        />
+                    </div>
+                    <div className="lg:col-span-2 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h5 className="font-semibold text-sm text-gray-800 dark:text-gray-200">Secondary Button (Optional)</h5>
+                            <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                                <Checkbox
+                                    id="cta-secondary-visible"
+                                    checked={Boolean(watch('homeCTA.secondaryButton.visible'))}
+                                    onChange={(e) => setValue('homeCTA.secondaryButton.visible', e.target.checked, { shouldDirty: true })}
+                                />
+                                <span>Visible</span>
+                            </label>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Button Text (AR)</label>
+                                <Input {...register('homeCTA.secondaryButton.text.ar')} dir="rtl" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Button Text (EN)</label>
+                                <Input {...register('homeCTA.secondaryButton.text.en')} dir="ltr" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Target Link</label>
+                                <Input {...register('homeCTA.secondaryButton.link')} dir="ltr" className="font-mono text-sm" placeholder="/properties" />
+                            </div>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
