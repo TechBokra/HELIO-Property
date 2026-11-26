@@ -1,68 +1,84 @@
 
 import type { Property, PropertyFiltersType } from '../types';
 
-export const filterProperties = (properties: Property[], filters: PropertyFiltersType): Property[] => {
-    return properties.filter(p => {
+export const filterProperties = (properties: Property[], filters: Partial<PropertyFiltersType>): Property[] => {
+    const safeStatus = filters?.status || 'all';
+    const safeType = filters?.type || 'all';
+    const safeProject = filters?.project || 'all';
+    const safeFinishing = filters?.finishing || 'all';
+    const safeInstallments = filters?.installments || 'all';
+    const safeFinance = filters?.realEstateFinance || 'all';
+    const safeCompound = filters?.compound || 'all';
+    const safeDelivery = filters?.delivery || 'all';
+    const safeAmenities = Array.isArray(filters?.amenities) ? filters.amenities : [];
+    const searchTerm = String(filters?.query || '').toLowerCase().trim();
+    const minPrice = parseInt(String(filters?.minPrice || ''), 10);
+    const maxPrice = parseInt(String(filters?.maxPrice || ''), 10);
+    const parsedFloor = filters?.floor !== undefined && filters?.floor !== '' ? parseInt(String(filters.floor), 10) : NaN;
+    const minBeds = parseInt(String(filters?.beds || ''), 10);
+    const minBaths = parseInt(String(filters?.baths || ''), 10);
+
+    return (properties || []).filter(p => {
+        if (!p) return false;
+
         // 1. Status Filter
-        const statusMatch = filters.status === 'all' || p.status.en === filters.status;
-        
+        const statusMatch = safeStatus === 'all' || p.status?.en === safeStatus;
+
         // 2. Type Filter
-        const typeMatch = filters.type === 'all' || p.type.en === filters.type;
-        
+        const typeMatch = safeType === 'all' || p.type?.en === safeType;
+
         // 3. Project Filter
-        const projectMatch = filters.project === 'all' || p.projectId === filters.project;
-        
+        const projectMatch = safeProject === 'all' || p.projectId === safeProject;
+
         // 4. Search Query (Text Search)
-        const searchTerm = filters.query.toLowerCase().trim();
-        const queryMatch = !searchTerm || 
-            p.title.ar.toLowerCase().includes(searchTerm) ||
-            p.title.en.toLowerCase().includes(searchTerm) ||
-            p.address.ar.toLowerCase().includes(searchTerm) ||
-            p.address.en.toLowerCase().includes(searchTerm) ||
-            (p.partnerName && p.partnerName.toLowerCase().includes(searchTerm)) || false;
+        const queryMatch = !searchTerm ||
+            String(p.title?.ar || '').toLowerCase().includes(searchTerm) ||
+            String(p.title?.en || '').toLowerCase().includes(searchTerm) ||
+            String(p.address?.ar || '').toLowerCase().includes(searchTerm) ||
+            String(p.address?.en || '').toLowerCase().includes(searchTerm) ||
+            String(p.partnerName || '').toLowerCase().includes(searchTerm);
 
         // 5. Price Range
-        const minPrice = parseInt(filters.minPrice, 10);
-        const maxPrice = parseInt(filters.maxPrice, 10);
-        const priceMatch = 
-            (!minPrice || p.priceNumeric >= minPrice) && 
+        const priceMatch =
+            (!minPrice || p.priceNumeric >= minPrice) &&
             (!maxPrice || p.priceNumeric <= maxPrice);
 
         // 6. Finishing Status
-        const finishingMatch = filters.finishing === 'all' || p.finishingStatus?.en === filters.finishing;
+        const finishingMatch = safeFinishing === 'all' || p.finishingStatus?.en === safeFinishing;
 
         // 7. Installments
-        const installmentsMatch = filters.installments === 'all' ||
-            (filters.installments === 'yes' && p.installmentsAvailable) ||
-            (filters.installments === 'no' && !p.installmentsAvailable);
-        
+        const installmentsMatch = safeInstallments === 'all' ||
+            (safeInstallments === 'yes' && p.installmentsAvailable) ||
+            (safeInstallments === 'no' && !p.installmentsAvailable);
+
         // 8. Real Estate Finance
-        const realEstateFinanceMatch = filters.realEstateFinance === 'all' ||
-            (filters.realEstateFinance === 'yes' && p.realEstateFinanceAvailable) ||
-            (filters.realEstateFinance === 'no' && !p.realEstateFinanceAvailable);
+        const realEstateFinanceMatch = safeFinance === 'all' ||
+            (safeFinance === 'yes' && p.realEstateFinanceAvailable) ||
+            (safeFinance === 'no' && !p.realEstateFinanceAvailable);
 
         // 9. Floor
-        const floorMatch = !filters.floor || (p.floor !== undefined && p.floor === parseInt(filters.floor, 10));
+        const floorMatch = Number.isNaN(parsedFloor) || (p.floor !== undefined && p.floor === parsedFloor);
 
         // 10. Compound
-        const compoundMatch = filters.compound === 'all' || 
-            (filters.compound === 'yes' && p.isInCompound) ||
-            (filters.compound === 'no' && !p.isInCompound);
+        const compoundMatch = safeCompound === 'all' ||
+            (safeCompound === 'yes' && p.isInCompound) ||
+            (safeCompound === 'no' && !p.isInCompound);
 
         // 11. Delivery
-        const deliveryMatch = filters.delivery === 'all' ||
-            (filters.delivery === 'immediate' && p.delivery?.isImmediate);
-        
+        const deliveryMatch = safeDelivery === 'all' ||
+            (safeDelivery === 'immediate' && p.delivery?.isImmediate);
+
         // 12. Amenities (AND Logic: Property must have ALL selected amenities)
-        const amenitiesMatch = filters.amenities.length === 0 || 
-            filters.amenities.every((amenity: string) => p.amenities.en.includes(amenity));
+        const propAmenitiesEn = Array.isArray(p.amenities?.en) ? p.amenities.en : [];
+        const amenitiesMatch = safeAmenities.length === 0 ||
+            safeAmenities.every((amenity: string) => propAmenitiesEn.includes(amenity));
 
         // 13. Beds & Baths (Minimum value logic)
-        const bedsMatch = !filters.beds || p.beds >= parseInt(filters.beds, 10);
-        const bathsMatch = !filters.baths || p.baths >= parseInt(filters.baths, 10);
+        const bedsMatch = !minBeds || (p.beds ?? 0) >= minBeds;
+        const bathsMatch = !minBaths || (p.baths ?? 0) >= minBaths;
 
-        return statusMatch && typeMatch && queryMatch && priceMatch && finishingMatch && 
-               installmentsMatch && realEstateFinanceMatch && floorMatch && compoundMatch && 
+        return statusMatch && typeMatch && queryMatch && priceMatch && finishingMatch &&
+               installmentsMatch && realEstateFinanceMatch && floorMatch && compoundMatch &&
                deliveryMatch && amenitiesMatch && projectMatch && bedsMatch && bathsMatch;
     });
 };

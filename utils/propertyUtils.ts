@@ -1,4 +1,5 @@
 import { Role, Permission, type Property, type Partner } from '../types';
+import { canUserAccessCity } from './cityScope';
 
 const HIDDEN_PUBLICATION_STATUSES = new Set([
     'draft',
@@ -71,15 +72,15 @@ export const canReviewPropertyDraft = (
         return true;
     }
 
-    if (user.role && AUTHORIZED_DRAFT_REVIEW_ROLES.has(user.role)) {
-        return true;
+    const hasRolePrivilege = Boolean(user.role && AUTHORIZED_DRAFT_REVIEW_ROLES.has(user.role));
+    const hasCustomPermission = Array.isArray(user.customPermissions)
+        && user.customPermissions.some((perm) => AUTHORIZED_DRAFT_REVIEW_PERMISSIONS.has(perm));
+
+    if (!hasRolePrivilege && !hasCustomPermission) {
+        return false;
     }
 
-    if (Array.isArray(user.customPermissions)) {
-        return user.customPermissions.some((perm) => AUTHORIZED_DRAFT_REVIEW_PERMISSIONS.has(perm));
-    }
-
-    return false;
+    return canUserAccessCity(user, property.cityId || 'heliopolis');
 };
 
 export const canUserViewPropertyDetails = (

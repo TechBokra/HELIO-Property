@@ -75,15 +75,17 @@ const PropertiesPage: React.FC = () => {
     ]);
 
     // Fetch properties
+    const safePage = Number.isFinite(page) && page > 0 ? page : 1;
     const { 
         data: propertiesData, 
         isLoading: propsLoading,
         isError: isPropsError,
+        error: propsError,
         refetch: refetchProps
     } = useQuery({
-        queryKey: ['properties', activeCityId, page, queryFilters],
+        queryKey: ['properties', activeCityId, safePage, queryFilters],
         queryFn: () => getPaginatedProperties({ 
-            page: page, 
+            page: safePage, 
             limit: ITEMS_PER_PAGE, 
             filters: { ...queryFilters, view: (view as 'grid' | 'list') },
             disablePagination: false,
@@ -96,6 +98,28 @@ const PropertiesPage: React.FC = () => {
     const properties = propertiesData?.properties || [];
     const totalProperties = propertiesData?.total || 0;
     const totalPages = Math.ceil(totalProperties / ITEMS_PER_PAGE);
+
+    const errorMessageDetail = useMemo(() => {
+        if (!isPropsError || !propsError) return null;
+        const raw = (propsError as any)?.message ? String((propsError as any).message) : '';
+        const isNetwork = /failed to fetch|networkerror|fetch failed|load failed|timeout|err_network/i.test(raw);
+        if (language === 'ar') {
+            if (isNetwork) {
+                return raw
+                    ? `تعذر الاتصال بقاعدة البيانات (${raw}). يرجى التحقق من اتصال الإنترنت ثم إعادة المحاولة.`
+                    : 'تعذر الاتصال بقاعدة البيانات. يرجى التحقق من اتصال الإنترنت ثم إعادة المحاولة.';
+            }
+            return raw
+                ? `فشل استعلام قراءة العقارات: ${raw}`
+                : 'حدث خطأ أثناء تنفيذ استعلام قراءة العقارات. يرجى إعادة المحاولة.';
+        }
+        if (isNetwork) {
+            return raw
+                ? `Database connection error (${raw}). Please check your internet connection and try again.`
+                : 'Database connection error. Please check your connection and try again.';
+        }
+        return raw ? `Property query error: ${raw}` : 'Failed to execute properties read query. Please try again.';
+    }, [isPropsError, propsError, language]);
 
     // This logic was incorrect in the original file, it should depend on filterControls.view
     const gridClasses = filterControls.view === 'list' 
@@ -124,7 +148,11 @@ const PropertiesPage: React.FC = () => {
             <div className="bg-gray-50 dark:bg-gray-800 border-y border-gray-200 dark:border-gray-700 py-4 sticky top-16 lg:top-20 z-30 shadow-sm">
                 <div className="container mx-auto px-6 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <p className="text-sm text-gray-600 dark:text-gray-300 font-medium">
-                        {t.propertiesPage.resultsFound.replace('{count}', String(totalProperties))}
+                        {propsLoading
+                            ? (language === 'ar' ? 'جاري تحميل العقارات...' : 'Loading properties...')
+                            : isPropsError
+                                ? (language === 'ar' ? 'تعذر تحميل العقارات' : 'Unable to load properties')
+                                : t.propertiesPage.resultsFound.replace('{count}', String(totalProperties))}
                     </p>
 
                     <div className="flex items-center gap-2 bg-white dark:bg-gray-700 p-1 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600">
@@ -157,7 +185,7 @@ const PropertiesPage: React.FC = () => {
                 ) : isPropsError ? (
                     <ErrorState
                         title={language === 'ar' ? 'حدث خطأ أثناء تحميل العقارات' : 'Failed to load properties'}
-                        message={language === 'ar' ? 'يرجى التحقق من اتصالك بقاعدة البيانات ثم إعادة المحاولة.' : 'Please check your connection and try again.'}
+                        message={errorMessageDetail || (language === 'ar' ? 'يرجى التحقق من اتصالك بقاعدة البيانات ثم إعادة المحاولة.' : 'Please check your connection and try again.')}
                         retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
                         onRetry={() => refetchProps()}
                         className="max-w-lg mx-auto py-12"
@@ -186,9 +214,11 @@ const PropertiesPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
-                        <div className="mt-12">
-                            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-                        </div>
+                        {totalPages > 1 && (
+                            <div className="mt-12">
+                                <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
+                            </div>
+                        )}
                     </>
                 )}
             </div>

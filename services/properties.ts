@@ -87,6 +87,23 @@ const derivePublicationStatusForListing = (listingStatus: string | undefined): P
     return undefined;
 };
 
+const createDbReadError = (error: any, fallbackMessage: string): Error => {
+    const rawMessage = String(error?.message || fallbackMessage);
+    const code = error?.code ? String(error.code) : undefined;
+    const formattedMessage = code && !rawMessage.includes(code) ? `${rawMessage} [${code}]` : rawMessage;
+    const err = new Error(formattedMessage) as Error & {
+        code?: string;
+        details?: string;
+        hint?: string;
+        status?: number;
+    };
+    if (code) err.code = code;
+    if (error?.details) err.details = String(error.details);
+    if (error?.hint) err.hint = String(error.hint);
+    if (typeof error?.status === 'number') err.status = error.status;
+    return err;
+};
+
 export const generatePropertyReference = (id: string): string => {
     if (!id) return 'HEL-0001';
     const clean = id.replace(/[^a-zA-Z0-9]/g, '');
@@ -493,7 +510,8 @@ export const getAllProperties = async (cityIdOrOptions?: string | PropertyQueryO
             .order('created_at', { ascending: false });
 
         if (error) {
-            throw new Error(error.message || 'Failed to fetch properties from database.');
+            console.error('Supabase error in getAllProperties:', error);
+            throw createDbReadError(error, 'Failed to fetch properties from database.');
         }
 
         const rawProperties = (data || []).map(mapPropertyFromDb);
@@ -552,7 +570,8 @@ export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOpti
             .order('created_at', { ascending: false });
 
         if (error) {
-            throw new Error(error.message || 'Failed to fetch public properties from database.');
+            console.error('Supabase error in getProperties:', error);
+            throw createDbReadError(error, 'Failed to fetch public properties from database.');
         }
 
         const rawProperties: Property[] = (data || [])
@@ -609,7 +628,8 @@ export const getPropertiesByPartnerId = async (
     const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
-        throw new Error(error.message || 'Failed to get partner properties from database.');
+        console.error('Supabase error in getPropertiesByPartnerId:', error);
+        throw createDbReadError(error, 'Failed to get partner properties from database.');
     }
 
     const mapped: Property[] = (data || []).map(mapPropertyFromDb);
@@ -649,7 +669,8 @@ export const getPropertiesByProjectId = async (
     const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
-        throw new Error(error.message || 'Failed to get project properties from database.');
+        console.error('Supabase error in getPropertiesByProjectId:', error);
+        throw createDbReadError(error, 'Failed to get project properties from database.');
     }
 
     const mapped: Property[] = (data || []).map(mapPropertyFromDb);
@@ -676,7 +697,8 @@ export const getPropertyById = async (
     const { data, error } = await dbClient.from('properties').select('*').eq('id', id).maybeSingle();
 
     if (error) {
-        throw new Error(error.message || 'Failed to fetch property from database.');
+        console.error('Supabase error in getPropertyById:', error);
+        throw createDbReadError(error, 'Failed to fetch property from database.');
     }
 
     if (!data) {
@@ -721,7 +743,8 @@ export const getPaginatedProperties = async (options: {
         return { properties: filtered, total };
     }
 
-    const start = (options.page - 1) * options.limit;
+    const safePage = Number.isFinite(options.page) && options.page > 0 ? options.page : 1;
+    const start = (safePage - 1) * options.limit;
     const end = start + options.limit;
     return { properties: filtered.slice(start, end), total };
 };
@@ -753,7 +776,8 @@ export const getPropertyBySourceRequestId = async (
     }
 
     if (error && !isMissingColumnError(error, 'source_request_id')) {
-        throw new Error(error.message || 'Failed to look up property by source request ID.');
+        console.error('Supabase error in getPropertyBySourceRequestId:', error);
+        throw createDbReadError(error, 'Failed to look up property by source request ID.');
     }
 
     // Fallback when `source_request_id` column is absent or legacy row stored link inside `_meta.sourceRequestId`
@@ -763,7 +787,8 @@ export const getPropertyBySourceRequestId = async (
         .order('created_at', { ascending: false });
 
     if (listError) {
-        throw new Error(listError.message || 'Failed to scan properties for source request link.');
+        console.error('Supabase error scanning properties for source request link:', listError);
+        throw createDbReadError(listError, 'Failed to scan properties for source request link.');
     }
 
     const matched = (rows || []).map(mapPropertyFromDb).find((p: Property) => p.sourceRequestId === sourceRequestId);

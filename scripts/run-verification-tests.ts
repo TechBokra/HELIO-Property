@@ -3225,6 +3225,111 @@ async function runTests() {
         assert.strictEqual((await getPublicPropertiesByPartnerId(owningPartner.id, { client: db })).length, 1);
     });
 
+    await test('P10.3: Partial filter safety, structured DB error propagation, and role/city-scoped draft access', async () => {
+        const { getPaginatedProperties, invalidatePropertiesCache } = await import('../services/properties');
+        const { canReviewPropertyDraft, canUserViewPropertyDetails } = await import('../utils/propertyUtils');
+
+        invalidatePropertiesCache();
+
+        const db = createIsolatedCatalogDb();
+        await db.from('properties').insert({
+            id: 'prop-filter-check-1',
+            partner_id: 'partner-dev-100',
+            city_id: 'heliopolis',
+            title_ar: 'شقة هليوبوليس',
+            title_en: 'Heliopolis Apartment',
+            address_ar: 'شارع الثورة',
+            address_en: 'Thawra St',
+            status: 'For Sale',
+            type: 'Apartment',
+            price: 2500000,
+            area: 150,
+            beds: 3,
+            baths: 2,
+            listing_status: 'active',
+            created_at: new Date().toISOString(),
+        });
+
+        // Partial filters (omitting query/status/amenities) must not throw TypeError
+        const paginated = await getPaginatedProperties({
+            page: NaN,
+            limit: 12,
+            filters: { view: 'grid' } as any,
+            cityId: 'heliopolis',
+            client: db,
+        });
+        assert.strictEqual(paginated.total, 1);
+        assert.strictEqual(paginated.properties.length, 1);
+
+        // Structured DB error retains code & message without masking
+        const codedErrorClient = {
+            from: () => ({
+                select: () => ({
+                    in: () => ({
+                        order: async () => ({
+                            data: null,
+                            error: { code: '42501', message: 'permission denied for table properties' },
+                        }),
+                    }),
+                }),
+            }),
+        };
+        let capturedErr: any;
+        try {
+            await getPaginatedProperties({
+                page: 1,
+                limit: 12,
+                filters: { view: 'grid' } as any,
+                cityId: 'heliopolis',
+                client: codedErrorClient,
+            });
+        } catch (err) {
+            capturedErr = err;
+        }
+        assert.ok(capturedErr, 'DB read failure must throw instead of returning empty or demo data');
+        assert.strictEqual(capturedErr.code, '42501');
+        assert.ok(String(capturedErr.message).includes('42501'));
+
+        // City-scoped & role-scoped draft review enforcement
+        const helioDraft: any = {
+            id: 'draft-helio-1',
+            cityId: 'heliopolis',
+            partnerId: 'partner-owner-1',
+            listingStatus: 'draft',
+            publicationStatus: 'draft',
+        };
+        const listingsManagerShorouk: Partner = {
+            id: 'admin-shorouk-1',
+            email: 'shorouk@example.com',
+            name: 'Shorouk Listings',
+            imageUrl: '',
+            description: '',
+            type: 'admin',
+            status: 'active',
+            subscriptionPlan: 'enterprise',
+            displayType: 'standard',
+            role: Role.LISTINGS_MANAGER,
+            allowedCities: ['shorouk'],
+        };
+        const contentManager: Partner = {
+            ...listingsManagerShorouk,
+            id: 'admin-content-1',
+            role: Role.CONTENT_MANAGER,
+            allowedCities: ['*'],
+        };
+        const superAdmin: Partner = {
+            ...listingsManagerShorouk,
+            id: 'admin-super-1',
+            role: Role.SUPER_ADMIN,
+            allowedCities: ['*'],
+        };
+
+        assert.strictEqual(canReviewPropertyDraft(helioDraft, listingsManagerShorouk), false, 'Out-of-city listings manager must not review draft');
+        assert.strictEqual(canReviewPropertyDraft(helioDraft, contentManager), false, 'Non-property admin role must not review draft');
+        assert.strictEqual(canReviewPropertyDraft(helioDraft, superAdmin), true, 'Super admin reviews draft across cities');
+        assert.strictEqual(canUserViewPropertyDetails(helioDraft, null), false, 'Anonymous visitor blocked from draft');
+    });
+
     // ========================================================================
     // SUITE 11: Phase 3 — Shared Listing Validation, Idempotent Bidirectional Approval & Operations Center Tracking
     // ========================================================================
