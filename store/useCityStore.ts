@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CityPortalConfig, Partner, User } from '../types';
+import type { AdminPartner, CityPortalConfig, Partner } from '../types';
 import { INITIAL_CITIES, resolveCityFromEnvironment } from '../data/cities';
 import {
     createCity as createCityInDb,
@@ -25,7 +25,7 @@ interface CityStoreState {
     switchToHub: () => void;
     switchToCity: (citySlug: string) => void;
     setAdminCityScope: (scope: 'all' | string) => void;
-    syncAdminScopeForUser: (user?: Partial<Partner> | Partial<User> | null) => void;
+    syncAdminScopeForUser: (user?: Partial<Partner> | Partial<AdminPartner> | null) => void;
     addCity: (city: CreateCityInput | CityPortalConfig, options?: { client?: any }) => Promise<CityPortalConfig>;
     updateCity: (cityId: string, updates: Partial<CityPortalConfig>, options?: { client?: any }) => Promise<CityPortalConfig>;
     toggleCityActive: (cityId: string, options?: { client?: any }) => Promise<CityPortalConfig>;

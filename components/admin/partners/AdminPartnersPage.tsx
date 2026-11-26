@@ -20,6 +20,8 @@ import TableSkeleton from '../../shared/TableSkeleton';
 import ErrorState from '../../shared/ErrorState';
 import { useToast } from '../../shared/ToastContext';
 import { useCityStore } from '../../../store/useCityStore';
+import { useAuth } from '../../auth/AuthContext';
+import { getUserAllowedCityIds, partnerMatchesCityScope } from '../../../utils/cityScope';
 
 const AdminPartnersPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -28,6 +30,7 @@ const AdminPartnersPage: React.FC = () => {
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
     const { showToast } = useToast();
+    const { currentUser } = useAuth();
 
     const { data: partners, isLoading, isError, refetch } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
     useQuery({ queryKey: ['plans'], queryFn: getPlans }); 
@@ -40,7 +43,7 @@ const AdminPartnersPage: React.FC = () => {
     const cities = useCityStore((s) => s.cities);
 
     const renderAllowedCitiesBadges = (p: AdminPartner) => {
-        const list = p.allowedCities && p.allowedCities.length > 0 ? p.allowedCities : ['heliopolis'];
+        const list = getUserAllowedCityIds(p);
         if (list.includes('*')) {
             return (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
@@ -62,16 +65,12 @@ const AdminPartnersPage: React.FC = () => {
         );
     };
 
-    // Filter to show only external business partners and respect adminCityScope
+    // Filter to show only external business partners and respect adminCityScope + role allowedCities
     const businessPartners = useMemo(() => {
         if (!partners) return [];
         const base = partners.filter(p => ['developer', 'finishing', 'agency'].includes(p.type));
-        if (adminCityScope === 'all') return base;
-        return base.filter(p => {
-            const list = p.allowedCities && p.allowedCities.length > 0 ? p.allowedCities : ['heliopolis'];
-            return list.includes('*') || list.includes(adminCityScope);
-        });
-    }, [partners, adminCityScope]);
+        return base.filter(p => partnerMatchesCityScope(p, adminCityScope, currentUser));
+    }, [partners, adminCityScope, currentUser]);
 
     const statusMutation = useMutation({
         mutationFn: ({ id, status }: { id: string, status: PartnerStatus }) => updatePartnerStatus(id, status),

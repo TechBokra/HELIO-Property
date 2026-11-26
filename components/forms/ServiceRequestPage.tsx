@@ -16,6 +16,7 @@ import { getAttribution } from '../../utils/attribution';
 import { PLATFORM_FINISHING_MANAGER_ID } from '../../services/finishing';
 import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../../utils/propertyFormShared';
 import { DECORATION_MANAGER_ID } from '../../services/decorations';
+import { useCityStore } from '../../store/useCityStore';
 
 const ServiceRequestPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -29,8 +30,10 @@ const ServiceRequestPage: React.FC = () => {
     // Get footer/contact info from global site content
     const { data: siteContent } = useSiteContent();
     const footerContent = siteContent?.footer;
+    const activeCityId = useCityStore((state) => state.activeCityId);
     
     const { 
+        cityId: rawCityId,
         serviceTitle, 
         partnerId: rawPartnerId,
         partnerName: rawPartnerName,
@@ -54,6 +57,8 @@ const ServiceRequestPage: React.FC = () => {
         categoryId,
         categoryName 
     } = location.state || {};
+
+    const resolvedCityId = rawCityId || workItem?.cityId || activeCityId || 'heliopolis';
 
     const effectiveServiceType = serviceType || (categoryName?.toLowerCase().includes('finish') ? 'finishing' : propertyId ? 'property' : 'finishing');
     const propertyReference = propertyId
@@ -197,6 +202,7 @@ const ServiceRequestPage: React.FC = () => {
                     data: {
                         ...submissionData,
                         ...sourceReferencePayload,
+                        cityId: resolvedCityId,
                         serviceType: effectiveServiceType,
                         serviceTitle: bookingTitle,
                         partnerId: partnerId,
@@ -223,6 +229,7 @@ const ServiceRequestPage: React.FC = () => {
                     data: {
                         ...submissionData,
                         ...sourceReferencePayload,
+                        cityId: resolvedCityId,
                         serviceType: serviceType || 'decorations',
                         serviceTitle: `Order: ${workItem.title[language]}`,
                         partnerId: partnerId,
@@ -254,6 +261,7 @@ const ServiceRequestPage: React.FC = () => {
                 },
                 contextData: {
                     ...sourceReferencePayload,
+                    cityId: resolvedCityId,
                     partnerId,
                     serviceTitle,
                     managerId: managerId || (effectiveServiceType === 'finishing' ? PLATFORM_FINISHING_MANAGER_ID : (effectiveServiceType === 'decorations' ? DECORATION_MANAGER_ID : undefined)),

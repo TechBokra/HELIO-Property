@@ -20,6 +20,13 @@ import {
     getAllRequests 
 } from '../../services/requests';
 import { useCityStore } from '../../store/useCityStore';
+import {
+    filterRecordsByCityScope,
+    getAccessibleCitiesForUser,
+    getRecordCityId,
+    isGlobalCityAdmin,
+    resolveAdminDefaultScope,
+} from '../../utils/cityScope';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { 
     BuildingIcon, 
@@ -82,6 +89,11 @@ const AdminHomePage: React.FC = () => {
     const setAdminCityScope = useCityStore((s) => s.setAdminCityScope);
     const switchToCity = useCityStore((s) => s.switchToCity);
 
+    const isGlobalAdmin = isGlobalCityAdmin(currentUser);
+    const canManageCities = hasPermission(Permission.MANAGE_CITIES);
+    const accessibleCities = useMemo(() => getAccessibleCitiesForUser(cities, currentUser), [cities, currentUser]);
+    const effectiveAdminCityScope = resolveAdminDefaultScope(currentUser, adminCityScope);
+
     // 2. Selective React Query execution
     const { 
         data: rawProperties, 
@@ -140,21 +152,18 @@ const AdminHomePage: React.FC = () => {
 
     const properties = useMemo(() => {
         if (!rawProperties) return [];
-        if (adminCityScope === 'all') return rawProperties;
-        return rawProperties.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
-    }, [rawProperties, adminCityScope]);
+        return filterRecordsByCityScope(rawProperties, adminCityScope, currentUser);
+    }, [rawProperties, adminCityScope, currentUser]);
 
     const projects = useMemo(() => {
         if (!rawProjects) return [];
-        if (adminCityScope === 'all') return rawProjects;
-        return rawProjects.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
-    }, [rawProjects, adminCityScope]);
+        return filterRecordsByCityScope(rawProjects, adminCityScope, currentUser);
+    }, [rawProjects, adminCityScope, currentUser]);
 
     const requests = useMemo(() => {
         if (!rawRequests) return [];
-        if (adminCityScope === 'all') return rawRequests;
-        return rawRequests.filter(r => (r.cityId || r.payload?.cityId || 'heliopolis') === adminCityScope);
-    }, [rawRequests, adminCityScope]);
+        return filterRecordsByCityScope(rawRequests, adminCityScope, currentUser);
+    }, [rawRequests, adminCityScope, currentUser]);
 
     const isGlobalLoading = loadingProperties || loadingPartners || loadingProjects || loadingLeads || loadingRequests;
     const hasAnyError = Boolean(
@@ -699,21 +708,23 @@ const AdminHomePage: React.FC = () => {
                             {isAr ? 'اضغط على أي مدينة لتخصيص لوحة التحكم والعمليات لبياناتها فقط' : 'Click any city portal to scope the entire Admin Dashboard to that city'}
                         </p>
                     </div>
-                    <Link
-                        to="/admin/cities"
-                        className="text-xs font-bold text-amber-600 hover:text-amber-700 inline-flex items-center gap-1"
-                    >
-                        <span>{isAr ? 'إدارة المدن والنطاقات' : 'Manage City Portals'}</span>
-                        <ChevronRightIcon className={`w-3.5 h-3.5 ${isAr ? 'rotate-180' : ''}`} />
-                    </Link>
+                    {canManageCities && (
+                        <Link
+                            to="/admin/cities"
+                            className="text-xs font-bold text-amber-600 hover:text-amber-700 inline-flex items-center gap-1"
+                        >
+                            <span>{isAr ? 'إدارة المدن والنطاقات' : 'Manage City Portals'}</span>
+                            <ChevronRightIcon className={`w-3.5 h-3.5 ${isAr ? 'rotate-180' : ''}`} />
+                        </Link>
+                    )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {cities.map((city) => {
-                        const cityPropsCount = (rawProperties || []).filter(p => (p.cityId || 'heliopolis') === city.id).length;
-                        const cityProjectsCount = (rawProjects || []).filter(p => (p.cityId || 'heliopolis') === city.id).length;
-                        const cityReqsCount = (rawRequests || []).filter(r => (r.cityId || r.payload?.cityId || 'heliopolis') === city.id).length;
-                        const isScoped = adminCityScope === city.id;
+                    {accessibleCities.map((city) => {
+                        const cityPropsCount = (rawProperties || []).filter(p => getRecordCityId(p) === city.id).length;
+                        const cityProjectsCount = (rawProjects || []).filter(p => getRecordCityId(p) === city.id).length;
+                        const cityReqsCount = (rawRequests || []).filter(r => getRecordCityId(r) === city.id).length;
+                        const isScoped = effectiveAdminCityScope === city.id;
 
                         return (
                             <div
@@ -765,19 +776,25 @@ const AdminHomePage: React.FC = () => {
                                 </div>
 
                                 <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setAdminCityScope(isScoped ? 'all' : city.id)}
-                                        className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors ${
-                                            isScoped
-                                                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                                        }`}
-                                    >
-                                        {isScoped
-                                            ? (isAr ? 'إلغاء الحصر (عرض الكل)' : 'Reset to All Cities')
-                                            : (isAr ? `حصر لوحة التحكم بـ ${city.name.ar}` : `Scope Admin to ${city.name.en}`)}
-                                    </button>
+                                    {(!isScoped || isGlobalAdmin) ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => setAdminCityScope(isScoped ? 'all' : city.id)}
+                                            className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors ${
+                                                isScoped
+                                                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                    : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                            }`}
+                                        >
+                                            {isScoped
+                                                ? (isAr ? 'إلغاء الحصر (عرض الكل)' : 'Reset to All Cities')
+                                                : (isAr ? `حصر لوحة التحكم بـ ${city.name.ar}` : `Scope Admin to ${city.name.en}`)}
+                                        </button>
+                                    ) : (
+                                        <span className="text-[11px] font-semibold text-amber-700">
+                                            {isAr ? 'نطاق المدينة المخصص' : 'Assigned City Scope'}
+                                        </span>
+                                    )}
                                     <Link
                                         to={`/?city=${city.slug}`}
                                         onClick={() => switchToCity(city.slug)}

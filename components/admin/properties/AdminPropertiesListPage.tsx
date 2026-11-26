@@ -20,6 +20,8 @@ import { getAllPropertyTypes, getAllFinishingStatuses } from '../../../services/
 import { StatusBadge } from '../../ui/StatusBadge';
 import { useToast } from '../../shared/ToastContext';
 import { useCityStore } from '../../../store/useCityStore';
+import { useAuth } from '../../auth/AuthContext';
+import { filterRecordsByCityScope } from '../../../utils/cityScope';
 import { invalidateAllPropertyQueries } from '../../../utils/queryInvalidation';
 
 interface AdminPropertiesListPageProps {
@@ -59,6 +61,7 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
     const { data: propertyTypes } = useQuery({ queryKey: ['propertyTypes'], queryFn: getAllPropertyTypes });
     const { data: finishingStatuses } = useQuery({ queryKey: ['finishingStatuses'], queryFn: getAllFinishingStatuses });
     
+    const { currentUser } = useAuth();
     const adminCityScope = useCityStore((s) => s.adminCityScope);
     const cities = useCityStore((s) => s.cities);
 
@@ -69,9 +72,8 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
 
     const properties = useMemo(() => {
         const base = propProperties || fetchedProperties || [];
-        if (adminCityScope === 'all') return base;
-        return base.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
-    }, [propProperties, fetchedProperties, adminCityScope]);
+        return filterRecordsByCityScope(base, adminCityScope, currentUser);
+    }, [propProperties, fetchedProperties, adminCityScope, currentUser]);
 
     const isLoading = propIsLoading || fetchedIsLoading;
 

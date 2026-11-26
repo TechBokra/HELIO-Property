@@ -68,8 +68,8 @@ export const mapCityFromDb = (row: any): CityPortalConfig => {
         isActive: row.is_active !== false,
         isFeatured: row.is_featured !== false,
         coordinates: {
-            lat: typeof row.lat === 'number' ? row.lat : seed?.coordinates.lat ?? 30.1286,
-            lng: typeof row.lng === 'number' ? row.lng : seed?.coordinates.lng ?? 31.6744,
+            lat: typeof row.lat === 'number' ? row.lat : seed?.coordinates?.lat ?? 30.1286,
+            lng: typeof row.lng === 'number' ? row.lng : seed?.coordinates?.lng ?? 31.6744,
         },
         contentOverrides: sanitizeOverrides(row.content_overrides),
         stats: seed?.stats || { propertiesCount: 0, projectsCount: 0, partnersCount: 0 },

@@ -15,6 +15,7 @@ import { Button } from '../ui/Button';
 import ErrorState from '../shared/ErrorState';
 import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
 import { isPropertyPubliclyVisible } from '../../utils/propertyUtils';
+import { useCityStore } from '../../store/useCityStore';
 
 
 const PartnerProfileSkeleton: React.FC = () => (
@@ -46,6 +47,7 @@ const PartnerProfilePage: React.FC = () => {
     const { language, t } = useLanguage();
     const navigate = useNavigate();
     const { showToast } = useToast();
+    const activeCityId = useCityStore((state) => state.activeCityId);
 
     // Fetch partner data from DB
     const {
@@ -128,7 +130,8 @@ const PartnerProfilePage: React.FC = () => {
             state: {
                 serviceTitle,
                 partnerId: partnerInfo.id,
-                serviceType: partnerInfo.type === 'finishing' ? 'finishing' : 'property' // Default guess
+                serviceType: partnerInfo.type === 'finishing' ? 'finishing' : 'property', // Default guess
+                cityId: activeCityId || 'heliopolis',
             }
         });
     };

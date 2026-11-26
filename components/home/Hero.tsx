@@ -12,6 +12,7 @@ const Hero: React.FC = () => {
     const { data: siteContent } = useSiteContent();
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const activeCity = useCityStore((s) => s.getActiveCity());
+    const portalMode = useCityStore((s) => s.portalMode);
     const isCustomCity = activeCity && activeCity.id !== 'heliopolis';
     
     const baseHeroImages = (siteContent?.hero?.images && siteContent.hero.images.length > 0)
@@ -33,15 +34,22 @@ const Hero: React.FC = () => {
     const activeImage = heroImages[currentImageIndex] || heroImages[0];
     const currentImageAlt = activeImage?.alt?.[language] || activeImage?.alt?.en || `${t.nav.properties} ${currentImageIndex + 1}`;
 
-    const heroTitle = isCustomCity
-        ? (language === 'ar'
-            ? `بوابتك المتخصصة لعقارات وخدمات ${activeCity.name.ar}`
-            : `Your Dedicated Real Estate & Service Portal for ${activeCity.name.en}`)
-        : (siteContent?.hero?.[language]?.title || fallbackData.hero[language].title);
+    const overrideHeroTitle = portalMode === 'city' ? activeCity?.contentOverrides?.heroTitle?.[language]?.trim() : '';
+    const overrideHeroSubtitle = portalMode === 'city' ? activeCity?.contentOverrides?.heroSubtitle?.[language]?.trim() : '';
 
-    const heroSubtitle = isCustomCity
-        ? activeCity.tagline[language]
-        : (siteContent?.hero?.[language]?.subtitle || fallbackData.hero[language].subtitle);
+    const heroTitle = overrideHeroTitle
+        ? overrideHeroTitle
+        : isCustomCity
+            ? (language === 'ar'
+                ? `بوابتك المتخصصة لعقارات وخدمات ${activeCity.name.ar}`
+                : `Your Dedicated Real Estate & Service Portal for ${activeCity.name.en}`)
+            : (siteContent?.hero?.[language]?.title || fallbackData.hero[language].title);
+
+    const heroSubtitle = overrideHeroSubtitle
+        ? overrideHeroSubtitle
+        : isCustomCity
+            ? activeCity.tagline[language]
+            : (siteContent?.hero?.[language]?.subtitle || fallbackData.hero[language].subtitle);
 
     const primaryBtn = siteContent?.hero?.primaryButton || fallbackData.hero.primaryButton;
     const secondaryBtn = siteContent?.hero?.secondaryButton || fallbackData.hero.secondaryButton;

@@ -114,7 +114,7 @@ export const adminNavLinks: NavLinkItem[] = [
         href: '/admin/cities',
         icon: CubeIcon,
         group: 'control_center',
-        permission: Permission.VIEW_ADMIN_DASHBOARD,
+        permission: Permission.MANAGE_CITIES,
         matchPrefixes: ['/admin/cities'],
     },
 

@@ -12,12 +12,15 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 import { Doughnut, Bar } from 'react-chartjs-2';
 import type { Property } from '../../../types';
 import { useCityStore } from '../../../store/useCityStore';
+import { useAuth } from '../../auth/AuthContext';
+import { filterRecordsByCityScope } from '../../../utils/cityScope';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
 const AdminPropertiesDashboard: React.FC = () => {
     const { language, t } = useLanguage();
     const t_dash = t.adminDashboard.propertiesDashboard;
+    const { currentUser } = useAuth();
     const adminCityScope = useCityStore((s) => s.adminCityScope);
     
     const { data: rawProperties, isLoading: loadingProps } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties });
@@ -25,9 +28,8 @@ const AdminPropertiesDashboard: React.FC = () => {
 
     const properties = useMemo(() => {
         if (!rawProperties) return undefined;
-        if (adminCityScope === 'all') return rawProperties;
-        return rawProperties.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
-    }, [rawProperties, adminCityScope]);
+        return filterRecordsByCityScope(rawProperties, adminCityScope, currentUser);
+    }, [rawProperties, adminCityScope, currentUser]);
 
     const isLoading = loadingProps || loadingPartners;
 

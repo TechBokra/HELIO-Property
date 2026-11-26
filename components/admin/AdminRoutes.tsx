@@ -94,7 +94,7 @@ const AdminRoutes: React.FC = () => {
                 <Route
                     path="cities"
                     element={
-                        <ProtectedRoute permission={Permission.VIEW_ADMIN_DASHBOARD}>
+                        <ProtectedRoute permission={Permission.MANAGE_CITIES}>
                             <AdminCitiesPage />
                         </ProtectedRoute>
                     }

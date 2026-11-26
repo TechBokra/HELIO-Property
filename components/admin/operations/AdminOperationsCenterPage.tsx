@@ -17,6 +17,11 @@ import { OperationalMetricsBar } from './OperationalMetricsBar';
 import { OperationalFilterBar } from './OperationalFilterBar';
 import { OperationalRequestDrawer } from './OperationalRequestDrawer';
 import { useCityStore } from '../../../store/useCityStore';
+import {
+    canUserAccessCity,
+    getUserAllowedCityIds,
+    resolveAdminDefaultScope,
+} from '../../../utils/cityScope';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/Table';
 import Pagination from '../../shared/Pagination';
 import { 
@@ -78,6 +83,8 @@ const AdminOperationsCenterPage: React.FC = () => {
 
     const adminCityScope = useCityStore((s) => s.adminCityScope);
     const cities = useCityStore((s) => s.cities);
+    const effectiveCityScope = resolveAdminDefaultScope(currentUser, adminCityScope);
+    const allowedCities = useMemo(() => getUserAllowedCityIds(currentUser), [currentUser]);
 
     const getCityBadgeName = (cityId?: string) => {
         const target = cities.find(c => c.id === (cityId || 'heliopolis'));
@@ -92,9 +99,10 @@ const AdminOperationsCenterPage: React.FC = () => {
         refetch,
         isFetching
     } = useQuery({
-        queryKey: ['unifiedRequests', adminCityScope, domain, requestType, operationalStatus, priority, dateRange, assignedTo, triageView, searchTerm, currentPage],
+        queryKey: ['unifiedRequests', effectiveCityScope, allowedCities.join(','), domain, requestType, operationalStatus, priority, dateRange, assignedTo, triageView, searchTerm, currentPage],
         queryFn: () => getUnifiedRequests({
-            cityId: adminCityScope,
+            cityId: effectiveCityScope,
+            allowedCities,
             domain,
             type: requestType,
             operationalStatus,
@@ -124,7 +132,7 @@ const AdminOperationsCenterPage: React.FC = () => {
         // Deep-link fallback: fetch request directly even if it's on a different page or view
         let isMounted = true;
         getUnifiedRequestById(initialSelectedId).then(singleReq => {
-            if (isMounted && singleReq) {
+            if (isMounted && singleReq && canUserAccessCity(currentUser, singleReq.cityId || singleReq.rawPayload?.cityId)) {
                 setSelectedRequest(singleReq);
                 setIsDrawerOpen(true);
             }
@@ -133,7 +141,7 @@ const AdminOperationsCenterPage: React.FC = () => {
         return () => {
             isMounted = false;
         };
-    }, [initialSelectedId, response?.requests]);
+    }, [initialSelectedId, response?.requests, currentUser]);
 
     const handleSelectRequest = (req: UnifiedRequest) => {
         setSelectedRequest(req);

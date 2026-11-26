@@ -15,6 +15,7 @@ import { useToast } from '../shared/ToastContext';
 import { Button } from '../ui/Button';
 import { uploadFile } from '../../services/upload';
 import { useCityStore } from '../../store/useCityStore';
+import { getAccessibleCitiesForUser, resolveAdminDefaultScope } from '../../utils/cityScope';
 import { invalidateAllProjectQueries } from '../../utils/queryInvalidation';
 
 const ProjectFormPage: React.FC = () => {
@@ -35,12 +36,28 @@ const ProjectFormPage: React.FC = () => {
     const cities = useCityStore((s) => s.cities);
     const activeCityId = useCityStore((s) => s.activeCityId);
     const adminCityScope = useCityStore((s) => s.adminCityScope);
-    const defaultCityId = adminCityScope !== 'all' ? adminCityScope : (activeCityId || 'heliopolis');
+    const accessibleCities = useMemo(
+        () => getAccessibleCitiesForUser(cities, currentUser),
+        [cities, currentUser]
+    );
+    const effectiveScope = resolveAdminDefaultScope(currentUser, adminCityScope);
+    const defaultCityId =
+        effectiveScope !== 'all'
+            ? effectiveScope
+            : (accessibleCities.find((c) => c.id === activeCityId)?.id || accessibleCities[0]?.id || 'heliopolis');
 
     const { isLimitReached } = useSubscriptionUsage('projects');
-    const { register, handleSubmit, reset } = useForm<Project>({
+    const { register, handleSubmit, watch, reset } = useForm<Project>({
         defaultValues: { cityId: defaultCityId, partnerId: currentUser?.id || '' }
     });
+    const currentCityId = watch('cityId');
+    const selectableCities = useMemo(() => {
+        if (currentCityId && !accessibleCities.some((c) => c.id === currentCityId)) {
+            const matched = cities.find((c) => c.id === currentCityId);
+            if (matched) return [matched, ...accessibleCities];
+        }
+        return accessibleCities;
+    }, [cities, accessibleCities, currentCityId]);
     
     const [image, setImage] = useState<string>('');
     const [imageFile, setImageFile] = useState<File | null>(null);
@@ -166,7 +183,7 @@ const ProjectFormPage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <FormField label={language === 'ar' ? 'المدينة / البوابة الفرعية (Only Property)' : 'City Subdomain Portal (Only Property)'} id="cityId">
                         <select {...register("cityId", { required: true })} className={selectClasses}>
-                            {cities.map(city => (
+                            {selectableCities.map(city => (
                                 <option key={city.id} value={city.id}>
                                     {city.name[language]} ({city.brandTitle[language]} — {city.subdomain})
                                 </option>

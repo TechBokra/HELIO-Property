@@ -20,6 +20,7 @@ import { useSiteContent } from '../../hooks/useSiteContent';
 import FinishingCostEstimator from './FinishingCostEstimator';
 import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../../utils/propertyFormShared';
 import { isExternalUrl, normalizeActionTarget } from '../../utils/siteContentHelpers';
+import { useCityStore } from '../../store/useCityStore';
 
 const ServicePackageCard: React.FC<{
     service: FinishingService;
@@ -258,9 +259,12 @@ const FinishingPage: React.FC = () => {
     const [searchParams] = useSearchParams();
     const { showToast } = useToast();
     const [activeServiceIndex, setActiveServiceIndex] = useState(0);
+    const activeCityId = useCityStore((state) => state.activeCityId);
 
     // Linked Property Context from state or URL query
     const linkedPropertyId = location.state?.propertyId || searchParams.get('propertyId');
+    const linkedPropertyCityId = location.state?.cityId || searchParams.get('cityId') || undefined;
+    const effectiveCityId = linkedPropertyCityId || activeCityId || 'heliopolis';
     const linkedPropertyTitle = location.state?.propertyTitle || searchParams.get('propertyTitle') || undefined;
     const linkedPropertyReference =
         location.state?.propertyReference ||
@@ -349,6 +353,7 @@ const FinishingPage: React.FC = () => {
                 propertyId: linkedPropertyId || undefined,
                 propertyReference: linkedPropertyReference || undefined,
                 propertyTitle: linkedPropertyTitle || undefined,
+                cityId: effectiveCityId,
             },
         });
     };
@@ -369,6 +374,7 @@ const FinishingPage: React.FC = () => {
                 propertyId: linkedPropertyId || undefined,
                 propertyReference: linkedPropertyReference || undefined,
                 propertyTitle: linkedPropertyTitle || undefined,
+                cityId: effectiveCityId,
             },
         });
     };
@@ -589,6 +595,7 @@ const FinishingPage: React.FC = () => {
                     propertyId={linkedPropertyId || undefined}
                     propertyReference={linkedPropertyReference || undefined}
                     propertyTitle={linkedPropertyTitle || undefined}
+                    cityId={effectiveCityId}
                     onRfqLaunched={() => {
                         // Optional callback
                     }}

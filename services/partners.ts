@@ -70,14 +70,14 @@ export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
         ? ADMIN_AVATAR_CDN
         : row.image_url || (resolvedRole === Role.SUPER_ADMIN ? 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=75&w=400&auto=format&fit=crop' : 'https://via.placeholder.com/150');
 
-    const explicitCities = Array.isArray(row.allowed_cities)
+    const explicitCities: string[] = Array.isArray(row.allowed_cities)
         ? row.allowed_cities.map((c: any) => String(c).trim()).filter(Boolean)
         : [];
-    const legacyCities = Array.isArray(contactMethods?._allowedCities)
+    const legacyCities: string[] = Array.isArray(contactMethods?._allowedCities)
         ? contactMethods._allowedCities.map((c: any) => String(c).trim()).filter(Boolean)
         : [];
 
-    const rawAllowedCities =
+    const rawAllowedCities: string[] =
         resolvedRole === Role.SUPER_ADMIN
             ? ['*']
             : explicitCities.length > 0
@@ -85,10 +85,10 @@ export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
                     explicitCities[0] === 'heliopolis' &&
                     legacyCities.length > 0 &&
                     (legacyCities.length > 1 || legacyCities[0] !== 'heliopolis'))
-                    ? Array.from(new Set(legacyCities))
-                    : Array.from(new Set(explicitCities))
+                    ? Array.from(new Set<string>(legacyCities))
+                    : Array.from(new Set<string>(explicitCities))
                 : legacyCities.length > 0
-                    ? Array.from(new Set(legacyCities))
+                    ? Array.from(new Set<string>(legacyCities))
                     : ['heliopolis'];
 
     return {

@@ -7,6 +7,7 @@ import { getAllBanners } from '../../services/banners';
 import { ChevronLeftIcon, ChevronRightIcon } from '../ui/Icons';
 import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from './LanguageContext';
+import { useCityStore } from '../../store/useCityStore';
 
 interface BannerDisplayProps {
     location: 'home' | 'properties' | 'details' | 'finishing' | 'decorations';
@@ -14,6 +15,8 @@ interface BannerDisplayProps {
 
 const BannerDisplay: React.FC<BannerDisplayProps> = ({ location }) => {
     const { language } = useLanguage();
+    const portalMode = useCityStore((s) => s.portalMode);
+    const activeCityId = useCityStore((s) => s.activeCityId);
     const [currentIndex, setCurrentIndex] = useState(0);
     const { data: banners, isLoading: loading } = useQuery({ 
         queryKey: ['banners'], 
@@ -26,6 +29,10 @@ const BannerDisplay: React.FC<BannerDisplayProps> = ({ location }) => {
         return (banners || []).filter(banner => {
             if (banner.status !== 'active') return false;
             if (!banner.locations.includes(location)) return false;
+
+            if (banner.cityId && banner.cityId !== 'all') {
+                if (portalMode !== 'city' || banner.cityId !== activeCityId) return false;
+            }
             
             const startDate = banner.startDate ? new Date(banner.startDate) : null;
             const endDate = banner.endDate ? new Date(banner.endDate) : null;
@@ -38,7 +45,7 @@ const BannerDisplay: React.FC<BannerDisplayProps> = ({ location }) => {
 
             return true;
         });
-    }, [banners, location]);
+    }, [banners, location, portalMode, activeCityId]);
 
     const goToNext = useCallback(() => {
         setCurrentIndex(prevIndex => (prevIndex === activeBanners.length - 1 ? 0 : prevIndex + 1));

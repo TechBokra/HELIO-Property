@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { CloseIcon } from '../ui/Icons';
 import DynamicForm from './DynamicForm';
 import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
+import { useCityStore } from '../../store/useCityStore';
 
 interface ServiceRequestModalProps {
     isOpen: boolean;
@@ -12,6 +13,7 @@ interface ServiceRequestModalProps {
     propertyId?: string;
     propertyReference?: string;
     propertyTitle?: string;
+    cityId?: string;
 }
 
 const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({
@@ -22,7 +24,9 @@ const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({
     propertyId,
     propertyReference,
     propertyTitle,
+    cityId,
 }) => {
+    const activeCityId = useCityStore((state) => state.activeCityId);
     useEffect(() => {
         if (!isOpen) return;
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -60,6 +64,7 @@ const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({
                             propertyId,
                             propertyReference: resolvedPropertyReference,
                             propertyTitle,
+                            cityId: cityId || activeCityId || 'heliopolis',
                             serviceType: 'finishing'
                         }}
                     />

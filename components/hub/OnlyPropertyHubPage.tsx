@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SEO from '../shared/SEO';
 import { useLanguage } from '../shared/LanguageContext';
@@ -12,8 +12,15 @@ const OnlyPropertyHubPage: React.FC = () => {
     const switchToCity = useCityStore((s) => s.switchToCity);
 
     const activeCities = cities.filter((c) => c.isActive);
-    const [selectedLauncherCity, setSelectedLauncherCity] = useState<string>(activeCities[0]?.id || 'heliopolis');
+    const [selectedLauncherCity, setSelectedLauncherCity] = useState<string>(activeCities[0]?.slug || 'heliopolis');
     const [selectedLauncherRoute, setSelectedLauncherRoute] = useState<string>('/');
+
+    useEffect(() => {
+        if (activeCities.length === 0) return;
+        if (!activeCities.some((c) => c.slug === selectedLauncherCity)) {
+            setSelectedLauncherCity(activeCities[0].slug);
+        }
+    }, [activeCities, selectedLauncherCity]);
 
     const totalStats = activeCities.reduce(
         (acc, city) => ({

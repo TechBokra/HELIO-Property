@@ -6,6 +6,7 @@ import { Role } from '../../../types';
 import { useAuth } from '../../auth/AuthContext';
 import type { Partner, Project } from '../../../types';
 import { useCityStore } from '../../../store/useCityStore';
+import { getAccessibleCitiesForUser } from '../../../utils/cityScope';
 
 interface PropertyBasicInfoProps {
     projects: Project[];
@@ -15,11 +16,20 @@ interface PropertyBasicInfoProps {
 }
 
 const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partnerProjects, isAdmin, partners = [] }) => {
-    const { register, formState: { errors } } = useFormContext<any>();
+    const { register, watch, formState: { errors } } = useFormContext<any>();
     const { language, t } = useLanguage();
     const td = t.dashboard.propertyForm;
     const { currentUser } = useAuth();
     const cities = useCityStore((s) => s.cities);
+    const currentCityId = watch('cityId');
+    const selectableCities = React.useMemo(() => {
+        const accessible = getAccessibleCitiesForUser(cities, currentUser);
+        if (currentCityId && !accessible.some((c) => c.id === currentCityId)) {
+            const matched = cities.find((c) => c.id === currentCityId);
+            if (matched) return [matched, ...accessible];
+        }
+        return accessible;
+    }, [cities, currentUser, currentCityId]);
     const reqMsg = language === 'ar' ? 'هذا الحقل مطلوب' : 'This field is required';
 
     const availableProjects = isAdmin ? projects : partnerProjects;
@@ -34,7 +44,7 @@ const PropertyBasicInfo: React.FC<PropertyBasicInfoProps> = ({ projects, partner
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField label={language === 'ar' ? 'المدينة / النطاق الفرعي (Only Property)' : 'City Subdomain Portal (Only Property)'} id="cityId">
                     <select {...register("cityId", { required: true })} className={selectClasses}>
-                        {cities.map(city => (
+                        {selectableCities.map(city => (
                             <option key={city.id} value={city.id}>
                                 {city.name[language]} ({city.brandTitle[language]} — {city.subdomain})
                             </option>

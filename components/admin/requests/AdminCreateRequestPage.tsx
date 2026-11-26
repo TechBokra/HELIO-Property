@@ -1,6 +1,6 @@
 
 
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
@@ -8,22 +8,39 @@ import { RequestType } from '../../../types';
 import { addRequest } from '../../../services/requests';
 import { useLanguage } from '../../shared/LanguageContext';
 import { useToast } from '../../shared/ToastContext';
+import { useAuth } from '../../auth/AuthContext';
+import { useCityStore } from '../../../store/useCityStore';
+import { getAccessibleCitiesForUser, resolveAdminDefaultScope } from '../../../utils/cityScope';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
-import { Select } from '../../ui/Select';
 import { Textarea } from '../../ui/Textarea';
 import { ArrowLeftIcon, ClipboardDocumentListIcon } from '../../ui/Icons';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
-import FormField, { inputClasses, selectClasses } from '../../ui/FormField';
+import FormField, { selectClasses } from '../../ui/FormField';
 
 const AdminCreateRequestPage: React.FC = () => {
-    const { t } = useLanguage();
+    const { language, t } = useLanguage();
     const { showToast } = useToast();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    
+    const { currentUser } = useAuth();
+    const cities = useCityStore((s) => s.cities);
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const activeCityId = useCityStore((s) => s.activeCityId);
+
+    const accessibleCities = useMemo(
+        () => getAccessibleCitiesForUser(cities, currentUser),
+        [cities, currentUser]
+    );
+    const effectiveScope = resolveAdminDefaultScope(currentUser, adminCityScope);
+    const defaultCityId =
+        effectiveScope !== 'all'
+            ? effectiveScope
+            : (accessibleCities.find((c) => c.id === activeCityId)?.id || accessibleCities[0]?.id || 'heliopolis');
+
     const { register, handleSubmit, watch, formState: { isSubmitting } } = useForm({
         defaultValues: {
+            cityId: defaultCityId,
             type: RequestType.LEAD,
             name: '',
             phone: '',
@@ -42,11 +59,13 @@ const AdminCreateRequestPage: React.FC = () => {
 
     const mutation = useMutation({
         mutationFn: (data: any) => {
-            const { type, name, phone, email, ...rest } = data;
+            const { cityId, type, name, phone, email, ...rest } = data;
+            const resolvedCityId = cityId || defaultCityId;
             
-            let payload = {};
+            let payload: Record<string, any> = { cityId: resolvedCityId };
             if (type === RequestType.LEAD) {
                 payload = {
+                    cityId: resolvedCityId,
                     serviceType: rest.serviceType,
                     serviceTitle: rest.serviceTitle,
                     customerNotes: rest.notes,
@@ -56,23 +75,25 @@ const AdminCreateRequestPage: React.FC = () => {
                     // Assignment will be handled by the backend service logic based on rules
                 };
             } else if (type === RequestType.PROPERTY_INQUIRY) {
-                payload = { details: rest.details, customerName: name, customerPhone: phone };
+                payload = { cityId: resolvedCityId, details: rest.details, customerName: name, customerPhone: phone };
             } else if (type === RequestType.CONTACT_MESSAGE) {
-                 payload = { message: rest.message, inquiryType: 'client', name: name, phone: phone };
+                payload = { cityId: resolvedCityId, message: rest.message, inquiryType: 'client', name: name, phone: phone };
             }
             
             return addRequest(type, {
+                cityId: resolvedCityId,
                 requesterInfo: { name, phone, email },
                 payload
             });
         },
         onSuccess: () => {
-            showToast('Request created successfully', 'success');
+            showToast(language === 'ar' ? 'تم إنشاء الطلب بنجاح' : 'Request created successfully', 'success');
             queryClient.invalidateQueries({ queryKey: ['allRequests'] });
-            navigate('/admin/requests');
+            queryClient.invalidateQueries({ queryKey: ['unifiedRequests'] });
+            navigate('/admin/operations');
         },
-        onError: () => {
-            showToast('Failed to create request', 'error');
+        onError: (err: any) => {
+            showToast(err?.message || (language === 'ar' ? 'تعذر إنشاء الطلب' : 'Failed to create request'), 'error');
         }
     });
 
@@ -83,7 +104,7 @@ const AdminCreateRequestPage: React.FC = () => {
     return (
         <div className="max-w-3xl mx-auto animate-fadeIn">
             <div className="mb-6">
-                <Link to="/admin/requests" className="inline-flex items-center gap-2 text-amber-600 hover:underline mb-4">
+                <Link to="/admin/operations" className="inline-flex items-center gap-2 text-amber-600 hover:underline mb-4">
                     <ArrowLeftIcon className="w-5 h-5" />
                     {t.adminShared.backToRequests}
                 </Link>
@@ -102,14 +123,25 @@ const AdminCreateRequestPage: React.FC = () => {
                 </CardHeader>
                 <CardContent className="pt-6">
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                        
-                        <FormField label="Request Type" id="type">
-                            <select {...register('type')} className={selectClasses}>
-                                <option value={RequestType.LEAD}>Service Lead (Finishing/Decor)</option>
-                                <option value={RequestType.PROPERTY_INQUIRY}>Property Inquiry (Buyer)</option>
-                                <option value={RequestType.CONTACT_MESSAGE}>General Message</option>
-                            </select>
-                        </FormField>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <FormField label={language === 'ar' ? 'نوع الطلب' : 'Request Type'} id="type">
+                                <select {...register('type')} className={selectClasses}>
+                                    <option value={RequestType.LEAD}>Service Lead (Finishing/Decor)</option>
+                                    <option value={RequestType.PROPERTY_INQUIRY}>Property Inquiry (Buyer)</option>
+                                    <option value={RequestType.CONTACT_MESSAGE}>General Message</option>
+                                </select>
+                            </FormField>
+
+                            <FormField label={language === 'ar' ? 'المدينة / النطاق الفرعي' : 'City Portal'} id="cityId">
+                                <select {...register('cityId', { required: true })} className={selectClasses}>
+                                    {accessibleCities.map(city => (
+                                        <option key={city.id} value={city.id}>
+                                            {city.name[language]} ({city.slug})
+                                        </option>
+                                    ))}
+                                </select>
+                            </FormField>
+                        </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <FormField label="Requester Name" id="name">

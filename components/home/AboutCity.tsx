@@ -4,10 +4,13 @@ import { useSiteContent } from '../../hooks/useSiteContent';
 import { useLanguage } from '../shared/LanguageContext';
 
 import { siteContentData as fallbackData } from '../../data/content';
+import { useCityStore } from '../../store/useCityStore';
 
 const AboutCity: React.FC = () => {
     const { language } = useLanguage();
     const { data: siteContent, isLoading } = useSiteContent();
+    const activeCity = useCityStore((s) => s.getActiveCity());
+    const portalMode = useCityStore((s) => s.portalMode);
     const [currentSlide, setCurrentSlide] = useState(0);
     const timeoutRef = useRef<number | null>(null);
 
@@ -24,9 +27,15 @@ const AboutCity: React.FC = () => {
     
     const goToSlide = (slideIndex: number) => setCurrentSlide(slideIndex);
 
-    const t = whyData?.[language] || fallbackData.whyNewHeliopolis[language];
+    const baseT = whyData?.[language] || fallbackData.whyNewHeliopolis[language];
+    const overrideTitle = portalMode === 'city' ? activeCity?.contentOverrides?.aboutTitle?.[language]?.trim() : '';
+    const overrideDescription = portalMode === 'city' ? activeCity?.contentOverrides?.aboutDescription?.[language]?.trim() : '';
+    const sectionTitle = overrideTitle || (activeCity && activeCity.id !== 'heliopolis' && portalMode === 'city'
+        ? (language === 'ar' ? `لماذا ${activeCity.name.ar}؟` : `Why ${activeCity.name.en}?`)
+        : baseT?.title);
+    const sectionDescription = overrideDescription || baseT?.location?.description;
 
-    if (isLoading && !t) {
+    if (isLoading && !baseT) {
         return (
             <section className="py-20 bg-gray-50 animate-pulse">
                 <div className="container mx-auto px-6">
@@ -54,16 +63,16 @@ const AboutCity: React.FC = () => {
             <div className="container mx-auto px-6">
                 <div className="text-center mb-16">
                     <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-                       {t.title}
+                       {sectionTitle}
                     </h2>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                     <div className="space-y-6">
-                        <h3 className="text-2xl md:text-3xl font-bold text-gray-900">{t.location.title}</h3>
-                        <p className="text-gray-600 text-lg">{t.location.description}</p>
+                        <h3 className="text-2xl md:text-3xl font-bold text-gray-900">{baseT.location.title}</h3>
+                        <p className="text-gray-600 text-lg">{sectionDescription}</p>
                         <div className="grid grid-cols-2 gap-4 text-center">
-                            {t.location.stats.map((stat: any, index: number) => (
+                            {baseT.location.stats.map((stat: any, index: number) => (
                                 <div key={index} className="bg-white p-4 rounded-lg">
                                     <p className="text-amber-500 text-2xl font-bold">{stat.value}</p>
                                     <p className="text-gray-500 text-sm">{stat.desc}</p>

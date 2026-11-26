@@ -2,26 +2,38 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../shared/LanguageContext';
 import { useCityStore } from '../../../store/useCityStore';
+import { useAuth } from '../../auth/AuthContext';
+import { Permission } from '../../../types';
+import {
+    getAccessibleCitiesForUser,
+    isGlobalCityAdmin,
+    resolveAdminDefaultScope,
+} from '../../../utils/cityScope';
 import { GlobeAltIcon } from '../../ui/Icons';
 
 const AdminCityScopeBar: React.FC = () => {
     const { language } = useLanguage();
     const navigate = useNavigate();
+    const { currentUser, hasPermission } = useAuth();
     const cities = useCityStore((s) => s.cities);
     const adminCityScope = useCityStore((s) => s.adminCityScope);
     const setAdminCityScope = useCityStore((s) => s.setAdminCityScope);
     const switchToCity = useCityStore((s) => s.switchToCity);
     const switchToHub = useCityStore((s) => s.switchToHub);
 
+    const canAccessAllCities = isGlobalCityAdmin(currentUser);
+    const canManageCities = hasPermission(Permission.MANAGE_CITIES);
     const activeCities = cities.filter((c) => c.isActive);
-    const scopedCity = cities.find((c) => c.id === adminCityScope);
+    const accessibleCities = getAccessibleCitiesForUser(activeCities, currentUser);
+    const effectiveScope = resolveAdminDefaultScope(currentUser, adminCityScope);
+    const scopedCity = cities.find((c) => c.id === effectiveScope);
 
     const handlePreviewScope = () => {
-        if (adminCityScope === 'all') {
+        if (effectiveScope === 'all') {
             switchToHub();
             navigate('/');
         } else {
-            switchToCity(adminCityScope);
+            switchToCity(effectiveScope);
             navigate('/');
         }
     };
@@ -37,25 +49,27 @@ const AdminCityScopeBar: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                        type="button"
-                        onClick={() => setAdminCityScope('all')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                            adminCityScope === 'all'
-                                ? 'bg-gray-900 text-white'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                    >
-                        {language === 'ar' ? 'كل المدن (Only Property)' : 'All Cities (Global)'}
-                    </button>
+                    {canAccessAllCities && (
+                        <button
+                            type="button"
+                            onClick={() => setAdminCityScope('all')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                                effectiveScope === 'all'
+                                    ? 'bg-gray-900 text-white'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                        >
+                            {language === 'ar' ? 'كل المدن (Only Property)' : 'All Cities (Global)'}
+                        </button>
+                    )}
 
-                    {activeCities.map((city) => (
+                    {accessibleCities.map((city) => (
                         <button
                             key={city.id}
                             type="button"
                             onClick={() => setAdminCityScope(city.id)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                                adminCityScope === city.id
+                                effectiveScope === city.id
                                     ? 'bg-amber-500 text-gray-950 font-bold'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
@@ -73,7 +87,7 @@ const AdminCityScopeBar: React.FC = () => {
                     </span>
                 ) : (
                     <span className="font-mono text-gray-500 hidden sm:inline">
-                        *.only-property.com ({activeCities.length} {language === 'ar' ? 'مدن' : 'cities'})
+                        *.only-property.com ({accessibleCities.length} {language === 'ar' ? 'مدن' : 'cities'})
                     </span>
                 )}
 
@@ -85,12 +99,14 @@ const AdminCityScopeBar: React.FC = () => {
                     {language === 'ar' ? 'معاينة البوابة' : 'Preview Portal'}
                 </button>
 
-                <Link
-                    to="/admin/cities"
-                    className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 font-semibold transition-colors"
-                >
-                    {language === 'ar' ? 'إدارة المدن والنطاقات' : 'Manage Cities & Subdomains'}
-                </Link>
+                {canManageCities && (
+                    <Link
+                        to="/admin/cities"
+                        className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 font-semibold transition-colors"
+                    >
+                        {language === 'ar' ? 'إدارة المدن والنطاقات' : 'Manage Cities & Subdomains'}
+                    </Link>
+                )}
             </div>
         </div>
     );

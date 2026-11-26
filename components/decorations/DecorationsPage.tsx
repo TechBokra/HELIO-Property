@@ -17,6 +17,7 @@ import { Button } from '../ui/Button';
 import { useSiteContent } from '../../hooks/useSiteContent';
 import { isExternalUrl, normalizeActionTarget } from '../../utils/siteContentHelpers';
 import { resolveServiceReferenceCode } from '../../utils/propertyFormShared';
+import { useCityStore } from '../../store/useCityStore';
 
 const DecorationsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -26,6 +27,7 @@ const DecorationsPage: React.FC = () => {
     const navigate = useNavigate();
     const { showToast } = useToast();
     const { isFavorite, toggleFavorite } = useFavorites();
+    const activeCityId = useCityStore((state) => state.activeCityId);
 
     // Fetch dynamic data
     const { data: siteContent } = useSiteContent();
@@ -118,7 +120,8 @@ const DecorationsPage: React.FC = () => {
                 categoryId: work.categoryId || activeTabId,
                 categoryName: activeTabInfo?.name || work.category[language],
                 serviceType: 'decorations',
-                isPurchase: isBuyNow
+                isPurchase: isBuyNow,
+                cityId: activeCityId || 'heliopolis',
             }
         });
     };
@@ -144,7 +147,8 @@ const DecorationsPage: React.FC = () => {
                 categoryId: activeTabId,
                 categoryName: activeTabInfo?.name,
                 isCustom: true,
-                serviceType: 'decorations'
+                serviceType: 'decorations',
+                cityId: activeCityId || 'heliopolis',
             }
         });
     };

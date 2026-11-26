@@ -15,6 +15,7 @@ import { useToast } from '../shared/ToastContext';
 import { CheckCircleIcon, CreditCardIcon, PhoneIcon, ArrowLeftIcon, LockClosedIcon, ClockIcon, ArrowRightIcon } from '../ui/Icons';
 import type { TransactionType, PaymentMethod } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '../ui/Card';
+import { useCityStore } from '../../store/useCityStore';
 
 const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -33,6 +34,7 @@ const PaymentPage: React.FC = () => {
     
     // Fetch site content with immediate fallback
     const { data: siteContent } = useSiteContent();
+    const activeCityId = useCityStore((state) => state.activeCityId);
     
     // Payment State
     const [amount, setAmount] = useState<number>(0);
@@ -83,6 +85,7 @@ const PaymentPage: React.FC = () => {
             
             try {
                 if (contextData) {
+                    const fallbackCityId = contextData.cityId || activeCityId || 'heliopolis';
                     if (type === 'subscription_fee') {
                         if (contextData.isUpgrade) {
                             if (paymentStatus === 'paid') {
@@ -90,20 +93,22 @@ const PaymentPage: React.FC = () => {
                             }
                         } else {
                              await addRequest(RequestType.PARTNER_APPLICATION, {
+                                cityId: fallbackCityId,
                                 requesterInfo: { name: contextData.contactName, phone: contextData.contactPhone, email: contextData.contactEmail },
-                                payload: { ...contextData, paymentStatus: paymentStatus } 
+                                payload: { ...contextData, cityId: fallbackCityId, paymentStatus: paymentStatus } 
                             });
                         }
                     } else if (type === 'listing_fee') {
                         const { requesterInfo, payload } = contextData;
                         await addRequest(RequestType.PROPERTY_LISTING_REQUEST, {
-                            cityId: payload?.cityId || payload?.propertyDetails?.cityId,
+                            cityId: payload?.cityId || payload?.propertyDetails?.cityId || fallbackCityId,
                             requesterInfo,
                             payload: { ...payload, paymentStatus: paymentStatus }
                         });
                     } else if (type === 'service_payment' || type === 'product_purchase') {
                         await addLead({
                             ...contextData,
+                            cityId: fallbackCityId,
                             propertyReference: contextData.propertyReference,
                             customerNotes: `${contextData.customerNotes || ''}\n[Payment Transaction: ${transaction.id} - ${transaction.status.toUpperCase()}]`,
                             status: 'new'

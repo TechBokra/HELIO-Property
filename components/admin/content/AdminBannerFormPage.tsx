@@ -13,6 +13,13 @@ import { Button } from '../../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../shared/ToastContext';
+import { useAuth } from '../../auth/AuthContext';
+import { useCityStore } from '../../../store/useCityStore';
+import {
+    getAccessibleCitiesForUser,
+    isGlobalCityAdmin,
+    resolveAdminDefaultScope,
+} from '../../../utils/cityScope';
 
 const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -64,11 +71,18 @@ const AdminBannerFormPage: React.FC = () => {
     const t_shared = t.adminShared;
     const { showToast } = useToast();
     const queryClient = useQueryClient();
+    const { currentUser } = useAuth();
+    const cities = useCityStore((s) => s.cities);
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const isGlobalAdmin = isGlobalCityAdmin(currentUser);
+    const accessibleCities = useMemo(() => getAccessibleCitiesForUser(cities, currentUser), [cities, currentUser]);
+    const defaultCityId = isGlobalAdmin ? 'all' : resolveAdminDefaultScope(currentUser, adminCityScope);
 
     const { data: banners, isLoading: loadingBanner } = useQuery({ queryKey: ['banners'], queryFn: getAllBanners });
     const bannerToEdit = useMemo(() => banners?.find(b => b.id === bannerId), [banners, bannerId]);
 
     const [formData, setFormData] = useState({
+        cityId: defaultCityId,
         title: '',
         link: '',
         locations: [] as string[],
@@ -82,6 +96,7 @@ const AdminBannerFormPage: React.FC = () => {
     useEffect(() => {
         if (bannerToEdit) {
             setFormData({
+                cityId: bannerToEdit.cityId || 'all',
                 title: bannerToEdit.title,
                 link: bannerToEdit.link || '',
                 locations: bannerToEdit.locations,
@@ -228,12 +243,24 @@ const AdminBannerFormPage: React.FC = () => {
 
                             {/* Right: Form Details */}
                             <div className="lg:col-span-2 space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <FormField label={t_page.bannerTitle} id="title">
                                         <Input name="title" value={formData.title} onChange={handleChange} required className={inputClasses} placeholder="Ex: Summer Sale 2024" />
                                     </FormField>
                                     <FormField label={t_page.bannerLink} id="link">
                                         <Input name="link" value={formData.link} onChange={handleChange} placeholder="e.g., /properties" />
+                                    </FormField>
+                                    <FormField label={language === 'ar' ? 'المدينة المستهدفة' : 'Target City Portal'} id="cityId">
+                                        <select name="cityId" value={formData.cityId} onChange={handleChange} className={selectClasses}>
+                                            {isGlobalAdmin && (
+                                                <option value="all">{language === 'ar' ? 'كل المدن (عرض عام)' : 'All Cities (Global)'}</option>
+                                            )}
+                                            {accessibleCities.map((city) => (
+                                                <option key={city.id} value={city.id}>
+                                                    {city.name[language]} ({city.slug})
+                                                </option>
+                                            ))}
+                                        </select>
                                     </FormField>
                                 </div>
                                 <div>

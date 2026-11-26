@@ -19,6 +19,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { Permission } from '../../../types';
 import { PasswordManagementModal } from './PasswordManagementModal';
 import { useCityStore } from '../../../store/useCityStore';
+import { getUserAllowedCityIds, partnerMatchesCityScope } from '../../../utils/cityScope';
 
 const AdminUsersPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -26,7 +27,7 @@ const AdminUsersPage: React.FC = () => {
     const t_admin = t.adminDashboard;
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { hasPermission } = useAuth();
+    const { currentUser, hasPermission } = useAuth();
     const canManageCredentials = hasPermission(Permission.MANAGE_USER_CREDENTIALS) || hasPermission(Permission.MANAGE_USERS);
     const [userToDelete, setUserToDelete] = useState<string | null>(null);
     const [userForCredentials, setUserForCredentials] = useState<AdminPartner | null>(null);
@@ -61,9 +62,7 @@ const AdminUsersPage: React.FC = () => {
     const cities = useCityStore((s) => s.cities);
 
     const renderAllowedCitiesBadges = (user: AdminPartner) => {
-        const list = user.allowedCities && user.allowedCities.length > 0
-            ? user.allowedCities
-            : (user.role === Role.SUPER_ADMIN ? ['*'] : ['heliopolis']);
+        const list = getUserAllowedCityIds(user);
         if (list.includes('*')) {
             return (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
@@ -85,21 +84,15 @@ const AdminUsersPage: React.FC = () => {
         );
     };
 
-    // Filter data based on active tab and adminCityScope
+    // Filter data based on active tab, adminCityScope, and signed-in admin city scope
     const filteredData = useMemo(() => {
         if (!partners) return [];
         const byTab = activeTab === 'internal'
             ? partners.filter(p => internalUserRoles.includes(p.role))
             : partners.filter(p => partnerRoles.includes(p.role));
 
-        if (adminCityScope === 'all') return byTab;
-        return byTab.filter(p => {
-            const list = p.allowedCities && p.allowedCities.length > 0
-                ? p.allowedCities
-                : (p.role === Role.SUPER_ADMIN ? ['*'] : ['heliopolis']);
-            return list.includes('*') || list.includes(adminCityScope);
-        });
-    }, [partners, activeTab, adminCityScope]);
+        return byTab.filter(p => partnerMatchesCityScope(p, adminCityScope, currentUser));
+    }, [partners, activeTab, adminCityScope, currentUser]);
 
     const deleteMutation = useMutation({
         mutationFn: deletePartner,

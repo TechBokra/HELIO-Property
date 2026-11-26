@@ -13,6 +13,9 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 import { Doughnut, Bar } from 'react-chartjs-2';
 import type { PartnerRequest } from '../../../types';
 import { Card, CardContent } from '../../ui/Card';
+import { useAuth } from '../../auth/AuthContext';
+import { useCityStore } from '../../../store/useCityStore';
+import { filterRecordsByCityScope, partnerMatchesCityScope } from '../../../utils/cityScope';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -37,15 +40,25 @@ const ActionCard: React.FC<{ title: string; count: number; linkTo: string; icon:
 const AdminPartnersDashboard: React.FC = () => {
     const { language, t } = useLanguage();
     const t_admin = t.adminDashboard;
+    const { currentUser } = useAuth();
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
 
-    const { data: partners, isLoading: loadingPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
-    const { data: projects, isLoading: loadingProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
-    const { data: partnerRequests, isLoading: loadingRequests } = useQuery({ queryKey: ['partnerRequests'], queryFn: getAllPartnerRequests });
+    const { data: rawPartners, isLoading: loadingPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
+    const { data: rawProjects, isLoading: loadingProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
+    const { data: rawPartnerRequests, isLoading: loadingRequests } = useQuery({ queryKey: ['partnerRequests'], queryFn: getAllPartnerRequests });
+
+    const partnerRequests = useMemo(
+        () => filterRecordsByCityScope(rawPartnerRequests || [], adminCityScope, currentUser),
+        [rawPartnerRequests, adminCityScope, currentUser]
+    );
 
     const isLoading = loadingPartners || loadingProjects || loadingRequests;
 
     const dashboardData = useMemo(() => {
-        if (!partners || !projects) return null;
+        if (!rawPartners || !rawProjects) return null;
+
+        const partners = rawPartners.filter(p => partnerMatchesCityScope(p, adminCityScope, currentUser));
+        const projects = filterRecordsByCityScope(rawProjects, adminCityScope, currentUser);
 
         const businessPartners = partners.filter(p => ['developer', 'finishing', 'agency'].includes(p.type));
         const partnerDistribution = businessPartners.reduce((acc, partner) => {
@@ -67,10 +80,10 @@ const AdminPartnersDashboard: React.FC = () => {
         return {
             totalPartners: businessPartners.length,
             totalProjects: projects.length,
-            pendingRequests: (partnerRequests || []).filter(r => r.status === 'pending').length,
+            pendingRequests: partnerRequests.filter(r => r.status === 'pending').length,
             chartData
         };
-    }, [partners, projects, partnerRequests, language, t_admin.partnerTypes]);
+    }, [rawPartners, rawProjects, partnerRequests, language, t_admin.partnerTypes, adminCityScope, currentUser]);
 
     if (isLoading || !dashboardData) {
         return <div>Loading dashboard...</div>;

@@ -27,6 +27,7 @@ import PropertyLocation from './property/PropertyLocation';
 import PropertyMedia from './property/PropertyMedia';
 import LocationPickerModal from '../shared/LocationPickerModal';
 import { useCityStore } from '../../store/useCityStore';
+import { getAccessibleCitiesForUser, resolveAdminDefaultScope } from '../../utils/cityScope';
 import { invalidateAllPropertyQueries } from '../../utils/queryInvalidation';
 import {
     validateEgyptPhone,
@@ -71,9 +72,18 @@ const PropertyFormPage: React.FC = () => {
     const { language, t } = useLanguage();
     const { showToast } = useToast();
     const queryClient = useQueryClient();
+    const cities = useCityStore((s) => s.cities);
     const activeCityId = useCityStore((s) => s.activeCityId);
     const adminCityScope = useCityStore((s) => s.adminCityScope);
-    const defaultCityId = adminCityScope !== 'all' ? adminCityScope : (activeCityId || 'heliopolis');
+    const accessibleCities = useMemo(
+        () => getAccessibleCitiesForUser(cities, currentUser),
+        [cities, currentUser]
+    );
+    const effectiveScope = resolveAdminDefaultScope(currentUser, adminCityScope);
+    const defaultCityId =
+        effectiveScope !== 'all'
+            ? effectiveScope
+            : (accessibleCities.find((c) => c.id === activeCityId)?.id || accessibleCities[0]?.id || 'heliopolis');
     
     const usageType = currentUser?.type === 'developer' ? 'units' : 'properties';
     const { isLimitReached } = useSubscriptionUsage(usageType);

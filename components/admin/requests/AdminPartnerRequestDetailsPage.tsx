@@ -13,6 +13,7 @@ import { useToast } from '../../shared/ToastContext';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '../../ui/Card';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
+import { useCityStore } from '../../../store/useCityStore';
 
 const AdminPartnerRequestDetailsPage: React.FC = () => {
     const { requestId } = useParams<{ requestId: string }>();
@@ -25,13 +26,33 @@ const AdminPartnerRequestDetailsPage: React.FC = () => {
     const { showToast } = useToast();
     
     const [initialPassword, setInitialPassword] = useState('');
+    const cities = useCityStore((s) => s.cities);
 
     const request = useMemo(() => requests?.find(r => r.id === requestId), [requests, requestId]);
+    const [selectedAllowedCities, setSelectedAllowedCities] = useState<string[]>(['heliopolis']);
+
+    React.useEffect(() => {
+        if (!request) return;
+        const initialCities =
+            Array.isArray(request.allowedCities) && request.allowedCities.length > 0
+                ? request.allowedCities
+                : [request.cityId || 'heliopolis'];
+        setSelectedAllowedCities(initialCities);
+    }, [request]);
+
+    const toggleCitySelection = (cityId: string) => {
+        setSelectedAllowedCities((prev) =>
+            prev.includes(cityId) ? prev.filter((id) => id !== cityId) : [...prev, cityId]
+        );
+    };
 
     const mutation = useMutation({
         mutationFn: async ({ status, req }: { status: 'approved' | 'rejected', req: PartnerRequest }) => {
             if (status === 'approved') {
-                await addPartner(req, initialPassword);
+                const resolvedCities = selectedAllowedCities.length > 0
+                    ? selectedAllowedCities
+                    : [req.cityId || 'heliopolis'];
+                await addPartner({ ...req, allowedCities: resolvedCities }, initialPassword);
             }
             await updatePartnerRequestStatus(req.id, status);
         },
@@ -41,8 +62,8 @@ const AdminPartnerRequestDetailsPage: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['allPartnersAdmin'] });
             navigate('/admin/partners/requests');
         },
-        onError: () => {
-            showToast('Action failed. Please try again.', 'error');
+        onError: (err: any) => {
+            showToast(err?.message || 'Action failed. Please try again.', 'error');
         }
     });
 
@@ -174,6 +195,31 @@ const AdminPartnerRequestDetailsPage: React.FC = () => {
                                     Approving will create a new partner account for <strong>{request.companyName}</strong>.
                                 </p>
                                 
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
+                                        {language === 'ar' ? 'المدن المصرح بها للشريك (allowed_cities)' : 'Authorized Cities Scope'}
+                                    </label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {cities.map((c) => {
+                                            const active = selectedAllowedCities.includes(c.id);
+                                            return (
+                                                <button
+                                                    key={c.id}
+                                                    type="button"
+                                                    onClick={() => toggleCitySelection(c.id)}
+                                                    className={`px-2.5 py-1 rounded text-xs font-semibold border transition-colors ${
+                                                        active
+                                                            ? 'bg-amber-500 text-gray-950 border-amber-600'
+                                                            : 'bg-white text-gray-600 border-gray-200 hover:border-amber-400'
+                                                    }`}
+                                                >
+                                                    {c.name[language]}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Set Initial Password</label>
                                     <Input 

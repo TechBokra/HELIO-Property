@@ -1,24 +1,25 @@
-import { Role, type CityPortalConfig, type Partner, type User } from '../types';
+import { Role, type AdminPartner, type CityPortalConfig, type Partner } from '../types';
 
-export const resolveLegacyAllowedCities = (user?: Partial<Partner> | Partial<User> | null): string[] => {
+export const resolveLegacyAllowedCities = (user?: Partial<Partner> | Partial<AdminPartner> | null): string[] => {
     if (!user) return ['heliopolis'];
     if (user.role === Role.SUPER_ADMIN) return ['*'];
 
-    const explicit = Array.isArray(user.allowedCities)
-        ? user.allowedCities.map((c) => String(c).trim()).filter(Boolean)
+    const explicit: string[] = Array.isArray(user.allowedCities)
+        ? user.allowedCities.map((c: any) => String(c).trim()).filter(Boolean)
         : [];
-    const legacy = Array.isArray(user.contactMethods?._allowedCities)
-        ? user.contactMethods._allowedCities.map((c) => String(c).trim()).filter(Boolean)
+    const legacyRaw = (user.contactMethods as any)?._allowedCities;
+    const legacy: string[] = Array.isArray(legacyRaw)
+        ? legacyRaw.map((c: any) => String(c).trim()).filter(Boolean)
         : [];
 
     if (explicit.length > 0) {
         if (explicit.length === 1 && explicit[0] === 'heliopolis' && legacy.length > 0) {
             const legacyDifferent = legacy.length > 1 || legacy[0] !== 'heliopolis';
             if (legacyDifferent) {
-                return Array.from(new Set(legacy));
+                return Array.from(new Set<string>(legacy));
             }
         }
-        return Array.from(new Set(explicit));
+        return Array.from(new Set<string>(explicit));
     }
 
     if (legacy.length > 0) {
@@ -28,18 +29,18 @@ export const resolveLegacyAllowedCities = (user?: Partial<Partner> | Partial<Use
     return ['heliopolis'];
 };
 
-export const isGlobalCityAdmin = (user?: Partial<Partner> | Partial<User> | null): boolean => {
+export const isGlobalCityAdmin = (user?: Partial<Partner> | Partial<AdminPartner> | null): boolean => {
     if (!user) return false;
     if (user.role === Role.SUPER_ADMIN) return true;
     return resolveLegacyAllowedCities(user).includes('*');
 };
 
-export const getUserAllowedCityIds = (user?: Partial<Partner> | Partial<User> | null): string[] => {
+export const getUserAllowedCityIds = (user?: Partial<Partner> | Partial<AdminPartner> | null): string[] => {
     return resolveLegacyAllowedCities(user);
 };
 
 export const canUserAccessCity = (
-    user: Partial<Partner> | Partial<User> | null | undefined,
+    user: Partial<Partner> | Partial<AdminPartner> | null | undefined,
     targetCityId?: string | null
 ): boolean => {
     if (!user) return false;
@@ -52,7 +53,7 @@ export const canUserAccessCity = (
 
 export const getAccessibleCitiesForUser = (
     cities: CityPortalConfig[],
-    user?: Partial<Partner> | Partial<User> | null
+    user?: Partial<Partner> | Partial<AdminPartner> | null
 ): CityPortalConfig[] => {
     if (!Array.isArray(cities) || cities.length === 0) return [];
     if (!user) return [];
@@ -64,7 +65,7 @@ export const getAccessibleCitiesForUser = (
 };
 
 export const resolveAdminDefaultScope = (
-    user?: Partial<Partner> | Partial<User> | null,
+    user?: Partial<Partner> | Partial<AdminPartner> | null,
     currentScope?: string
 ): string => {
     if (isGlobalCityAdmin(user)) {
@@ -84,7 +85,7 @@ export const getRecordCityId = (record: any): string => {
 export const filterRecordsByCityScope = <T extends Record<string, any>>(
     records: T[],
     adminCityScope: string,
-    user?: Partial<Partner> | Partial<User> | null
+    user?: Partial<Partner> | Partial<AdminPartner> | null
 ): T[] => {
     if (!Array.isArray(records)) return [];
     const global = isGlobalCityAdmin(user);
@@ -105,7 +106,7 @@ export const filterRecordsByCityScope = <T extends Record<string, any>>(
 export const partnerMatchesCityScope = (
     partner: Partial<Partner>,
     adminCityScope: string,
-    viewer?: Partial<Partner> | Partial<User> | null
+    viewer?: Partial<Partner> | Partial<AdminPartner> | null
 ): boolean => {
     const partnerScope = resolveLegacyAllowedCities(partner);
     const viewerIsGlobal = isGlobalCityAdmin(viewer);

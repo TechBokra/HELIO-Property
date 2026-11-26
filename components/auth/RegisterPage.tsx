@@ -19,6 +19,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { commonSchemas } from '../../utils/validation';
+import { useCityStore } from '../../store/useCityStore';
 
 // Validation Schema using centralized utils
 const registerSchema = z.object({
@@ -61,6 +62,7 @@ const RegisterPage: React.FC = () => {
     const t_page = t.partnerRequestForm;
     const { showToast } = useToast();
     const navigate = useNavigate();
+    const activeCityId = useCityStore((state) => state.activeCityId);
     
     const [currentStep, setCurrentStep] = useState(1);
     const [formSubmitted, setFormSubmitted] = useState(false);
@@ -134,10 +136,13 @@ const RegisterPage: React.FC = () => {
             }
         }
         
+        const resolvedCityId = activeCityId || 'heliopolis';
         const finalData = {
             companyType,
             subscriptionPlan: selectedPlan,
             ...data,
+            cityId: resolvedCityId,
+            allowedCities: [resolvedCityId],
             logo: logoUrl,
             documents: officialDocs,
             managementContacts: [] 
@@ -173,12 +178,16 @@ const RegisterPage: React.FC = () => {
                     website: data.website,
                     description: data.description,
                     subscriptionPlan: selectedPlan,
+                    cityId: resolvedCityId,
+                    allowedCities: [resolvedCityId],
                     logo: logoUrl,
                     documents: officialDocs,
                 },
                 contextData: {
                     companyType,
                     subscriptionPlan: selectedPlan,
+                    cityId: resolvedCityId,
+                    allowedCities: [resolvedCityId],
                     documents: officialDocs,
                     logo: logoUrl,
                 }

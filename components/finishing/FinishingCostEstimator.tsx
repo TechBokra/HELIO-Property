@@ -18,6 +18,7 @@ import {
 } from '../../services/finishing';
 import { FinishingPropertyType } from '../../types';
 import ServiceRequestModal from '../shared/ServiceRequestModal';
+import { useCityStore } from '../../store/useCityStore';
 
 interface FinishingCostEstimatorProps {
     defaultArea?: number;
@@ -25,6 +26,7 @@ interface FinishingCostEstimatorProps {
     propertyId?: string;
     propertyReference?: string;
     propertyTitle?: string;
+    cityId?: string;
     onRfqLaunched?: () => void;
 }
 
@@ -34,10 +36,12 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
     propertyId,
     propertyReference,
     propertyTitle,
+    cityId,
     onRfqLaunched
 }) => {
     const { language } = useLanguage();
     const isAr = language === 'ar';
+    const activeCityId = useCityStore((state) => state.activeCityId);
 
     // Property Type: Apartment vs Villa
     const [propertyType, setPropertyType] = useState<FinishingPropertyType>(defaultPropertyType);
@@ -846,6 +850,7 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
                 propertyId={propertyId}
                 propertyReference={propertyReference}
                 propertyTitle={propertyTitle}
+                cityId={cityId || activeCityId || 'heliopolis'}
             />
         </section>
     );

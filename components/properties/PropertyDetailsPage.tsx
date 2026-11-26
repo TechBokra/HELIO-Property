@@ -95,7 +95,8 @@ const PropertyDetailsPage: React.FC = () => {
                     propertyId: property?.id,
                     propertyReference: propReference,
                     serviceType: 'property',
-                    propertyTitle: propTitle
+                    propertyTitle: propTitle,
+                    cityId: property?.cityId || 'heliopolis',
                 } 
             });
             return;
@@ -110,7 +111,8 @@ const PropertyDetailsPage: React.FC = () => {
                     propertyId: property?.id,
                     propertyReference: propReference,
                     serviceType: 'property',
-                    propertyTitle: propTitle
+                    propertyTitle: propTitle,
+                    cityId: property?.cityId || 'heliopolis',
                 } 
             });
         } else {
@@ -289,6 +291,7 @@ const PropertyDetailsPage: React.FC = () => {
                         propertyReference: propReference,
                         propertyTitle: propTitle,
                         serviceType: 'property',
+                        cityId: property.cityId || 'heliopolis',
                     } 
                 })}
             />
@@ -530,6 +533,7 @@ const PropertyDetailsPage: React.FC = () => {
                                                     propertyTitle: propTitle,
                                                     propertyArea: property.area,
                                                     propertyType: property.type?.en,
+                                                    cityId: property.cityId || 'heliopolis',
                                                 }
                                             })}
                                             className="px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold text-xs shadow-sm transition-colors whitespace-nowrap"

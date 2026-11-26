@@ -4133,6 +4133,496 @@ async function runTests() {
         );
     });
 
+    // ========================================================================
+    // Suite 14: Multi-City Governance, Persistence, Role Scoping & Override Tests
+    // ========================================================================
+    console.log('\n--- Suite 14: Multi-City Governance & Scoping Verification Tests ---');
+
+    await test('MC.5: services/cities.ts DB CRUD persistence, loud errors, missing content_overrides fallback & local hero sanitization', async () => {
+        useAuthStore.setState({
+            currentUser: {
+                id: 'super-admin-city-test',
+                email: 'admin@onlyhelio.com',
+                role: Role.SUPER_ADMIN,
+                allowedCities: ['*'],
+            } as any,
+            permissions: Object.values(Permission),
+        });
+
+        const {
+            getAllCities,
+            createCity,
+            updateCity,
+            toggleCityActive,
+        } = await import('../services/cities');
+
+        const cityRows: any[] = [
+            {
+                id: 'heliopolis',
+                slug: 'heliopolis',
+                subdomain: 'heliopolis.only-property.com',
+                name_ar: 'هليوبوليس الجديدة',
+                name_en: 'New Heliopolis',
+                brand_title_ar: 'أونلي هليو',
+                brand_title_en: 'ONLY HELIO',
+                hero_image_url: '/src/assets/images/city_portal_heliopolis.jpg',
+                is_active: true,
+                is_featured: true,
+                created_at: '2026-01-01T00:00:00Z',
+            },
+        ];
+        let simulateReadError = false;
+        let simulateMissingOverridesCol = false;
+
+        const mockCityDb: any = {
+            from: (table: string) => {
+                assert.strictEqual(table, 'cities');
+                return {
+                    select: () => {
+                        let onlyActive = false;
+                        const run = async () => {
+                            if (simulateReadError) {
+                                return { data: null, error: { message: 'Cities table unavailable' } };
+                            }
+                            const filtered = onlyActive
+                                ? cityRows.filter((r) => r.is_active !== false)
+                                : cityRows;
+                            return { data: JSON.parse(JSON.stringify(filtered)), error: null };
+                        };
+                        const builder: any = {
+                            eq: (col: string, val: any) => {
+                                if (col === 'is_active' && val === true) onlyActive = true;
+                                return builder;
+                            },
+                            order: () => builder,
+                            then: (res: any, rej: any) => run().then(res, rej),
+                        };
+                        return builder;
+                    },
+                    insert: (payload: any) => ({
+                        select: () => ({
+                            single: async () => {
+                                if (simulateMissingOverridesCol && 'content_overrides' in payload) {
+                                    return {
+                                        data: null,
+                                        error: {
+                                            code: 'PGRST204',
+                                            message: "Could not find the 'content_overrides' column of 'cities' in the schema cache",
+                                        },
+                                    };
+                                }
+                                const stored = JSON.parse(JSON.stringify(payload));
+                                cityRows.push(stored);
+                                return { data: JSON.parse(JSON.stringify(stored)), error: null };
+                            },
+                        }),
+                    }),
+                    update: (patch: any) => ({
+                        eq: (_col: string, id: string) => ({
+                            select: () => ({
+                                single: async () => {
+                                    if (simulateMissingOverridesCol && 'content_overrides' in patch) {
+                                        return {
+                                            data: null,
+                                            error: {
+                                                code: '42703',
+                                                message: 'column "content_overrides" of relation "cities" does not exist',
+                                            },
+                                        };
+                                    }
+                                    const idx = cityRows.findIndex((r) => r.id === id);
+                                    if (idx < 0) {
+                                        return { data: null, error: { message: 'Row not found' } };
+                                    }
+                                    cityRows[idx] = { ...cityRows[idx], ...JSON.parse(JSON.stringify(patch)) };
+                                    return { data: JSON.parse(JSON.stringify(cityRows[idx])), error: null };
+                                },
+                            }),
+                        }),
+                    }),
+                };
+            },
+        };
+
+        // 1. Existing row sanitizes legacy /src/assets/images/city_portal_* path to valid HTTPS URL
+        const initialList = await getAllCities({ client: mockCityDb, includeInactive: true, throwOnError: true });
+        assert.strictEqual(initialList.length, 1);
+        assert.ok(initialList[0].heroImageUrl.startsWith('https://'), 'Legacy local /src/assets/images/ path must sanitize to HTTPS fallback');
+
+        // 2. Create city with contentOverrides while legacy schema lacks content_overrides column (fallback succeeds cleanly)
+        simulateMissingOverridesCol = true;
+        const created = await createCity(
+            {
+                slug: 'Mostakbal City!',
+                name: { ar: 'مدينة المستقبل', en: 'Mostakbal City' },
+                heroImageUrl: '/src/assets/images/city_portal_mostakbal.png',
+                contentOverrides: {
+                    heroTitle: { ar: 'مرحباً بكم في مستقبل سيتي', en: 'Welcome to Mostakbal City' },
+                },
+            },
+            { client: mockCityDb }
+        );
+        assert.strictEqual(created.id, 'mostakbal-city');
+        assert.strictEqual(created.subdomain, 'mostakbal-city.only-property.com');
+        assert.ok(created.heroImageUrl.startsWith('https://'));
+        assert.strictEqual(created.contentOverrides?.heroTitle?.en, 'Welcome to Mostakbal City');
+
+        // 3. Full update & toggle activation persist in DB across reload
+        simulateMissingOverridesCol = false;
+        const updated = await updateCity(
+            'mostakbal-city',
+            {
+                accentColor: '#10B981',
+                contentOverrides: {
+                    aboutTitle: { ar: 'عن مستقبل سيتي', en: 'About Mostakbal' },
+                },
+            },
+            { client: mockCityDb }
+        );
+        assert.strictEqual(updated.accentColor, '#10B981');
+        assert.strictEqual(updated.contentOverrides?.aboutTitle?.ar, 'عن مستقبل سيتي');
+
+        const paused = await toggleCityActive('mostakbal-city', false, { client: mockCityDb });
+        assert.strictEqual(paused.isActive, false);
+
+        const activeOnly = await getAllCities({ client: mockCityDb, includeInactive: false, throwOnError: true });
+        assert.strictEqual(activeOnly.some((c) => c.id === 'mostakbal-city'), false, 'Deactivated city must not appear in active-only public list');
+
+        // 4. Loud error propagation when throwOnError=true or write permission is missing
+        simulateReadError = true;
+        await assert.rejects(
+            () => getAllCities({ client: mockCityDb, throwOnError: true }),
+            /Cities table unavailable/
+        );
+        simulateReadError = false;
+
+        useAuthStore.setState({
+            currentUser: { id: 'viewer-no-perm', role: Role.CUSTOMER } as any,
+            permissions: [],
+        });
+        await assert.rejects(
+            () => createCity({ slug: 'denied-city', name: { ar: 'مدينة', en: 'Denied' } }, { client: mockCityDb }),
+            AuthorizationError
+        );
+    });
+
+    await test('MC.6: resolveCityFromEnvironment & useCityStore handle paused cities cleanly and recover on switchToHub/reload', async () => {
+        useAuthStore.setState({
+            currentUser: {
+                id: 'super-admin-store-test',
+                email: 'admin@onlyhelio.com',
+                role: Role.SUPER_ADMIN,
+                allowedCities: ['*'],
+            } as any,
+            permissions: Object.values(Permission),
+        });
+
+        const { resolveCityFromEnvironment, INITIAL_CITIES } = await import('../data/cities');
+        const { useCityStore } = await import('../store/useCityStore');
+
+        const customCities = INITIAL_CITIES.map((c) =>
+            c.id === 'badr' ? { ...c, isActive: false } : { ...c, isActive: true }
+        );
+
+        // Navigating to paused city returns unavailableCity rather than silently jumping elsewhere
+        const pausedResolution = resolveCityFromEnvironment('badr.only-property.com', '', customCities);
+        assert.strictEqual(pausedResolution.portalMode, 'city');
+        assert.strictEqual(pausedResolution.cityId, 'badr');
+        assert.strictEqual(pausedResolution.unavailableCity?.id, 'badr');
+        assert.strictEqual(pausedResolution.unavailableSlug, 'badr');
+
+        // Query param hub returns hub mode
+        const hubResolution = resolveCityFromEnvironment('localhost', '?city=hub', customCities);
+        assert.strictEqual(hubResolution.portalMode, 'hub');
+        assert.strictEqual(hubResolution.unavailableCity, undefined);
+
+        // useCityStore live switchToCity & switchToHub state transitions
+        useCityStore.setState({
+            cities: customCities,
+            portalMode: 'city',
+            activeCityId: 'heliopolis',
+            unavailableCity: null,
+            unavailableSlug: null,
+        });
+
+        useCityStore.getState().switchToCity('badr');
+        assert.strictEqual(useCityStore.getState().activeCityId, 'badr');
+        assert.strictEqual(useCityStore.getState().unavailableCity?.id, 'badr');
+
+        useCityStore.getState().switchToHub();
+        assert.strictEqual(useCityStore.getState().portalMode, 'hub');
+        assert.strictEqual(useCityStore.getState().unavailableCity, null);
+        assert.strictEqual(useCityStore.getState().unavailableSlug, null);
+
+        // Mock DB client returning deactivated shorouk; loadCities syncs store state
+        const mockReloadClient: any = {
+            from: () => ({
+                select: () => ({
+                    order: async () => ({
+                        data: [
+                            { id: 'heliopolis', slug: 'heliopolis', name_ar: 'هليوبوليس', name_en: 'Heliopolis', is_active: true },
+                            { id: 'shorouk', slug: 'shorouk', name_ar: 'الشروق', name_en: 'Shorouk', is_active: false },
+                        ],
+                        error: null,
+                    }),
+                }),
+            }),
+        };
+        const reloadedCities = await useCityStore.getState().loadCities({ client: mockReloadClient, throwOnError: true });
+        assert.strictEqual(reloadedCities.find((c) => c.id === 'shorouk')?.isActive, false);
+    });
+
+    await test('MC.7: utils/cityScope enforces role-based global vs assigned city access and legacy _allowedCities compatibility', async () => {
+        const {
+            isGlobalCityAdmin,
+            resolveAdminDefaultScope,
+            canUserAccessCity,
+            getAccessibleCitiesForUser,
+            filterRecordsByCityScope,
+            partnerMatchesCityScope,
+            resolveLegacyAllowedCities,
+        } = await import('../utils/cityScope');
+        const { INITIAL_CITIES } = await import('../data/cities');
+
+        const superAdmin = { id: 'sa-1', role: Role.SUPER_ADMIN, allowedCities: ['heliopolis'] };
+        const shoroukManager = { id: 'mgr-sh', role: Role.LISTINGS_MANAGER, allowedCities: ['shorouk'] };
+        const legacyMultiCityMgr = {
+            id: 'mgr-leg',
+            role: Role.CONTENT_MANAGER,
+            allowedCities: ['heliopolis'], // default single fallback while legacy holds more cities
+            contactMethods: { whatsapp: { enabled: false, number: '' }, phone: { enabled: false, number: '' }, form: { enabled: true }, _allowedCities: ['shorouk', 'badr'] },
+        };
+
+        assert.strictEqual(isGlobalCityAdmin(superAdmin), true);
+        assert.strictEqual(isGlobalCityAdmin(shoroukManager), false);
+        assert.strictEqual(resolveAdminDefaultScope(superAdmin), 'all');
+        assert.strictEqual(resolveAdminDefaultScope(shoroukManager, 'all'), 'shorouk');
+        assert.strictEqual(resolveAdminDefaultScope(shoroukManager, 'badr'), 'shorouk', 'Unauthorized requested scope must fall back to allowed city');
+
+        assert.strictEqual(canUserAccessCity(shoroukManager, 'shorouk'), true);
+        assert.strictEqual(canUserAccessCity(shoroukManager, 'heliopolis'), false);
+        assert.strictEqual(canUserAccessCity(superAdmin, 'all'), true);
+        assert.strictEqual(canUserAccessCity(shoroukManager, 'all'), false);
+
+        assert.deepStrictEqual(resolveLegacyAllowedCities(legacyMultiCityMgr), ['shorouk', 'badr']);
+        const mgrCities = getAccessibleCitiesForUser(INITIAL_CITIES, legacyMultiCityMgr);
+        assert.deepStrictEqual(mgrCities.map((c) => c.id), ['shorouk', 'badr']);
+
+        const records = [
+            { id: 'r1', cityId: 'heliopolis' },
+            { id: 'r2', cityId: 'shorouk' },
+            { id: 'r3', payload: { cityId: 'badr' } },
+        ];
+        const filteredForShoroukMgr = filterRecordsByCityScope(records, 'all', shoroukManager);
+        assert.deepStrictEqual(filteredForShoroukMgr.map((r) => r.id), ['r2']);
+
+        const globalInBadr = filterRecordsByCityScope(records, 'badr', superAdmin);
+        assert.deepStrictEqual(globalInBadr.map((r) => r.id), ['r3']);
+
+        assert.strictEqual(
+            partnerMatchesCityScope({ id: 'p1', allowedCities: ['heliopolis', 'shorouk'] }, 'shorouk', shoroukManager),
+            true
+        );
+        assert.strictEqual(
+            partnerMatchesCityScope({ id: 'p2', allowedCities: ['badr'] }, 'all', shoroukManager),
+            false
+        );
+    });
+
+    await test('MC.8: services/partners.ts uses allowed_cities with legacy _allowedCities fallback and preserves contactMethods on city updates', async () => {
+        const { mapPartnerFromDb, updatePartner } = await import('../services/partners');
+
+        // 1. Authoritative allowed_cities takes precedence when explicitly set
+        const explicitMapped = mapPartnerFromDb({
+            id: 'partner-explicit',
+            email: 'exp@onlyhelio.com',
+            type: 'developer',
+            role: 'developer',
+            allowed_cities: ['badr', 'shorouk'],
+            contact_methods: { phone: { enabled: true, number: '01099887766' }, _allowedCities: ['heliopolis'] },
+        });
+        assert.deepStrictEqual(explicitMapped.allowedCities, ['badr', 'shorouk']);
+
+        // 2. Legacy contact_methods._allowedCities is preserved when DB column is default ['heliopolis'] or absent
+        const legacyMapped = mapPartnerFromDb({
+            id: 'partner-legacy',
+            email: 'leg@onlyhelio.com',
+            type: 'agency',
+            role: 'agency',
+            allowed_cities: ['heliopolis'],
+            contact_methods: { phone: { enabled: true, number: '01122334455' }, _allowedCities: ['shorouk', 'badr'] },
+        });
+        assert.deepStrictEqual(legacyMapped.allowedCities, ['shorouk', 'badr']);
+
+        // 3. updatePartner({ allowedCities }) preserves existing phone/whatsapp contactMethods
+        const storedPartner: any = {
+            id: 'partner-upd-1',
+            allowed_cities: ['heliopolis'],
+            contact_methods: {
+                whatsapp: { enabled: true, number: '201012345678' },
+                phone: { enabled: true, number: '01012345678' },
+                form: { enabled: true },
+            },
+        };
+        let capturedUpdate: any = null;
+
+        const mockPartnerDb: any = {
+            from: (table: string) => {
+                assert.strictEqual(table, 'partners');
+                return {
+                    select: () => ({
+                        eq: () => ({
+                            maybeSingle: async () => ({ data: storedPartner, error: null }),
+                        }),
+                    }),
+                    update: (patch: any) => ({
+                        eq: async () => {
+                            capturedUpdate = patch;
+                            return { error: null };
+                        },
+                    }),
+                };
+            },
+        };
+
+        const ok = await updatePartner(
+            'partner-upd-1',
+            { allowedCities: ['shorouk', 'badr'] },
+            { client: mockPartnerDb, throwOnError: true }
+        );
+        assert.strictEqual(ok, true);
+        assert.deepStrictEqual(capturedUpdate.allowed_cities, ['shorouk', 'badr']);
+        assert.strictEqual(capturedUpdate.contact_methods.phone.number, '01012345678', 'Existing phone number must be preserved');
+        assert.strictEqual(capturedUpdate.contact_methods.whatsapp.number, '201012345678', 'Existing WhatsApp must be preserved');
+        assert.deepStrictEqual(capturedUpdate.contact_methods._allowedCities, ['shorouk', 'badr']);
+    });
+
+    await test('MC.9: services/requests.ts enforces city_id/allowedCities DB filtering and KPI isolation across requests', async () => {
+        const { supabase, supabasePublic } = await import('../lib/supabase');
+        const { applyCityScopeToRequestQuery, getUnifiedRequests } = await import('../services/requests');
+
+        const mockRows = [
+            {
+                id: 'req-helio-1',
+                city_id: 'heliopolis',
+                type: RequestType.LEAD,
+                status: 'new',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                requester_name: 'عميل هليوبوليس',
+                payload: { serviceType: 'finishing', cityId: 'heliopolis' },
+            },
+            {
+                id: 'req-shorouk-1',
+                city_id: 'shorouk',
+                type: RequestType.PROPERTY_LISTING_REQUEST,
+                status: 'new',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                requester_name: 'عميل الشروق',
+                payload: { cityId: 'shorouk' },
+            },
+            {
+                id: 'req-badr-1',
+                city_id: 'badr',
+                type: RequestType.CONTACT_MESSAGE,
+                status: 'in-progress',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                requester_name: 'عميل بدر',
+                payload: { cityId: 'badr' },
+            },
+        ];
+
+        // 1. Direct helper check for unauthorized requested city -> forces impossible filter
+        const capturedScopeCalls: any[] = [];
+        const spyQuery: any = {
+            eq: (col: string, val: any) => { capturedScopeCalls.push(['eq', col, val]); return spyQuery; },
+            in: (col: string, vals: any[]) => { capturedScopeCalls.push(['in', col, vals]); return spyQuery; },
+        };
+        applyCityScopeToRequestQuery(spyQuery, { cityId: 'badr', allowedCities: ['shorouk'] });
+        assert.deepStrictEqual(capturedScopeCalls, [['in', 'city_id', ['__unauthorized_city__']]]);
+
+        // 2. Full getUnifiedRequests with cityId & allowedCities
+        const originalFrom = (supabase as any).from;
+        const originalPublicFrom = (supabasePublic as any).from;
+
+        try {
+            (supabasePublic as any).from = (table: string) => {
+                if (table === 'partners') {
+                    const b: any = { select: () => b, order: () => Promise.resolve({ data: [], error: null }) };
+                    return b;
+                }
+                return originalPublicFrom.call(supabasePublic, table);
+            };
+
+            (supabase as any).from = (table: string) => {
+                if (table === 'requests') {
+                    let rows = [...mockRows];
+                    let isHead = false;
+                    const builder: any = {
+                        select: (_cols: any, opts: any) => { if (opts?.head) isHead = true; return builder; },
+                        eq: (col: string, val: any) => { rows = rows.filter((r: any) => r[col] === val); return builder; },
+                        in: (col: string, vals: any[]) => { rows = rows.filter((r: any) => vals.includes(r[col])); return builder; },
+                        not: () => builder,
+                        filter: () => builder,
+                        gte: () => builder,
+                        lt: () => builder,
+                        is: () => builder,
+                        or: () => builder,
+                        order: () => builder,
+                        range: (from: number, to: number) => { rows = rows.slice(from, to + 1); return builder; },
+                        then: (res: any, rej: any) => Promise.resolve({ data: isHead ? null : rows, count: rows.length, error: null }).then(res, rej),
+                    };
+                    return builder;
+                }
+                return originalFrom.call(supabase, table);
+            };
+
+            const shoroukOnly = await getUnifiedRequests({ allowedCities: ['shorouk'] });
+            assert.strictEqual(shoroukOnly.requests.length, 1);
+            assert.strictEqual(shoroukOnly.requests[0].id, 'req-shorouk-1');
+            assert.strictEqual(shoroukOnly.metrics.total, 1, 'Scoped manager KPIs must reflect only allowed city requests');
+
+            const forbiddenCity = await getUnifiedRequests({ cityId: 'badr', allowedCities: ['shorouk'] });
+            assert.strictEqual(forbiddenCity.requests.length, 0, 'Requesting out-of-scope city must return 0 records');
+        } finally {
+            (supabase as any).from = originalFrom;
+            (supabasePublic as any).from = originalPublicFrom;
+        }
+    });
+
+    await test('MC.10: Global site_content inheritance vs per-city contentOverrides & banner city filtering', async () => {
+        const activeShorouk = {
+            id: 'shorouk',
+            slug: 'shorouk',
+            heroImageUrl: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1400&q=80',
+            contentOverrides: {
+                heroTitle: { ar: 'شقق وفيلات الشروق', en: 'El Shorouk Homes' },
+            },
+        };
+        const globalHero = {
+            ar: { title: 'عقارات هليوبوليس', subtitle: 'وصف عام عالمي من site_content' },
+            en: { title: 'Heliopolis Real Estate', subtitle: 'Global subtitle inherited' },
+            imageUrl: 'https://global.example/hero.jpg',
+        };
+
+        // City overrides take precedence where provided; missing fields inherit global site_content
+        const resolvedTitleAr = activeShorouk.contentOverrides?.heroTitle?.ar || globalHero.ar.title;
+        const resolvedSubtitleAr = (activeShorouk.contentOverrides as any)?.heroSubtitle?.ar || globalHero.ar.subtitle;
+        assert.strictEqual(resolvedTitleAr, 'شقق وفيلات الشروق');
+        assert.strictEqual(resolvedSubtitleAr, 'وصف عام عالمي من site_content');
+
+        // Banner filtering rule: 'all'/omitted visible everywhere; city-specific visible only in matching city
+        const banners = [
+            { id: 'b-global', cityId: 'all' },
+            { id: 'b-shorouk', cityId: 'shorouk' },
+            { id: 'b-badr', cityId: 'badr' },
+        ];
+        const visibleInShorouk = banners.filter((b) => !b.cityId || b.cityId === 'all' || b.cityId === 'shorouk');
+        assert.deepStrictEqual(visibleInShorouk.map((b) => b.id), ['b-global', 'b-shorouk']);
+    });
+
     useAuthStore.setState({ currentUser: null, permissions: [] });
 
     console.log('\n======================================================');

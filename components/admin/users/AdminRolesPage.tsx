@@ -111,6 +111,7 @@ const PERMISSION_LABELS: Record<Permission, PermissionMeta> = {
     [Permission.VIEW_SETTINGS]: { ar: 'عرض إعدادات المنصة', en: 'View Settings', category: 'system' },
     [Permission.MANAGE_SETTINGS]: { ar: 'إدارة إعدادات المنصة', en: 'Manage Settings', category: 'system' },
     [Permission.MANAGE_FILTERS]: { ar: 'إدارة خيارات وفلاتر البحث', en: 'Manage Filters', category: 'system' },
+    [Permission.MANAGE_CITIES]: { ar: 'إدارة المدن والبوابات', en: 'Manage City Portals', category: 'system' },
 
     // PARTNER SELF-SERVICE
     [Permission.MANAGE_OWN_PROFILE]: { ar: 'إدارة الملف الشخصي', en: 'Manage Own Profile', category: 'partners' },

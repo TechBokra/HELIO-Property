@@ -17,12 +17,15 @@ import { Card, CardContent } from '../../ui/Card';
 import { BuildingIcon } from '../../ui/Icons';
 import ErrorState from '../../shared/ErrorState';
 import { useCityStore } from '../../../store/useCityStore';
+import { useAuth } from '../../auth/AuthContext';
+import { filterRecordsByCityScope } from '../../../utils/cityScope';
 import { invalidateAllProjectQueries, invalidateAllPropertyQueries } from '../../../utils/queryInvalidation';
 
 const AdminProjectsPage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_admin = t.adminDashboard;
     const queryClient = useQueryClient();
+    const { currentUser } = useAuth();
     const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
     const adminCityScope = useCityStore((s) => s.adminCityScope);
     const cities = useCityStore((s) => s.cities);
@@ -38,9 +41,8 @@ const AdminProjectsPage: React.FC = () => {
 
     const projects = React.useMemo(() => {
         if (!rawProjects) return [];
-        if (adminCityScope === 'all') return rawProjects;
-        return rawProjects.filter(p => (p.cityId || 'heliopolis') === adminCityScope);
-    }, [rawProjects, adminCityScope]);
+        return filterRecordsByCityScope(rawProjects, adminCityScope, currentUser);
+    }, [rawProjects, adminCityScope, currentUser]);
 
     const isLoading = loadingProjects || loadingPartners || loadingProperties;
     const isError = isErrorProjects || isErrorPartners || isErrorProperties;

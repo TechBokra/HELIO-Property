@@ -17,6 +17,7 @@ import { Checkbox } from '../ui/Checkbox';
 import FormField, { inputClasses, selectClasses } from '../ui/FormField';
 import { PATTERNS, MESSAGES, CONFIG } from '../../utils/validation';
 import { uploadFile } from '../../services/upload';
+import { useCityStore } from '../../store/useCityStore';
 
 interface DynamicFormProps {
     slug: string;
@@ -50,6 +51,7 @@ const DynamicForm: FC<DynamicFormProps> = ({
     const { language, t } = useLanguage();
     const isAr = language === 'ar';
     const { showToast } = useToast();
+    const activeCityId = useCityStore((state) => state.activeCityId);
     const [uploading, setUploading] = useState(false);
 
     const { data: formDef, isLoading } = useQuery({
@@ -128,7 +130,10 @@ const DynamicForm: FC<DynamicFormProps> = ({
                 requestType: formDef.requestType,
                 domain: formDef.domain,
                 formData: processedData,
-                contextData,
+                contextData: {
+                    cityId: (contextData?.cityId as string | undefined) || activeCityId || 'heliopolis',
+                    ...contextData,
+                },
             });
         },
         onSuccess: (result) => {
