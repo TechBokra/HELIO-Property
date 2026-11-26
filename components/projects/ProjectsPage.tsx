@@ -8,8 +8,8 @@ import ProjectCardSkeleton from '../shared/ProjectCardSkeleton';
 import ProjectListItem from '../shared/ProjectListItem';
 import ProjectListItemSkeleton from '../shared/ProjectListItemSkeleton';
 import { useQuery } from '@tanstack/react-query';
-import { getAllProjects, filterProjectsByCity } from '../../services/projects';
-import { getAllPartnersForAdmin } from '../../services/partners';
+import { getPublicProjects, filterProjectsByCity } from '../../services/projects';
+import { getPublicPartners } from '../../services/partners';
 import { getProperties } from '../../services/properties';
 import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardContent } from '../ui/Card';
@@ -99,13 +99,13 @@ const ProjectsPage: React.FC = () => {
     isError: isProjectsError,
     refetch: refetchProjects
   } = useQuery<Project[]>({
-    queryKey: ['allProjects', activeCityId],
-    queryFn: () => getAllProjects(activeCityId),
+    queryKey: ['publicProjects', activeCityId],
+    queryFn: () => getPublicProjects(activeCityId),
     staleTime: 1000 * 60 * 5
   });
   const { data: partners } = useQuery<Partner[]>({
-    queryKey: ['allPartnersAdmin'],
-    queryFn: getAllPartnersForAdmin,
+    queryKey: ['publicPartners'],
+    queryFn: () => getPublicPartners(),
     staleTime: 1000 * 60 * 5
   });
   const { data: properties } = useQuery<Property[]>({

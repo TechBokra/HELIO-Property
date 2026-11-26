@@ -16,7 +16,7 @@ import { useToast } from '../shared/ToastContext';
 import SEO from '../shared/SEO';
 import DetailSection from '../shared/DetailSection';
 import PropertyDetailsSkeleton from '../shared/PropertyDetailsSkeleton';
-import { getPartnerById } from '../../services/partners';
+import { getPublicPartnerById } from '../../services/partners';
 import { useLanguage } from '../shared/LanguageContext';
 import { isCommercial, isPropertyPubliclyVisible, canReviewPropertyDraft } from '../../utils/propertyUtils';
 import { Button } from '../ui/Button';
@@ -48,8 +48,8 @@ const PropertyDetailsPage: React.FC = () => {
     });
     
     const { data: partner, isLoading: isLoadingPartner } = useQuery({
-        queryKey: ['partner', property?.partnerId],
-        queryFn: () => getPartnerById(property!.partnerId),
+        queryKey: ['publicPartner', property?.partnerId],
+        queryFn: () => getPublicPartnerById(property!.partnerId),
         enabled: !!property?.partnerId,
     });
     

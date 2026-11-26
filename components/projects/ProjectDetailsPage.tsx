@@ -13,9 +13,9 @@ import ContactOptionsModal from '../shared/ContactOptionsModal';
 import { useToast } from '../shared/ToastContext';
 import SEO from '../shared/SEO';
 import DetailSection from '../shared/DetailSection';
-import { getProjectById } from '../../services/projects';
+import { getPublicProjectById } from '../../services/projects';
 import { getAllAmenities } from '../../services/filters';
-import { getPartnerById } from '../../services/partners';
+import { getPublicPartnerById } from '../../services/partners';
 import { useLanguage } from '../shared/LanguageContext';
 import PropertyCard from '../properties/PropertyCard';
 import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
@@ -40,14 +40,14 @@ const ProjectDetailsPage: React.FC = () => {
     const t_page = t?.propertyDetailsPage || {};
     const { showToast } = useToast();
 
-    const fetchProject = useCallback(() => getProjectById(projectId!), [projectId]);
+    const fetchProject = useCallback(() => getPublicProjectById(projectId!), [projectId]);
     const {
         data: project,
         isLoading: isLoadingProjs,
         isError: isErrorProject,
         refetch: refetchProject
     } = useQuery({
-        queryKey: ['project', projectId],
+        queryKey: ['publicProject', projectId],
         queryFn: fetchProject,
         enabled: !!projectId,
         staleTime: 1000 * 60 * 5
@@ -66,8 +66,8 @@ const ProjectDetailsPage: React.FC = () => {
     });
 
     const { data: developer } = useQuery({
-        queryKey: ['partner', project?.partnerId],
-        queryFn: () => getPartnerById(project!.partnerId),
+        queryKey: ['publicPartner', project?.partnerId],
+        queryFn: () => getPublicPartnerById(project!.partnerId),
         enabled: !!project?.partnerId,
         staleTime: 1000 * 60 * 5
     });

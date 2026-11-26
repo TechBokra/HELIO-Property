@@ -7,6 +7,7 @@ import { requirePermission, requireAnyPermission } from './authGuard';
 import { partnersData } from '../data/partners';
 import { partners as enPartnerLocales } from '../locales/en/partners';
 import { partners as arPartnerLocales } from '../locales/ar/partners';
+import { isNeonCatalogEnabled } from '../utils/catalogSource';
 
 // Helper to construct complete fallback Partner objects
 export const getFallbackPartners = (): Partner[] => {
@@ -199,6 +200,54 @@ export const getPartnerById = async (id: string, options?: { client?: any }): Pr
     } catch {
         return getFallbackPartners().find(p => p.id === id);
     }
+};
+
+export const getPublicPartners = async (options?: { fetchImpl?: typeof fetch; client?: any }): Promise<AdminPartner[]> => {
+    if (!options?.client && isNeonCatalogEnabled()) {
+        const fetchFn = options?.fetchImpl || (typeof fetch === 'function' ? fetch : undefined);
+        if (!fetchFn) {
+            throw new Error('Neon catalog partners endpoint is unreachable.');
+        }
+        const res = await fetchFn('/api/catalog/partners', {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload || !Array.isArray(payload.partners)) {
+            throw new Error(payload?.error || `Failed to load partners from Neon catalog (HTTP ${res.status}).`);
+        }
+        return payload.partners.map(mapPartnerFromDb) as AdminPartner[];
+    }
+
+    return (await getAllPartners(options)) as AdminPartner[];
+};
+
+export const getPublicPartnerById = async (
+    id: string,
+    options?: { fetchImpl?: typeof fetch; client?: any }
+): Promise<Partner | undefined> => {
+    if (!id) return undefined;
+
+    if (!options?.client && isNeonCatalogEnabled()) {
+        const fetchFn = options?.fetchImpl || (typeof fetch === 'function' ? fetch : undefined);
+        if (!fetchFn) {
+            throw new Error('Neon catalog partner endpoint is unreachable.');
+        }
+        const res = await fetchFn(`/api/catalog/partners/${encodeURIComponent(id)}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+        if (res.status === 404) {
+            return undefined;
+        }
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload?.partner) {
+            throw new Error(payload?.error || `Failed to load partner from Neon catalog (HTTP ${res.status}).`);
+        }
+        return mapPartnerFromDb(payload.partner);
+    }
+
+    return getPartnerById(id, options);
 };
 
 export const getPartnerByEmail = async (email: string): Promise<Partner | undefined> => {

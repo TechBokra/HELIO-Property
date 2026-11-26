@@ -4750,6 +4750,357 @@ async function runTests() {
         assert.deepStrictEqual(visibleInShorouk.map((b) => b.id), ['b-global', 'b-shorouk']);
     });
 
+    // ========================================================================
+    // SUITE 15: Neon Read-Only Catalog POC Verification
+    // ========================================================================
+    console.log('\n--- Suite 15: Neon Read-Only Catalog POC Verification ---');
+
+    await test('NEON.1: SQL schema & seed files create partners, projects, properties and seed published + draft + hidden rows', () => {
+        const schemaSql = fs.readFileSync(path.resolve(process.cwd(), 'neon/sql/001_catalog_schema.sql'), 'utf8');
+        const seedSql = fs.readFileSync(path.resolve(process.cwd(), 'neon/sql/002_catalog_seed.sql'), 'utf8');
+
+        assert.match(schemaSql, /CREATE TABLE IF NOT EXISTS public\.partners/i);
+        assert.match(schemaSql, /CREATE TABLE IF NOT EXISTS public\.projects/i);
+        assert.match(schemaSql, /CREATE TABLE IF NOT EXISTS public\.properties/i);
+        assert.match(schemaSql, /REFERENCES public\.partners\(id\)/i);
+        assert.match(schemaSql, /REFERENCES public\.projects\(id\)/i);
+
+        // Seed contains 1 partner, 1 project, and published + draft + hidden properties
+        assert.match(seedSql, /11111111-1111-4111-8111-111111111101/);
+        assert.match(seedSql, /22222222-2222-4222-8222-222222222201/);
+        assert.match(seedSql, /33333333-3333-4333-8333-333333333301/); // published
+        assert.match(seedSql, /33333333-3333-4333-8333-333333333302/); // draft
+        assert.match(seedSql, /33333333-3333-4333-8333-333333333303/); // hidden
+        assert.match(seedSql, /'active',\s*'published'/i);
+        assert.match(seedSql, /'draft',\s*'draft'/i);
+        assert.match(seedSql, /'inactive',\s*'archived'/i);
+    });
+
+    await test('NEON.2: Server read-only API enforces GET-only, server-side visibility in lists and direct links, and hides DB errors cleanly', async () => {
+        const { handleNeonCatalogRequest } = await import('../server/neonCatalogEndpoint');
+
+        // 1. Reject write HTTP methods
+        const postRes = await handleNeonCatalogRequest('POST', '/api/catalog/properties', { connectionString: 'postgres://unused' });
+        assert.strictEqual(postRes.status, 405);
+        assert.strictEqual(postRes.body.code, 'METHOD_NOT_ALLOWED');
+
+        // 2. Missing NEON_DATABASE_URL returns 503 NEON_NOT_CONFIGURED without leaking details
+        const unconfiguredRes = await handleNeonCatalogRequest('GET', '/api/catalog/properties', { connectionString: '' });
+        assert.strictEqual(unconfiguredRes.status, 503);
+        assert.strictEqual(unconfiguredRes.body.code, 'NEON_NOT_CONFIGURED');
+
+        // 3. Mock read-only executor simulating Neon tables with published + draft + hidden rows
+        const partnerRow = {
+            id: '11111111-1111-4111-8111-111111111101',
+            email: 'neon-poc-developer@onlyhelio.example',
+            name_en: 'Helio Gate Developments (Neon POC)',
+            name_ar: 'بوابة هليو للتطوير العقاري',
+            description_en: 'Neon POC Developer',
+            description_ar: 'مطور نيون التجريبي',
+            image_url: 'https://example.com/partner.jpg',
+            type: 'developer',
+            role: 'developer_partner',
+            status: 'active',
+            subscription_plan: 'enterprise',
+            display_type: 'featured',
+            contact_methods: { whatsapp: { enabled: true, number: '201000000101' }, phone: { enabled: true, number: '01000000101' }, form: { enabled: true } },
+            allowed_cities: ['heliopolis', 'shorouk'],
+            created_at: new Date().toISOString(),
+        };
+        const projectRow = {
+            id: '22222222-2222-4222-8222-222222222201',
+            partner_id: partnerRow.id,
+            city_id: 'heliopolis',
+            name_en: 'Al Korba Gardens Residence',
+            name_ar: 'كمبوند حدائق الكوربة الجديدة',
+            description_en: 'Neon compound',
+            description_ar: 'كمبوند نيون',
+            image_url: 'https://example.com/project.jpg',
+            features: [],
+            created_at: new Date().toISOString(),
+        };
+        const baseProp = {
+            partner_id: partnerRow.id,
+            project_id: projectRow.id,
+            city_id: 'heliopolis',
+            address_en: 'New Heliopolis',
+            address_ar: 'هليوبوليس الجديدة',
+            main_image: 'https://example.com/prop.jpg',
+            gallery: [],
+            status: 'For Sale',
+            type: 'Apartment',
+            price: 5400000,
+            area: 210,
+            beds: 3,
+            baths: 3,
+            is_in_compound: true,
+            installments_available: true,
+            finance_available: false,
+            delivery_immediate: false,
+            listing_start_date: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            partner_name_en: partnerRow.name_en,
+            partner_name_ar: partnerRow.name_ar,
+            partner_image_url: partnerRow.image_url,
+            project_name_en: projectRow.name_en,
+            project_name_ar: projectRow.name_ar,
+        };
+        const propertyRows = [
+            { ...baseProp, id: '33333333-3333-4333-8333-333333333301', title_en: 'Published Duplex', title_ar: 'دوبلكس منشور', listing_status: 'active', publication_status: 'published', is_verified: true, verification_status: 'verified' },
+            { ...baseProp, id: '33333333-3333-4333-8333-333333333302', title_en: 'Draft Penthouse', title_ar: 'مسودة', listing_status: 'draft', publication_status: 'draft', is_verified: false, verification_status: 'pending' },
+            { ...baseProp, id: '33333333-3333-4333-8333-333333333303', title_en: 'Hidden Villa', title_ar: 'مخفي', listing_status: 'inactive', publication_status: 'archived', is_verified: true, verification_status: 'verified' },
+        ];
+
+        const executedQueries: { sql: string; params: any[] }[] = [];
+        const mockExecutor = async (sqlText: string, params: any[] = []) => {
+            executedQueries.push({ sql: sqlText, params });
+            const applyPropVisibility = (r: any) =>
+                (r.listing_status === 'active' || r.listing_status === 'sold') &&
+                !['draft', 'pending_review', 'rejected', 'archived'].includes(r.publication_status);
+
+            if (sqlText.includes('FROM public.properties p')) {
+                assert.match(sqlText, /p\.listing_status IN \('active', 'sold'\)/);
+                assert.match(sqlText, /p\.publication_status NOT IN \('draft', 'pending_review', 'rejected', 'archived'\)/);
+                let out = propertyRows.filter(applyPropVisibility);
+                if (sqlText.includes('WHERE p.id = $1')) {
+                    out = out.filter((r) => r.id === params[0]);
+                } else {
+                    if (sqlText.includes('p.project_id = $')) {
+                        const idx = Number(sqlText.match(/p\.project_id = \$(\d+)/)?.[1]) - 1;
+                        out = out.filter((r) => r.project_id === params[idx]);
+                    }
+                    if (sqlText.includes('p.partner_id = $')) {
+                        const idx = Number(sqlText.match(/p\.partner_id = \$(\d+)/)?.[1]) - 1;
+                        out = out.filter((r) => r.partner_id === params[idx]);
+                    }
+                    if (sqlText.includes('LOWER(COALESCE(p.city_id')) {
+                        const idx = Number(sqlText.match(/LOWER\(COALESCE\(p\.city_id[^)]*\)\) = \$(\d+)/)?.[1]) - 1;
+                        out = out.filter((r) => (r.city_id || 'heliopolis').toLowerCase() === params[idx]);
+                    }
+                }
+                return out;
+            }
+            if (sqlText.includes('FROM public.projects pj')) {
+                if (sqlText.includes('WHERE pj.id = $1')) return [projectRow].filter((r) => r.id === params[0]);
+                return [projectRow];
+            }
+            if (sqlText.includes('FROM public.partners pr')) {
+                if (sqlText.includes('WHERE pr.id = $1')) return [partnerRow].filter((r) => r.id === params[0]);
+                return [partnerRow];
+            }
+            return [];
+        };
+
+        const listRes = await handleNeonCatalogRequest('GET', '/api/catalog/properties?cityId=heliopolis', { queryExecutor: mockExecutor });
+        assert.strictEqual(listRes.status, 200);
+        assert.strictEqual(listRes.body.properties.length, 1);
+        assert.strictEqual(listRes.body.properties[0].id, '33333333-3333-4333-8333-333333333301');
+
+        const pubDirect = await handleNeonCatalogRequest('GET', '/api/catalog/properties/33333333-3333-4333-8333-333333333301', { queryExecutor: mockExecutor });
+        assert.strictEqual(pubDirect.status, 200);
+        assert.strictEqual(pubDirect.body.property.id, '33333333-3333-4333-8333-333333333301');
+
+        const draftDirect = await handleNeonCatalogRequest('GET', '/api/catalog/properties/33333333-3333-4333-8333-333333333302', { queryExecutor: mockExecutor });
+        assert.strictEqual(draftDirect.status, 404, 'Draft property direct link must be blocked by server');
+
+        const hiddenDirect = await handleNeonCatalogRequest('GET', '/api/catalog/properties/33333333-3333-4333-8333-333333333303', { queryExecutor: mockExecutor });
+        assert.strictEqual(hiddenDirect.status, 404, 'Hidden property direct link must be blocked by server');
+
+        // 4. Failing Neon query must return 503 NEON_READ_ERROR without exposing Postgres connection strings
+        const failingRes = await handleNeonCatalogRequest('GET', '/api/catalog/properties', {
+            queryExecutor: async () => {
+                throw new Error('password authentication failed for neon://secret-host/db');
+            },
+        });
+        assert.strictEqual(failingRes.status, 503);
+        assert.strictEqual(failingRes.body.code, 'NEON_READ_ERROR');
+        assert.doesNotMatch(JSON.stringify(failingRes), /secret-host|password/i);
+    });
+
+    await test('NEON.3: Explicit Neon mode wires List, Home, Project, Partner, Direct Link and throws on failure with zero fallback', async () => {
+        const { getCatalogDataSource, setCatalogDataSourceOverride } = await import('../utils/catalogSource');
+        const { handleNeonCatalogRequest } = await import('../server/neonCatalogEndpoint');
+        const {
+            getProperties,
+            getPaginatedProperties,
+            getPropertyById,
+            getPropertiesByProjectId,
+            getPublicPropertiesByPartnerId,
+            getAllProperties,
+            invalidatePropertiesCache,
+        } = await import('../services/properties');
+        const { getPublicProjectById } = await import('../services/projects');
+        const { getPublicPartnerById } = await import('../services/partners');
+        const { isListingActive, sanitizePropertyReadError } = await import('../utils/propertyUtils');
+
+        const partnerId = '11111111-1111-4111-8111-111111111101';
+        const projectId = '22222222-2222-4222-8222-222222222201';
+        const publishedId = '33333333-3333-4333-8333-333333333301';
+        const draftId = '33333333-3333-4333-8333-333333333302';
+        const hiddenId = '33333333-3333-4333-8333-333333333303';
+
+        const partnerRow = {
+            id: partnerId,
+            email: 'neon@onlyhelio.example',
+            name_en: 'Helio Gate Developments (Neon POC)',
+            name_ar: 'بوابة هليو للتطوير العقاري',
+            type: 'developer',
+            role: 'developer_partner',
+            status: 'active',
+            allowed_cities: ['heliopolis'],
+            contact_methods: { whatsapp: { enabled: true, number: '201000000101' }, phone: { enabled: true, number: '01000000101' }, form: { enabled: true } },
+            created_at: new Date().toISOString(),
+        };
+        const projectRow = {
+            id: projectId,
+            partner_id: partnerId,
+            city_id: 'heliopolis',
+            name_en: 'Al Korba Gardens Residence',
+            name_ar: 'كمبوند حدائق الكوربة الجديدة',
+            features: [],
+            created_at: new Date().toISOString(),
+        };
+        const allNeonProps = [
+            {
+                id: publishedId, partner_id: partnerId, project_id: projectId, city_id: 'heliopolis',
+                title_en: 'Corner Garden Duplex', title_ar: 'دوبلكس بحديقة', status: 'For Sale', type: 'Apartment',
+                price: 5400000, area: 210, beds: 3, baths: 3, listing_status: 'active', publication_status: 'published',
+                availability_status: 'available', verification_status: 'verified', is_verified: true,
+                listing_start_date: new Date().toISOString(), created_at: new Date().toISOString(),
+                partner_name_en: partnerRow.name_en, partner_name_ar: partnerRow.name_ar,
+                project_name_en: projectRow.name_en, project_name_ar: projectRow.name_ar,
+            },
+            {
+                id: draftId, partner_id: partnerId, project_id: projectId, city_id: 'heliopolis',
+                title_en: 'Draft Unit', title_ar: 'مسودة', status: 'For Sale', type: 'Apartment',
+                price: 6800000, area: 245, beds: 4, baths: 3, listing_status: 'draft', publication_status: 'draft',
+                created_at: new Date().toISOString(),
+            },
+            {
+                id: hiddenId, partner_id: partnerId, project_id: projectId, city_id: 'heliopolis',
+                title_en: 'Hidden Villa', title_ar: 'مخفي', status: 'For Sale', type: 'Villa',
+                price: 11200000, area: 360, beds: 5, baths: 4, listing_status: 'inactive', publication_status: 'archived',
+                created_at: new Date().toISOString(),
+            },
+        ];
+
+        const makeMockFetch = (shouldFail: boolean): typeof fetch => {
+            return (async (input: RequestInfo | URL) => {
+                const url = String(input);
+                if (shouldFail) {
+                    const failRes = await handleNeonCatalogRequest('GET', url, {
+                        queryExecutor: async () => { throw new Error('Neon connection refused'); },
+                    });
+                    return new Response(JSON.stringify(failRes.body), { status: failRes.status });
+                }
+                const res = await handleNeonCatalogRequest('GET', url, {
+                    queryExecutor: async (sqlText, params = []) => {
+                        const visible = (r: any) =>
+                            (r.listing_status === 'active' || r.listing_status === 'sold') &&
+                            !['draft', 'pending_review', 'rejected', 'archived'].includes(r.publication_status);
+                        if (sqlText.includes('FROM public.properties p')) {
+                            if (sqlText.includes('WHERE p.id = $1')) {
+                                return allNeonProps.filter((r) => visible(r) && r.id === params[0]);
+                            }
+                            return allNeonProps.filter(visible);
+                        }
+                        if (sqlText.includes('FROM public.projects pj')) {
+                            return sqlText.includes('WHERE pj.id = $1') ? [projectRow].filter((r) => r.id === params[0]) : [projectRow];
+                        }
+                        if (sqlText.includes('FROM public.partners pr')) {
+                            return sqlText.includes('WHERE pr.id = $1') ? [partnerRow].filter((r) => r.id === params[0]) : [partnerRow];
+                        }
+                        return [];
+                    },
+                });
+                return new Response(JSON.stringify(res.body), { status: res.status });
+            }) as any;
+        };
+
+        try {
+            // Default without explicit setting stays on Supabase
+            setCatalogDataSourceOverride(null);
+            assert.strictEqual(getCatalogDataSource(), 'supabase');
+
+            // Enable Neon explicitly
+            setCatalogDataSourceOverride('neon');
+            invalidatePropertiesCache();
+            const okFetch = makeMockFetch(false);
+
+            // 1. Catalog List (/properties)
+            const listResult = await getPaginatedProperties({
+                page: 1,
+                limit: 12,
+                filters: { view: 'grid' } as any,
+                cityId: 'heliopolis',
+                fetchImpl: okFetch,
+            });
+            assert.deepStrictEqual(listResult.properties.map((p) => p.id), [publishedId]);
+
+            // 2. Home LatestProperties (useProperties + isListingActive)
+            const homeAll = await getProperties({ cityId: 'heliopolis', fetchImpl: okFetch, forceRefresh: true });
+            const homeLatest = homeAll.filter(isListingActive);
+            assert.deepStrictEqual(homeLatest.map((p) => p.id), [publishedId]);
+
+            // 3. Project Details (/projects/:id)
+            const loadedProject = await getPublicProjectById(projectId, { fetchImpl: okFetch });
+            assert.strictEqual(loadedProject?.id, projectId);
+            const projProps = await getPropertiesByProjectId(projectId, { publicOnly: true, fetchImpl: okFetch });
+            assert.deepStrictEqual(projProps.map((p) => p.id), [publishedId]);
+
+            // 4. Partner Profile (/partners/:id)
+            const loadedPartner = await getPublicPartnerById(partnerId, { fetchImpl: okFetch });
+            assert.strictEqual(loadedPartner?.id, partnerId);
+            const partnerProps = await getPublicPropertiesByPartnerId(partnerId, { fetchImpl: okFetch });
+            assert.deepStrictEqual(partnerProps.map((p) => p.id), [publishedId]);
+
+            // 5. Direct Link (/properties/:id) -> published visible, draft & hidden return undefined
+            const directPublished = await getPropertyById(publishedId, { fetchImpl: okFetch });
+            assert.strictEqual(directPublished?.id, publishedId);
+            assert.strictEqual(directPublished?.partnerName, partnerRow.name_en);
+            assert.strictEqual(directPublished?.projectName?.en, projectRow.name_en);
+            assert.strictEqual(await getPropertyById(draftId, { fetchImpl: okFetch }), undefined);
+            assert.strictEqual(await getPropertyById(hiddenId, { fetchImpl: okFetch }), undefined);
+
+            // 6. When Neon fails, ALL public reads throw loudly with sanitized Neon diagnostic code (zero silent fallback)
+            invalidatePropertiesCache();
+            const failFetch = makeMockFetch(true);
+            let propsErr: any;
+            try {
+                await getProperties({ cityId: 'heliopolis', fetchImpl: failFetch, forceRefresh: true });
+            } catch (e) {
+                propsErr = e;
+            }
+            assert.ok(propsErr, 'getProperties must throw when Neon fails instead of falling back');
+            assert.strictEqual(sanitizePropertyReadError(propsErr, 'ar').diagnosticCode, 'NEON-QRY-07');
+
+            await assert.rejects(() => getPropertyById(publishedId, { fetchImpl: failFetch }));
+            await assert.rejects(() => getPublicProjectById(projectId, { fetchImpl: failFetch }));
+            await assert.rejects(() => getPublicPartnerById(partnerId, { fetchImpl: failFetch }));
+
+            // 7. Admin/operational getAllProperties remains bound to Supabase client even in Neon POC mode
+            const adminDb = createIsolatedCatalogDb();
+            await adminDb.from('properties').insert({
+                id: 'supa-admin-draft',
+                partner_id: partnerId,
+                city_id: 'heliopolis',
+                title_ar: 'مسودة إدارة',
+                title_en: 'Admin Draft',
+                status: 'For Sale',
+                type: 'Apartment',
+                price: 1000000,
+                area: 100,
+                listing_status: 'draft',
+                created_at: new Date().toISOString(),
+            });
+            const adminRows = await getAllProperties({ client: adminDb });
+            assert.deepStrictEqual(adminRows.map((p) => p.id), ['supa-admin-draft']);
+        } finally {
+            setCatalogDataSourceOverride(null);
+            invalidatePropertiesCache();
+        }
+    });
+
     useAuthStore.setState({ currentUser: null, permissions: [] });
 
     console.log('\n======================================================');

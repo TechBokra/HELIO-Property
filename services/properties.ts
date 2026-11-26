@@ -13,6 +13,7 @@ import {
 import { filterProperties } from '../utils/propertyFilters';
 import { isPropertyPubliclyVisible } from '../utils/propertyUtils';
 import { isDemoModeEnabled } from '../utils/demoMode';
+import { getCatalogDataSource, isNeonCatalogEnabled } from '../utils/catalogSource';
 import { propertiesData } from '../data/properties';
 import { requireAnyPermission } from './authGuard';
 import { useAuthStore } from '../store/useAuthStore';
@@ -21,6 +22,8 @@ export interface PropertyQueryOptions {
     cityId?: string;
     publicOnly?: boolean;
     forceRefresh?: boolean;
+    forceSupabase?: boolean;
+    fetchImpl?: typeof fetch;
     client?: any;
 }
 
@@ -48,6 +51,8 @@ const parsePropertyQueryOptions = (cityIdOrOptions?: string | PropertyQueryOptio
         ('cityId' in cityIdOrOptions ||
             'publicOnly' in cityIdOrOptions ||
             'forceRefresh' in cityIdOrOptions ||
+            'forceSupabase' in cityIdOrOptions ||
+            'fetchImpl' in cityIdOrOptions ||
             'client' in cityIdOrOptions)
     ) {
         return cityIdOrOptions as PropertyQueryOptions;
@@ -102,6 +107,80 @@ const createDbReadError = (error: any, fallbackMessage: string): Error => {
     if (error?.hint) err.hint = String(error.hint);
     if (typeof error?.status === 'number') err.status = error.status;
     return err;
+};
+
+const mapNeonPropertyRow = (row: any): Property => {
+    const mapped = mapPropertyFromDb(row);
+    if (row.partner_name_en || row.partner_name_ar) {
+        mapped.partnerName = row.partner_name_en || row.partner_name_ar;
+    }
+    if (row.partner_image_url) {
+        mapped.partnerImageUrl = row.partner_image_url;
+    }
+    if (row.project_name_en || row.project_name_ar) {
+        mapped.projectName = {
+            en: row.project_name_en || row.project_name_ar,
+            ar: row.project_name_ar || row.project_name_en,
+        };
+    }
+    return mapped;
+};
+
+const fetchNeonCatalogJson = async (
+    endpoint: string,
+    options?: { fetchImpl?: typeof fetch; allowNotFound?: boolean }
+): Promise<{ status: number; data: any } | null> => {
+    const fetchFn = options?.fetchImpl || (typeof fetch === 'function' ? fetch : undefined);
+    if (!fetchFn) {
+        throw createDbReadError(
+            { code: 'NEON_READ_ERROR', message: 'Fetch runtime unavailable for Neon catalog read.' },
+            'Failed to reach Neon catalog API.'
+        );
+    }
+
+    let response: Response;
+    try {
+        response = await fetchFn(endpoint, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+    } catch (networkErr: any) {
+        throw createDbReadError(
+            { code: 'NEON_READ_ERROR', message: networkErr?.message || 'Failed to fetch Neon catalog API.' },
+            'Failed to reach Neon catalog API.'
+        );
+    }
+
+    let payload: any = null;
+    try {
+        payload = await response.json();
+    } catch {
+        payload = null;
+    }
+
+    if (response.status === 404 && options?.allowNotFound) {
+        return null;
+    }
+
+    if (!response.ok) {
+        throw createDbReadError(
+            {
+                code: payload?.code || 'NEON_READ_ERROR',
+                status: response.status,
+                message: payload?.error || `Neon catalog API returned HTTP ${response.status}`,
+            },
+            'Failed to fetch public properties from Neon catalog.'
+        );
+    }
+
+    if (!payload || typeof payload !== 'object') {
+        throw createDbReadError(
+            { code: 'NEON_READ_ERROR', status: response.status, message: 'Invalid Neon catalog API response.' },
+            'Invalid response from Neon catalog API.'
+        );
+    }
+
+    return { status: response.status, data: payload };
 };
 
 export const generatePropertyReference = (id: string): string => {
@@ -473,7 +552,7 @@ const hydratePropertiesBatch = async (properties: Property[], options?: { client
 let cachedAllProperties: { data: Property[]; timestamp: number } | null = null;
 let inFlightAllPropertiesPromise: Promise<Property[]> | null = null;
 
-let cachedPublicProperties: { data: Property[]; timestamp: number } | null = null;
+let cachedPublicProperties: { data: Property[]; timestamp: number; source: string; cityKey: string } | null = null;
 let inFlightPublicPropertiesPromise: Promise<Property[]> | null = null;
 
 const PROPERTIES_CACHE_TTL = 90 * 1000; // 90 seconds in-memory cache
@@ -555,9 +634,45 @@ export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOpti
         );
     }
 
+    const useNeon = !opts.client && !opts.forceSupabase && isNeonCatalogEnabled();
+    const activeSource = useNeon ? 'neon' : getCatalogDataSource();
+    const cityKey = cityId && cityId !== 'all' && cityId !== 'hub' ? cityId.trim().toLowerCase() : 'all';
+
+    if (useNeon) {
+        const useCache = !opts.forceRefresh && !opts.fetchImpl;
+        const now = Date.now();
+        if (
+            useCache &&
+            cachedPublicProperties &&
+            cachedPublicProperties.source === 'neon' &&
+            cachedPublicProperties.cityKey === cityKey &&
+            now - cachedPublicProperties.timestamp < PROPERTIES_CACHE_TTL
+        ) {
+            return filterPropertiesByCity(cachedPublicProperties.data, cityId);
+        }
+
+        const qs = cityKey !== 'all' ? `?cityId=${encodeURIComponent(cityKey)}` : '';
+        const result = await fetchNeonCatalogJson(`/api/catalog/properties${qs}`, { fetchImpl: opts.fetchImpl });
+        const rows = Array.isArray(result?.data?.properties) ? result!.data.properties : [];
+        const visible = rows
+            .map(mapNeonPropertyRow)
+            .filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true }));
+
+        if (!opts.fetchImpl) {
+            cachedPublicProperties = { data: visible, timestamp: Date.now(), source: 'neon', cityKey };
+        }
+        return filterPropertiesByCity(visible, cityId);
+    }
+
     const useCache = !opts.client && !opts.forceRefresh;
     const now = Date.now();
-    if (useCache && cachedPublicProperties && now - cachedPublicProperties.timestamp < PROPERTIES_CACHE_TTL) {
+    if (
+        useCache &&
+        cachedPublicProperties &&
+        cachedPublicProperties.source === activeSource &&
+        cachedPublicProperties.cityKey === 'all' &&
+        now - cachedPublicProperties.timestamp < PROPERTIES_CACHE_TTL
+    ) {
         return filterPropertiesByCity(cachedPublicProperties.data, cityId);
     }
 
@@ -579,7 +694,7 @@ export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOpti
             .filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true }));
         const hydrated = await hydratePropertiesBatch(rawProperties, { client: opts.client });
         if (!opts.client) {
-            cachedPublicProperties = { data: hydrated, timestamp: Date.now() };
+            cachedPublicProperties = { data: hydrated, timestamp: Date.now(), source: activeSource, cityKey: 'all' };
         }
         return hydrated;
     };
@@ -609,7 +724,7 @@ export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOpti
  */
 export const getPropertiesByPartnerId = async (
     partnerId: string,
-    options?: { publicOnly?: boolean; client?: any }
+    options?: { publicOnly?: boolean; forceSupabase?: boolean; fetchImpl?: typeof fetch; client?: any }
 ): Promise<Property[]> => {
     if (!partnerId) return [];
     const publicOnly = options?.publicOnly ?? false;
@@ -617,6 +732,17 @@ export const getPropertiesByPartnerId = async (
     if (isDemoModeEnabled() && !options?.client) {
         const demoProps = propertiesData.filter((p) => p.partnerId === partnerId);
         return publicOnly ? demoProps.filter((p) => isPropertyPubliclyVisible(p, { includeSold: true })) : demoProps;
+    }
+
+    if (publicOnly && !options?.client && !options?.forceSupabase && isNeonCatalogEnabled()) {
+        const result = await fetchNeonCatalogJson(
+            `/api/catalog/properties?partnerId=${encodeURIComponent(partnerId)}`,
+            { fetchImpl: options?.fetchImpl }
+        );
+        const rows = Array.isArray(result?.data?.properties) ? result!.data.properties : [];
+        return rows
+            .map(mapNeonPropertyRow)
+            .filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true }));
     }
 
     const dbClient = getReadClient(options?.client, publicOnly);
@@ -639,9 +765,13 @@ export const getPropertiesByPartnerId = async (
 
 export const getPublicPropertiesByPartnerId = async (
     partnerId: string,
-    options?: { client?: any }
+    options?: { fetchImpl?: typeof fetch; client?: any }
 ): Promise<Property[]> => {
-    return getPropertiesByPartnerId(partnerId, { publicOnly: true, client: options?.client });
+    return getPropertiesByPartnerId(partnerId, {
+        publicOnly: true,
+        fetchImpl: options?.fetchImpl,
+        client: options?.client,
+    });
 };
 
 /**
@@ -650,7 +780,7 @@ export const getPublicPropertiesByPartnerId = async (
  */
 export const getPropertiesByProjectId = async (
     projectId: string,
-    options?: { publicOnly?: boolean; client?: any }
+    options?: { publicOnly?: boolean; forceSupabase?: boolean; fetchImpl?: typeof fetch; client?: any }
 ): Promise<Property[]> => {
     if (!projectId) return [];
     const publicOnly = options?.publicOnly ?? true;
@@ -658,6 +788,17 @@ export const getPropertiesByProjectId = async (
     if (isDemoModeEnabled() && !options?.client) {
         const demoProps = propertiesData.filter((p) => p.projectId === projectId);
         return publicOnly ? demoProps.filter((p) => isPropertyPubliclyVisible(p, { includeSold: true })) : demoProps;
+    }
+
+    if (publicOnly && !options?.client && !options?.forceSupabase && isNeonCatalogEnabled()) {
+        const result = await fetchNeonCatalogJson(
+            `/api/catalog/properties?projectId=${encodeURIComponent(projectId)}`,
+            { fetchImpl: options?.fetchImpl }
+        );
+        const rows = Array.isArray(result?.data?.properties) ? result!.data.properties : [];
+        return rows
+            .map(mapNeonPropertyRow)
+            .filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true }));
     }
 
     const dbClient = getReadClient(options?.client, publicOnly);
@@ -685,12 +826,24 @@ export const getPropertiesByProjectId = async (
  */
 export const getPropertyById = async (
     id: string,
-    options?: { client?: any }
+    options?: { forceSupabase?: boolean; fetchImpl?: typeof fetch; client?: any }
 ): Promise<Property | undefined> => {
     if (!id) return undefined;
 
     if (isDemoModeEnabled() && !options?.client) {
         return propertiesData.find((p) => p.id === id);
+    }
+
+    if (!options?.client && !options?.forceSupabase && isNeonCatalogEnabled()) {
+        const result = await fetchNeonCatalogJson(
+            `/api/catalog/properties/${encodeURIComponent(id)}`,
+            { fetchImpl: options?.fetchImpl, allowNotFound: true }
+        );
+        if (!result || !result.data?.property) {
+            return undefined;
+        }
+        const mapped = mapNeonPropertyRow(result.data.property);
+        return isPropertyPubliclyVisible(mapped, { includeSold: true }) ? mapped : undefined;
     }
 
     const dbClient = getReadClient(options?.client, false);
@@ -733,9 +886,14 @@ export const getPaginatedProperties = async (options: {
     filters: PropertyFiltersType;
     disablePagination?: boolean;
     cityId?: string;
+    fetchImpl?: typeof fetch;
     client?: any;
 }): Promise<{ properties: Property[]; total: number }> => {
-    const allProps = await getProperties({ cityId: options.cityId, client: options.client });
+    const allProps = await getProperties({
+        cityId: options.cityId,
+        fetchImpl: options.fetchImpl,
+        client: options.client,
+    });
     const filtered = filterProperties(allProps, options.filters);
 
     const total = filtered.length;
@@ -1011,7 +1169,7 @@ export const updateProperty = async (
 
     const dbClient = options?.client || supabase;
     const now = new Date().toISOString();
-    const existing = await getPropertyById(propertyId, { client: options?.client }).catch(() => undefined);
+    const existing = await getPropertyById(propertyId, { client: options?.client, forceSupabase: true }).catch(() => undefined);
 
     const existingMeta = (existing as any)?.installments_info?._meta || {
         cityId: existing?.cityId,

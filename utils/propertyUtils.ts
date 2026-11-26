@@ -124,6 +124,12 @@ export const sanitizePropertyReadError = (
     ) {
         category = 'network';
         diagnosticCode = 'PROP-NET-01';
+    } else if (rawCode === 'NEON_NOT_CONFIGURED') {
+        category = 'schema';
+        diagnosticCode = 'NEON-CFG-06';
+    } else if (rawCode === 'NEON_READ_ERROR') {
+        category = 'query';
+        diagnosticCode = 'NEON-QRY-07';
     } else if (
         errName === 'AbortError' ||
         rawCode === '57014' ||

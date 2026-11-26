@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { handleAdminCredentialsRequest } from './server/credentialsEndpoint';
+import { handleNeonCatalogRequest } from './server/neonCatalogEndpoint';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -163,6 +164,28 @@ function cloudinaryServerProxyPlugin() {
                             res.end(JSON.stringify({ error: err?.message || 'Server error' }));
                         }
                     });
+                    return;
+                }
+
+                // --- Read-Only Neon Catalog POC API (/api/catalog/*) ---
+                if (req.url && req.url.startsWith('/api/catalog/')) {
+                    handleNeonCatalogRequest(req.method, req.url, {
+                        connectionString: process.env.NEON_DATABASE_URL,
+                    })
+                        .then((result) => {
+                            if (result.status === 405) {
+                                res.setHeader('Allow', ['GET']);
+                            }
+                            res.statusCode = result.status;
+                            res.setHeader('Content-Type', 'application/json');
+                            res.setHeader('Cache-Control', 'no-store');
+                            res.end(JSON.stringify(result.body));
+                        })
+                        .catch(() => {
+                            res.statusCode = 503;
+                            res.setHeader('Content-Type', 'application/json');
+                            res.end(JSON.stringify({ error: 'Neon catalog unavailable', code: 'NEON_READ_ERROR' }));
+                        });
                     return;
                 }
 

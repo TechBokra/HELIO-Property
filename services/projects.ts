@@ -3,11 +3,13 @@ import { Permission, type Project } from '../types';
 import { projectsData } from '../data/projects';
 import { requireAnyPermission } from './authGuard';
 import { isDemoModeEnabled } from '../utils/demoMode';
+import { isNeonCatalogEnabled } from '../utils/catalogSource';
 import { useAuthStore } from '../store/useAuthStore';
 
 export interface ProjectQueryOptions {
     cityId?: string;
     forceRefresh?: boolean;
+    fetchImpl?: typeof fetch;
     client?: any;
 }
 
@@ -31,7 +33,10 @@ const parseProjectQueryOptions = (cityIdOrContext?: string | ProjectQueryOptions
     if (
         cityIdOrContext &&
         typeof cityIdOrContext === 'object' &&
-        ('cityId' in cityIdOrContext || 'forceRefresh' in cityIdOrContext || 'client' in cityIdOrContext)
+        ('cityId' in cityIdOrContext ||
+            'forceRefresh' in cityIdOrContext ||
+            'fetchImpl' in cityIdOrContext ||
+            'client' in cityIdOrContext)
     ) {
         return cityIdOrContext as ProjectQueryOptions;
     }
@@ -229,6 +234,67 @@ export const getProjectById = async (id: string, options?: { client?: any }): Pr
     }
 
     return mapProjectFromDb(data);
+};
+
+export const getPublicProjects = async (cityIdOrOptions?: string | ProjectQueryOptions | unknown): Promise<Project[]> => {
+    const opts = parseProjectQueryOptions(cityIdOrOptions);
+    const cityId = opts.cityId;
+
+    if (isDemoModeEnabled() && !opts.client) {
+        return filterProjectsByCity(projectsData, cityId);
+    }
+
+    if (!opts.client && isNeonCatalogEnabled()) {
+        const fetchFn = opts.fetchImpl || (typeof fetch === 'function' ? fetch : undefined);
+        if (!fetchFn) {
+            throw new Error('Neon catalog projects endpoint is unreachable.');
+        }
+        const cityKey = cityId && cityId !== 'all' && cityId !== 'hub' ? cityId.trim().toLowerCase() : '';
+        const qs = cityKey ? `?cityId=${encodeURIComponent(cityKey)}` : '';
+        const res = await fetchFn(`/api/catalog/projects${qs}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload || !Array.isArray(payload.projects)) {
+            throw new Error(payload?.error || `Failed to load projects from Neon catalog (HTTP ${res.status}).`);
+        }
+        return filterProjectsByCity(payload.projects.map(mapProjectFromDb), cityId);
+    }
+
+    return getAllProjects(cityIdOrOptions);
+};
+
+export const getPublicProjectById = async (
+    id: string,
+    options?: { fetchImpl?: typeof fetch; client?: any }
+): Promise<Project | undefined> => {
+    if (!id) return undefined;
+
+    if (isDemoModeEnabled() && !options?.client) {
+        return projectsData.find((p) => p.id === id);
+    }
+
+    if (!options?.client && isNeonCatalogEnabled()) {
+        const fetchFn = options?.fetchImpl || (typeof fetch === 'function' ? fetch : undefined);
+        if (!fetchFn) {
+            throw new Error('Neon catalog project endpoint is unreachable.');
+        }
+        const res = await fetchFn(`/api/catalog/projects/${encodeURIComponent(id)}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+        if (res.status === 404) {
+            return undefined;
+        }
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload?.project) {
+            throw new Error(payload?.error || `Failed to load project from Neon catalog (HTTP ${res.status}).`);
+        }
+        return mapProjectFromDb(payload.project);
+    }
+
+    return getProjectById(id, options);
 };
 
 export const getProjectsByPartnerId = async (partnerId: string, options?: { client?: any }): Promise<Project[]> => {

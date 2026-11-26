@@ -7,7 +7,7 @@ import PropertyCard from '../properties/PropertyCard';
 import { getPortfolioByPartnerId } from '../../services/portfolio';
 import { getPublicPropertiesByPartnerId } from '../../services/properties';
 import { useQuery } from '@tanstack/react-query';
-import { getPartnerById } from '../../services/partners';
+import { getPublicPartnerById } from '../../services/partners';
 import { useLanguage } from '../shared/LanguageContext';
 import { WhatsAppIcon, ShareIcon, PhoneIcon } from '../ui/Icons';
 import { useToast } from '../shared/ToastContext';
@@ -56,8 +56,8 @@ const PartnerProfilePage: React.FC = () => {
         isError: isErrorPartner,
         refetch: refetchPartner
     } = useQuery({
-        queryKey: ['partner', partnerId],
-        queryFn: () => getPartnerById(partnerId!),
+        queryKey: ['publicPartner', partnerId],
+        queryFn: () => getPublicPartnerById(partnerId!),
         enabled: !!partnerId
     });
 

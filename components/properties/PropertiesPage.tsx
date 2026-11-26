@@ -11,8 +11,8 @@ import PropertyListItem from './PropertyListItem';
 import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
 import PropertyListItemSkeleton from '../shared/PropertyListItemSkeleton';
 import PropertyInquiryModal from '../shared/PropertyInquiryModal';
-import { getAllProjects } from '../../services/projects';
-import { getAllPartnersForAdmin } from '../../services/partners';
+import { getPublicProjects } from '../../services/projects';
+import { getPublicPartners } from '../../services/partners';
 import { getAllPropertyTypes, getAllFinishingStatuses, getAllAmenities } from '../../services/filters';
 import { getPaginatedProperties } from '../../services/properties';
 import { usePropertyFilters } from '../../hooks/usePropertyFilters';
@@ -39,13 +39,13 @@ const PropertiesPage: React.FC = () => {
     
     // Fetch dependencies (dropdown options) with 10-minute cache
     const { data: projects } = useQuery({ 
-        queryKey: ['allProjects', activeCityId], 
-        queryFn: () => getAllProjects(activeCityId),
+        queryKey: ['publicProjects', activeCityId], 
+        queryFn: () => getPublicProjects(activeCityId),
         staleTime: 1000 * 60 * 10
     });
     const { data: partners } = useQuery({ 
-        queryKey: ['allPartnersAdmin'], 
-        queryFn: getAllPartnersForAdmin,
+        queryKey: ['publicPartners'], 
+        queryFn: () => getPublicPartners(),
         staleTime: 1000 * 60 * 10
     });
     const { data: propertyTypes } = useQuery({ 
