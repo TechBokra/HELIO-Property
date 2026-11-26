@@ -3328,6 +3328,28 @@ async function runTests() {
         assert.strictEqual(canReviewPropertyDraft(helioDraft, contentManager), false, 'Non-property admin role must not review draft');
         assert.strictEqual(canReviewPropertyDraft(helioDraft, superAdmin), true, 'Super admin reviews draft across cities');
         assert.strictEqual(canUserViewPropertyDetails(helioDraft, null), false, 'Anonymous visitor blocked from draft');
+
+        // Visitor-facing error sanitization strips internal Supabase/Postgres/table/column details
+        const { sanitizePropertyReadError } = await import('../utils/propertyUtils');
+        const permSanitized = sanitizePropertyReadError(
+            { code: '42501', message: 'permission denied for table properties on supabase xyyvgpchkznznwbxbgrp' },
+            'ar'
+        );
+        assert.strictEqual(permSanitized.diagnosticCode, 'PROP-AUTH-03');
+        assert.doesNotMatch(permSanitized.visitorMessage, /properties|supabase|42501|permission denied|xyyvgpchkznznwbxbgrp/i);
+        assert.ok(permSanitized.visitorMessage.includes('PROP-AUTH-03'));
+
+        const schemaSanitized = sanitizePropertyReadError(
+            { code: 'PGRST205', message: "Could not find the table 'public.cities' in the schema cache" },
+            'en'
+        );
+        assert.strictEqual(schemaSanitized.diagnosticCode, 'PROP-SCH-04');
+        assert.doesNotMatch(schemaSanitized.visitorMessage, /cities|schema cache|pgrst205|supabase|public\./i);
+        assert.ok(schemaSanitized.visitorMessage.includes('PROP-SCH-04'));
+
+        const netSanitized = sanitizePropertyReadError(new Error('Failed to fetch'), 'ar');
+        assert.strictEqual(netSanitized.diagnosticCode, 'PROP-NET-01');
+        assert.doesNotMatch(netSanitized.visitorMessage, /failed to fetch/i);
     });
 
     // ========================================================================

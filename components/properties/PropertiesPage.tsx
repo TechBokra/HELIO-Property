@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 // FIX: Imported 'keepPreviousData' for use with TanStack Query v5's placeholderData option.
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import SEO from '../shared/SEO';
@@ -19,6 +19,7 @@ import { usePropertyFilters } from '../../hooks/usePropertyFilters';
 import Pagination from '../shared/Pagination';
 import { useCityStore } from '../../store/useCityStore';
 import ErrorState from '../shared/ErrorState';
+import { sanitizePropertyReadError } from '../../utils/propertyUtils';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -99,27 +100,16 @@ const PropertiesPage: React.FC = () => {
     const totalProperties = propertiesData?.total || 0;
     const totalPages = Math.ceil(totalProperties / ITEMS_PER_PAGE);
 
-    const errorMessageDetail = useMemo(() => {
+    const sanitizedError = useMemo(() => {
         if (!isPropsError || !propsError) return null;
-        const raw = (propsError as any)?.message ? String((propsError as any).message) : '';
-        const isNetwork = /failed to fetch|networkerror|fetch failed|load failed|timeout|err_network/i.test(raw);
-        if (language === 'ar') {
-            if (isNetwork) {
-                return raw
-                    ? `تعذر الاتصال بقاعدة البيانات (${raw}). يرجى التحقق من اتصال الإنترنت ثم إعادة المحاولة.`
-                    : 'تعذر الاتصال بقاعدة البيانات. يرجى التحقق من اتصال الإنترنت ثم إعادة المحاولة.';
-            }
-            return raw
-                ? `فشل استعلام قراءة العقارات: ${raw}`
-                : 'حدث خطأ أثناء تنفيذ استعلام قراءة العقارات. يرجى إعادة المحاولة.';
-        }
-        if (isNetwork) {
-            return raw
-                ? `Database connection error (${raw}). Please check your internet connection and try again.`
-                : 'Database connection error. Please check your connection and try again.';
-        }
-        return raw ? `Property query error: ${raw}` : 'Failed to execute properties read query. Please try again.';
+        return sanitizePropertyReadError(propsError, language);
     }, [isPropsError, propsError, language]);
+
+    useEffect(() => {
+        if (sanitizedError) {
+            console.error('[PropertiesPage] Catalog read failed:', sanitizedError.diagnosticCode);
+        }
+    }, [sanitizedError]);
 
     // This logic was incorrect in the original file, it should depend on filterControls.view
     const gridClasses = filterControls.view === 'list' 
@@ -184,8 +174,8 @@ const PropertiesPage: React.FC = () => {
                     </div>
                 ) : isPropsError ? (
                     <ErrorState
-                        title={language === 'ar' ? 'حدث خطأ أثناء تحميل العقارات' : 'Failed to load properties'}
-                        message={errorMessageDetail || (language === 'ar' ? 'يرجى التحقق من اتصالك بقاعدة البيانات ثم إعادة المحاولة.' : 'Please check your connection and try again.')}
+                        title={sanitizedError?.visitorTitle || (language === 'ar' ? 'حدث خطأ أثناء تحميل العقارات' : 'Unable to load properties')}
+                        message={sanitizedError?.visitorMessage || (language === 'ar' ? 'تعذر عرض قائمة العقارات مؤقتاً. يرجى إعادة المحاولة بعد قليل.' : 'The property catalog is temporarily unavailable. Please try again shortly.')}
                         retryLabel={language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
                         onRetry={() => refetchProps()}
                         className="max-w-lg mx-auto py-12"
