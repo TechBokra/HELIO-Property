@@ -217,7 +217,7 @@ const PropertyCard = memo<PropertyCardProps>((props) => {
                 <AreaIcon className="w-5 h-5 text-gray-400" />
                 <span className="text-sm font-medium">{area} {t.propertyCard.area}</span>
             </div>
-            {floor !== undefined && (type.en === 'Apartment' || type.en === 'Commercial') && (
+            {floor !== undefined && floor !== null && (type.en === 'Apartment' || type.en === 'Commercial') && (
                  <div className="flex items-center gap-2" title={`${floor} ${t.propertyCard.floor}`}>
                     <FloorIcon className="w-5 h-5 text-gray-400" />
                     <span className="text-sm font-medium">{floor}</span>

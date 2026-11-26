@@ -428,13 +428,23 @@ export const mapPropertyFromDb = (row: any): Property => {
         type: {
             en: row.type || 'Apartment',
             ar:
-                row.type === 'Apartment'
-                    ? 'شقة'
-                    : row.type === 'Villa'
-                        ? 'فيلا'
-                        : row.type === 'Commercial'
-                            ? 'تجاري'
-                            : 'أرض',
+                (
+                    {
+                        Apartment: 'شقة',
+                        Villa: 'فيلا',
+                        Commercial: 'تجاري',
+                        Land: 'أرض',
+                        Duplex: 'دوبلكس',
+                        Studio: 'استوديو',
+                        Penthouse: 'بنتهاوس',
+                        Townhouse: 'تاون هاوس',
+                        'Twin House': 'توين هاوس',
+                        Office: 'مكتب',
+                        Clinic: 'عيادة',
+                    } as Record<string, string>
+                )[row.type] ||
+                row.type ||
+                'شقة',
         },
         finishingStatus: row.finishing_status
             ? {

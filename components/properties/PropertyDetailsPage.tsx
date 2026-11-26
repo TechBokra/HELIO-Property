@@ -511,7 +511,7 @@ const PropertyDetailsPage: React.FC = () => {
                             <DetailSection title={t_page.keyInfo}>
                                 <DetailItem label={t.propertiesPage.typeLabel} value={property.type[language]} icon={<BuildingIcon className="w-5 h-5"/>}/>
                                 {property.finishingStatus && <DetailItem label={t.propertiesPage.finishing} value={property.finishingStatus[language]} icon={<WrenchScrewdriverIcon className="w-5 h-5"/>}/>}
-                                {property.floor !== undefined && (property.type.en === 'Apartment' || property.type.en === 'Commercial') && <DetailItem label={t_page.floor} value={property.floor} icon={<FloorIcon className="w-5 h-5"/>}/>}
+                                {property.floor !== undefined && property.floor !== null && (property.type.en === 'Apartment' || property.type.en === 'Commercial') && <DetailItem label={t_page.floor} value={property.floor} icon={<FloorIcon className="w-5 h-5"/>}/>}
                                 {property.isInCompound && <DetailItem label={t_page.inCompound} value={t_page.yes} icon={<CompoundIcon className="w-5 h-5"/>}/>}
                                 
                                 <div className="mt-3 p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40">

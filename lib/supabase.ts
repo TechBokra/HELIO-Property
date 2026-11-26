@@ -20,12 +20,12 @@ const getEnv = (key: string): string | undefined => {
     return undefined;
 };
 
-const envUrl = getEnv('VITE_SUPABASE_URL');
-const envKey = getEnv('VITE_SUPABASE_ANON_KEY');
+const envUrl = getEnv('VITE_SUPABASE_URL')?.trim();
+const envKey = getEnv('VITE_SUPABASE_ANON_KEY')?.trim();
 
 // Production MUST NOT depend on localStorage for Supabase credentials or security decisions
-const supabaseUrl = (envUrl && envUrl.trim().length > 0) ? envUrl : FALLBACK_URL;
-const supabaseAnonKey = (envKey && envKey.trim().length > 0) ? envKey : FALLBACK_KEY;
+const supabaseUrl = (envUrl && envUrl.length > 0) ? envUrl : FALLBACK_URL;
+const supabaseAnonKey = (envKey && envKey.length > 0) ? envKey : FALLBACK_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {

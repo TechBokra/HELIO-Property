@@ -120,7 +120,7 @@ export const sanitizePropertyReadError = (
     let diagnosticCode = 'PROP-UNK-99';
 
     if (
-        /failed to fetch|networkerror|fetch failed|load failed|err_network|network request failed/i.test(rawMsg)
+        /failed to fetch|networkerror|fetch failed|load failed|err_network|network request failed|err_name_not_resolved|enotfound|getaddrinfo|eai_again/i.test(rawMsg)
     ) {
         category = 'network';
         diagnosticCode = 'PROP-NET-01';
