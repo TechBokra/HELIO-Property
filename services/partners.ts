@@ -104,7 +104,8 @@ export const mapPartnerFromDb = (row: any): Partner | AdminPartner => {
         subscriptionEndDate: row.subscription_end_date,
         parentId: row.parent_id,
         createdAt: row.created_at,
-        allowedCities: rawAllowedCities
+        allowedCities: rawAllowedCities,
+        profileKind: row.profile_kind === 'engineer' ? 'engineer' : 'company'
     };
 };
 

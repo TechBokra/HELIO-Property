@@ -515,17 +515,9 @@ export const getFinishingPartners = async (): Promise<AdminPartner[]> => {
                 contactMethods: p.contact_methods || { form: { enabled: true } },
                 phone: p.phone,
                 whatsapp: p.whatsapp,
-                verified: p.is_verified ?? true,
-                rating: 4.9,
-                projectsCompleted: 24,
+                verified: p.is_verified === true,
                 createdAt: p.created_at,
-                // Partner capability flags
-                capabilities: {
-                    turnkey: true,
-                    interiorDesign: true,
-                    commercial: p.name_en?.toLowerCase().includes('elite') || p.name_en?.toLowerCase().includes('touch'),
-                    renovation: true
-                }
+                profileKind: p.profile_kind === 'engineer' ? 'engineer' : 'company'
             }));
         }
     } catch (e) {
@@ -588,14 +580,14 @@ export const getPartnerCapabilities = async (partnerId: string): Promise<Partner
             return {
                 id: data.id,
                 partnerId: data.partner_id,
-                categories: data.categories || ['turnkey', 'architectural'],
-                serviceAreas: data.service_areas || ['new_heliopolis', 'el_shorouk', 'new_cairo'],
-                minBudget: Number(data.min_budget) || 100000,
+                categories: data.categories || [],
+                serviceAreas: data.service_areas || [],
+                minBudget: Number(data.min_budget) || 0,
                 maxBudget: data.max_budget ? Number(data.max_budget) : undefined,
-                turnkeyCapacity: data.turnkey_capacity || 5,
-                warrantyYears: data.warranty_years || 2,
-                hasInHouseArchitects: data.has_in_house_architects ?? true,
-                isVerifiedContractor: data.is_verified_contractor ?? true,
+                turnkeyCapacity: data.turnkey_capacity || 0,
+                warrantyYears: data.warranty_years || 0,
+                hasInHouseArchitects: data.has_in_house_architects === true,
+                isVerifiedContractor: data.is_verified_contractor === true,
                 createdAt: data.created_at,
                 updatedAt: data.updated_at
             };
@@ -604,16 +596,16 @@ export const getPartnerCapabilities = async (partnerId: string): Promise<Partner
         // Fall through
     }
 
-    // Default capability profile for finishing partner
+    // No stored capability profile: return an empty profile (never invent capabilities)
     return {
         partnerId,
-        categories: ['turnkey', 'architectural', 'renovation'],
-        serviceAreas: ['new_heliopolis', 'el_shorouk', 'new_cairo', 'madinaty'],
-        minBudget: 150000,
-        turnkeyCapacity: 4,
-        warrantyYears: 2,
-        hasInHouseArchitects: true,
-        isVerifiedContractor: true
+        categories: [],
+        serviceAreas: [],
+        minBudget: 0,
+        turnkeyCapacity: 0,
+        warrantyYears: 0,
+        hasInHouseArchitects: false,
+        isVerifiedContractor: false
     };
 };
 

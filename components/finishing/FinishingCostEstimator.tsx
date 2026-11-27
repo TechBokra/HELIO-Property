@@ -149,8 +149,8 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
             ? (isAr ? `فيلا (${villaFloors} طوابق)` : `Villa (${villaFloors} Floors)`)
             : (isAr ? 'شقة سكنية' : 'Apartment');
         const title = isAr
-            ? `طلب معاينة فنية مجانية: ${typeLabel} مساحة ${area} م² (${propertyTitle || 'الموقع'})`
-            : `Free Technical Survey: ${typeLabel} ${area} m² (${propertyTitle || 'Site'})`;
+            ? `طلب معاينة: ${typeLabel} مساحة ${area} م² (${propertyTitle || 'الموقع'})`
+            : `Site Survey Request: ${typeLabel} ${area} m² (${propertyTitle || 'Site'})`;
         setModalServiceTitle(title);
         setIsRequestModalOpen(true);
     };
@@ -170,8 +170,8 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
                     </h2>
                     <p className="text-sm md:text-base text-gray-600 dark:text-gray-300 mt-3 leading-relaxed">
                         {isAr
-                            ? 'تقدير دقيق معتمد على أسعار السوق الحقيقية في هليوبوليس الجديدة وشرق القاهرة مع تفقيط بنود التأسيس والمحارة والتشطيب النهائي للشقق والفيلات المستقلة.'
-                            : 'Accurate estimates based on real market rates in New Heliopolis & East Cairo with detailed MEP, masonry, facades and finishes breakdown for apartments & villas.'}
+                            ? 'تقدير استرشادي مبني على أسعار مرجعية، مع توزيع تقريبي لبنود التأسيس والمحارة والتشطيب النهائي. السعر النهائي يحدده مقدم الخدمة في عرضه.'
+                            : 'An indicative estimate based on reference prices, with an approximate MEP, masonry and finishes breakdown. The final price is set by the provider in their quote.'}
                     </p>
                 </div>
 
@@ -683,7 +683,7 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
                                     </div>
                                     <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/60 border border-gray-100 dark:border-gray-700">
                                         <ShieldCheckIcon className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
-                                        <span className="text-xs text-gray-500 block">{isAr ? 'الضمان الهندسي' : 'Certified Warranty'}</span>
+                                        <span className="text-xs text-gray-500 block">{isAr ? 'ضمان معتاد (حسب مقدم الخدمة)' : 'Typical warranty (per provider)'}</span>
                                         <span className="font-bold text-gray-900 dark:text-white text-sm">
                                             {activeTier.warrantyYears} {isAr ? 'سنوات شاملة' : 'Years Full'}
                                         </span>
@@ -785,7 +785,7 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
                                         <div>
                                             <div className="flex justify-between items-center mb-1">
                                                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                                                    {isAr ? '📐 الإشراف الهندسي والفحص والضمان (10%)' : '📐 Supervision, Snag List & Warranty (10%)'}
+                                                    {isAr ? '📐 الإشراف والفحص والضمان (10% تقريبًا)' : '📐 Supervision, Snag List & Warranty (10%)'}
                                                 </span>
                                                 <span className="font-bold text-gray-900 dark:text-white">
                                                     {estimate.supervisionWarrantyCost.toLocaleString(language)} {isAr ? 'ج.م' : 'EGP'}
@@ -818,7 +818,7 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
                                         variant="outline"
                                         className="w-full py-2.5 rounded-xl text-xs md:text-sm font-bold text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
                                     >
-                                        {isAr ? 'حجز موعد معاينة فنية مجانية للموقع' : 'Book Free Site Technical Inspection'}
+                                        {isAr ? 'طلب معاينة للموقع' : 'Request a site survey'}
                                     </Button>
                                 </div>
 
@@ -826,8 +826,8 @@ export const FinishingCostEstimator: React.FC<FinishingCostEstimatorProps> = ({
                                     <CheckCircleIcon className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                                     <span>
                                         {isAr
-                                            ? 'عقود موثقة، دفعات مقسمة على مراحل الاستلام، وإشراف هندسي مستقل'
-                                            : 'Official contracts, phased milestone payments, independent inspection'}
+                                            ? 'التقدير استرشادي؛ العقد والسعر النهائي والدفعات يتفق عليها العميل مع مقدم الخدمة مباشرة'
+                                            : 'Indicative only; the contract, final price and payments are agreed directly with the provider'}
                                     </span>
                                 </div>
                             </CardContent>

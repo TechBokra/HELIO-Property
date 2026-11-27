@@ -1,268 +1,119 @@
 import React, { useMemo, useState } from 'react';
-import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import type { Language, AdminPartner, FinishingService, FinishingPricingTier } from '../../types';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import BannerDisplay from '../shared/BannerDisplay';
 import SEO from '../shared/SEO';
 import { useLanguage } from '../shared/LanguageContext';
+import { useToast } from '../shared/ToastContext';
 import { Card, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { useFavorites } from '../shared/FavoritesContext';
-import { useToast } from '../shared/ToastContext';
-import { HeartIcon, HeartIconSolid, ShareIcon, CheckCircleIcon, MapPinIcon, BuildingIcon } from '../ui/Icons';
-import { useQuery } from '@tanstack/react-query';
-import { 
-    getFinishingServices, 
-    getFinishingPartners, 
-    PLATFORM_FINISHING_MANAGER_ID,
-    calculateEstimatedCost 
-} from '../../services/finishing';
+import { BuildingIcon, MapPinIcon, ShareIcon } from '../ui/Icons';
 import { useSiteContent } from '../../hooks/useSiteContent';
-import FinishingCostEstimator from './FinishingCostEstimator';
-import { resolvePropertyReferenceCode, resolveServiceReferenceCode } from '../../utils/propertyFormShared';
-import { isExternalUrl, normalizeActionTarget } from '../../utils/siteContentHelpers';
 import { useCityStore } from '../../store/useCityStore';
+import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
+import {
+    getFinishingDirectory,
+    getFinishingMarketCategories,
+    groupDirectoryByCategory,
+} from '../../services/finishingMarketplace';
+import type { FinishingDirectoryEntry, FinishingMarketCategory } from '../../types';
+import FinishingCostEstimator from './FinishingCostEstimator';
+import {
+    buildProviderRequestState,
+    formatPartnerPrice,
+    localized,
+    providerKindLabel,
+    type ProviderRequestContext,
+} from './marketplaceShared';
 
-const ServicePackageCard: React.FC<{
-    service: FinishingService;
-    onBookTier: (service: FinishingService, tier: FinishingPricingTier) => void;
-    onRequestCustomQuote: (service: FinishingService) => void;
-    linkedPropertyArea?: number;
-    language: Language;
-    t: any;
-}> = ({ service, onBookTier, onRequestCustomQuote, linkedPropertyArea, language, t }) => {
-    const { isFavorite, toggleFavorite } = useFavorites();
-    const { showToast } = useToast();
-    
-    const titleLocalized = service.title[language] || service.title.en;
-    const descLocalized = service.description[language] || service.description.en;
-
-    const serviceId = service.id || service.title.en;
-    const isFav = isFavorite(serviceId, 'service');
-
-    const handleFavoriteClick = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleFavorite(serviceId, 'service');
-        showToast(isFav ? t.favoritesPage.removedFromFavorites : t.favoritesPage.addedToFavorites, 'success');
-    };
-
-    const modelBadge = useMemo(() => {
-        switch (service.pricingModel) {
-            case 'per_sqm':
-                return {
-                    label: language === 'ar' ? 'سعر بالمتر المربع' : 'Price per m²',
-                    bg: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
-                };
-            case 'fixed_package':
-                return {
-                    label: language === 'ar' ? 'باقة شاملة التكلفة' : 'Fixed Package',
-                    bg: 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
-                };
-            default:
-                return {
-                    label: language === 'ar' ? 'مقايسة معتمدة' : 'Custom Quote',
-                    bg: 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
-                };
-        }
-    }, [service.pricingModel, language]);
+const ProviderServiceCard: React.FC<{
+    entry: FinishingDirectoryEntry;
+    category: FinishingMarketCategory;
+    cityName: (id: string) => string;
+    requestContext: ProviderRequestContext;
+}> = ({ entry, category, cityName, requestContext }) => {
+    const { language, t } = useLanguage();
+    const navigate = useNavigate();
+    const { provider, service } = entry;
+    const providerName = localized(provider.name, language);
+    const serviceTitle = localized(service.title, language) || localized(category.name, language);
+    const serviceDescription = localized(service.description, language) || localized(provider.description, language);
 
     return (
-        <Card className="flex flex-col h-full p-0 border-2 border-transparent hover:border-amber-500/30 transition-all duration-300 shadow-sm hover:shadow-lg overflow-hidden group">
-            <CardContent className="p-8 flex flex-col flex-grow relative">
-                <button 
-                    onClick={handleFavoriteClick} 
-                    className="absolute top-4 right-4 p-2 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors z-10" 
-                    aria-label={isFav ? t.favoritesPage.removeFromFavorites : t.favoritesPage.addToFavorites}
-                >
-                    {isFav ? <HeartIconSolid className="w-5 h-5 text-red-500" /> : <HeartIcon className="w-5 h-5 text-gray-500" />}
-                </button>
-
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${modelBadge.bg}`}>
-                        {modelBadge.label}
-                    </span>
-                    {service.basePrice && service.basePrice > 0 ? (
-                        <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                            {language === 'ar' ? 'يبدأ من:' : 'Starting from:'} {service.basePrice.toLocaleString(language)} {service.currency || 'EGP'}
-                        </span>
-                    ) : null}
-                </div>
-
-                <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mb-3 group-hover:text-amber-500">
-                    {titleLocalized}
-                </h3>
-                
-                <p className="text-gray-600 dark:text-gray-300 mb-6 leading-relaxed text-sm md:text-base">
-                    {descLocalized}
-                </p>
-
-                {/* Features & Guarantees */}
-                {service.features && service.features.length > 0 && (
-                    <div className="mb-6 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700">
-                        <p className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2.5">
-                            {language === 'ar' ? 'المواصفات والضمانات الهندسية:' : 'Engineering Specs & Guarantees:'}
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
-                            {service.features.map((feat, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                    <CheckCircleIcon className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                                    <span>{feat[language] || feat.en}</span>
-                                </div>
-                            ))}
+        <Card className="flex flex-col h-full p-0 overflow-hidden border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-shadow">
+            <CardContent className="p-6 flex flex-col flex-grow gap-4">
+                <div className="flex items-center gap-4">
+                    {provider.imageUrl ? (
+                        <img
+                            src={provider.imageUrl}
+                            alt={providerName}
+                            className="w-16 h-16 rounded-full object-cover border border-gray-200 dark:border-gray-600 flex-shrink-0"
+                            loading="lazy"
+                        />
+                    ) : (
+                        <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-xl font-bold text-amber-700 dark:text-amber-300 flex-shrink-0">
+                            {providerName.slice(0, 1)}
                         </div>
+                    )}
+                    <div className="min-w-0">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">{providerName}</h3>
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+                            {providerKindLabel(provider.profileKind, language)}
+                        </span>
                     </div>
-                )}
-
-                {/* Pricing Tiers */}
-                <div className="space-y-4 flex-grow">
-                    {(service.pricingTiers || []).map((tier: FinishingPricingTier, index: number) => {
-                        const costCalc = calculateEstimatedCost(service, tier, linkedPropertyArea);
-                        const isPerSqm = tier.priceModel === 'per_sqm' || service.pricingModel === 'per_sqm';
-
-                        return (
-                            <div 
-                                key={tier.id || index} 
-                                className="flex flex-col sm:flex-row sm:justify-between sm:items-center p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 gap-4 transition-colors hover:border-amber-200 dark:hover:border-amber-800"
-                            >
-                                <div className="space-y-1">
-                                    <p className="font-bold text-gray-800 dark:text-gray-200 text-sm md:text-base">
-                                        {tier.unitType[language] || tier.unitType.en}
-                                    </p>
-                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
-                                        {tier.areaRange[language] || tier.areaRange.en}
-                                    </p>
-                                    {linkedPropertyArea && isPerSqm && (
-                                        <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                                            {language === 'ar' 
-                                                ? `تقدير لمساحة العقار (${linkedPropertyArea} م²): ${costCalc.totalCost.toLocaleString(language)} ج.م` 
-                                                : `Est. for property (${linkedPropertyArea} m²): ${costCalc.totalCost.toLocaleString(language)} EGP`}
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
-                                    <div className="text-right">
-                                        <p className="font-bold text-lg text-gray-900 dark:text-white whitespace-nowrap">
-                                            {(tier.price || 0).toLocaleString(language)} {service.currency || 'EGP'}
-                                            {isPerSqm && <span className="text-xs font-normal text-gray-500"> / {language === 'ar' ? 'م²' : 'm²'}</span>}
-                                        </p>
-                                    </div>
-                                    <Button 
-                                        size="sm" 
-                                        onClick={() => onBookTier(service, tier)}
-                                        className="whitespace-nowrap bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold shadow-md hover:shadow-lg"
-                                    >
-                                        {language === 'ar' ? 'طلب الباقة' : 'Book Tier'}
-                                    </Button>
-                                </div>
-                            </div>
-                        );
-                    })}
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs text-gray-500">
-                    <span>
-                        {language === 'ar' 
-                            ? 'إشراف هندسي وضمان تنفيذ معتمد من المنصة' 
-                            : 'Verified engineering supervision & warranty by ONLY HELIO'}
-                    </span>
-                    <button
-                        type="button"
-                        onClick={() => onRequestCustomQuote(service)}
-                        className="text-amber-600 dark:text-amber-400 hover:underline font-semibold"
+                <div className="flex-grow">
+                    <p className="font-semibold text-amber-700 dark:text-amber-400">{serviceTitle}</p>
+                    {serviceDescription && (
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-3">{serviceDescription}</p>
+                    )}
+                </div>
+
+                <div className="space-y-2 text-sm">
+                    <p className="font-bold text-gray-900 dark:text-white">{formatPartnerPrice(service, language)}</p>
+                    {provider.servedCities.length > 0 && (
+                        <p className="flex items-start gap-1.5 text-gray-500 dark:text-gray-400">
+                            <MapPinIcon className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                            <span>{provider.servedCities.map(cityName).join('، ')}</span>
+                        </p>
+                    )}
+                </div>
+
+                <div className="flex flex-col gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
+                    <Link
+                        to={`/partners/${provider.id}`}
+                        className="text-center px-4 py-2 rounded-md border border-amber-500 text-amber-600 dark:text-amber-400 font-semibold hover:bg-amber-50 dark:hover:bg-amber-900/20 text-sm"
                     >
-                        {language === 'ar' ? 'طلب مقايسة خاصة' : 'Request Custom Quote'}
-                    </button>
+                        {language === 'ar' ? 'عرض البروفايل' : 'View profile'}
+                    </Link>
+                    <Button
+                        size="sm"
+                        onClick={() =>
+                            navigate('/request-service', {
+                                state: buildProviderRequestState(provider, service, category, language, requestContext),
+                            })
+                        }
+                    >
+                        {t.finishingPage.requestButton}
+                    </Button>
                 </div>
             </CardContent>
         </Card>
     );
 };
 
-const PartnerCompanyCard: React.FC<{ partner: AdminPartner; t: any }> = ({ partner }) => {
-    const { language } = useLanguage();
-    
-    const name = (language === 'ar' ? partner.nameAr : partner.name) || partner.name;
-    const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || '';
-
-    return (
-        <Link to={`/partners/${partner.id}`} className="block h-full">
-            <Card className="transform hover:-translate-y-2 transition-transform duration-300 group h-full flex flex-col overflow-hidden p-0 card-glow border border-gray-100 dark:border-gray-700">
-                <div className="relative overflow-hidden h-48">
-                    <picture>
-                        <source
-                            type="image/webp"
-                            srcSet={`${partner.imageUrl_small || partner.imageUrl}&fm=webp`}
-                        />
-                        <img
-                            src={partner.imageUrl}
-                            alt={name}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                            loading="lazy"
-                        />
-                    </picture>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60"></div>
-                </div>
-                <CardContent className="p-6 flex flex-col flex-grow relative">
-                    <div className="-mt-10 mb-3 relative">
-                        <div className="bg-white dark:bg-gray-800 p-1 rounded-lg inline-block shadow-md">
-                            <img src={partner.imageUrl} alt="Logo" className="w-12 h-12 rounded object-cover" />
-                        </div>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 group-hover:text-amber-500 transition-colors">
-                        {name}
-                    </h3>
-                    <p className="text-gray-600 dark:text-gray-400 text-sm flex-grow line-clamp-3">
-                        {desc}
-                    </p>
-                </CardContent>
-            </Card>
-        </Link>
-    );
-};
-
-const ServiceProviderCard: React.FC<{ 
-    partner: AdminPartner; 
-    onRequest: (title: string, partnerId: string) => void; 
-    t: any; 
-    buttonText: string 
-}> = ({ partner, onRequest, t, buttonText }) => {
-    const { language } = useLanguage();
-    
-    const name = (language === 'ar' ? partner.nameAr : partner.name) || partner.name;
-    const desc = (language === 'ar' ? partner.descriptionAr : partner.description) || '';
-
-    return (
-        <Card className="p-6 flex flex-col sm:flex-row justify-between items-center hover:shadow-md transition-shadow border border-gray-100 dark:border-gray-700">
-            <div className="flex items-center gap-4 mb-4 sm:mb-0">
-                <img src={partner.imageUrl} alt={name} className="w-16 h-16 rounded-full object-cover border-2 border-gray-200 dark:border-gray-600" />
-                <div>
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">{name}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 max-w-md">{desc}</p>
-                </div>
-            </div>
-            <Button 
-                onClick={() => onRequest(t.partnerProfilePage.serviceRequestFor + ' ' + name, partner.id)} 
-                className="flex-shrink-0"
-                variant="outline"
-            >
-                {buttonText}
-            </Button>
-        </Card>
-    );
-};
-
 const FinishingPage: React.FC = () => {
     const { language, t } = useLanguage();
-    const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
     const { showToast } = useToast();
-    const [activeServiceIndex, setActiveServiceIndex] = useState(0);
     const activeCityId = useCityStore((state) => state.activeCityId);
+    const cities = useCityStore((state) => state.cities);
+    const { data: siteContent } = useSiteContent();
 
-    // Linked Property Context from state or URL query
-    const linkedPropertyId = location.state?.propertyId || searchParams.get('propertyId');
+    // Linked property context (from a property page)
+    const linkedPropertyId = location.state?.propertyId || searchParams.get('propertyId') || undefined;
     const linkedPropertyCityId = location.state?.cityId || searchParams.get('cityId') || undefined;
     const effectiveCityId = linkedPropertyCityId || activeCityId || 'heliopolis';
     const linkedPropertyTitle = location.state?.propertyTitle || searchParams.get('propertyTitle') || undefined;
@@ -272,120 +123,56 @@ const FinishingPage: React.FC = () => {
         (linkedPropertyId ? resolvePropertyReferenceCode(linkedPropertyId) : undefined);
     const linkedPropertyArea = location.state?.propertyArea ? Number(location.state.propertyArea) : undefined;
     const rawType = (location.state?.propertyType || searchParams.get('propertyType') || '').toLowerCase();
-    const linkedPropertyType = rawType.includes('villa') || rawType.includes('فيلا') || rawType.includes('townhouse') || rawType.includes('twin') ? 'villa' : 'apartment';
+    const linkedPropertyType =
+        rawType.includes('villa') || rawType.includes('فيلا') || rawType.includes('townhouse') || rawType.includes('twin')
+            ? 'villa'
+            : 'apartment';
 
-    // Load canonical services from Supabase (public active only)
-    const { 
-        data: rawServices = [], 
-        isLoading: isLoadingServices,
-        isError: isServicesError,
-        refetch: refetchServices
-    } = useQuery({
-        queryKey: ['canonicalFinishingServices'],
-        queryFn: () => getFinishingServices({ includeInactive: false }),
-        staleTime: 60000
+    const requestContext: ProviderRequestContext = {
+        propertyId: linkedPropertyId,
+        propertyReference: linkedPropertyReference,
+        propertyTitle: linkedPropertyTitle,
+        cityId: effectiveCityId,
+    };
+
+    const categoriesQuery = useQuery({
+        queryKey: ['finishingMarketCategories'],
+        queryFn: () => getFinishingMarketCategories(),
+        staleTime: 60000,
+    });
+    const directoryQuery = useQuery({
+        queryKey: ['finishingDirectory'],
+        queryFn: getFinishingDirectory,
+        staleTime: 60000,
     });
 
-    const services = useMemo(
-        () => (rawServices || []).filter(s => s.isActive !== false),
-        [rawServices]
+    const groups = useMemo(
+        () => groupDirectoryByCategory(categoriesQuery.data || [], directoryQuery.data || []),
+        [categoriesQuery.data, directoryQuery.data]
     );
-    const safeServiceIndex = activeServiceIndex < services.length ? activeServiceIndex : 0;
+    const [activeCategoryId, setActiveCategoryId] = useState<string | null>(searchParams.get('category'));
+    const activeGroup = groups.find((g) => g.category.id === activeCategoryId) || groups[0];
 
-    // Load verified finishing partners from Supabase
-    const { 
-        data: partners = [], 
-        isLoading: isLoadingPartners,
-        isError: isPartnersError,
-        refetch: refetchPartners
-    } = useQuery({
-        queryKey: ['finishingPartnersSupabase'],
-        queryFn: getFinishingPartners,
-        staleTime: 60000
-    });
+    const cityName = (id: string) => {
+        const city = cities.find((c) => c.id === id || c.slug === id);
+        return city ? localized(city.name, language) : id;
+    };
 
-    const { data: siteContent } = useSiteContent();
-
-    const isLoading = isLoadingServices || isLoadingPartners;
-    
     const defaultContent = t.finishingPage;
     const dynamicContent = siteContent?.finishingPage?.[language];
-    const content = dynamicContent || defaultContent;
-    const heroButtonLabel = dynamicContent?.heroButton || (language === 'ar' ? 'تواصل مع مدير التشطيبات' : 'Contact Finishing Manager');
-    const heroButtonLink = siteContent?.finishingPage?.heroButtonLink || '/request-service';
-    const ctaButtonLabel = dynamicContent?.ctaButton || defaultContent.ctaButton;
-    const ctaButtonLink = siteContent?.finishingPage?.ctaLink || '/request-service';
-
+    const heroTitle = dynamicContent?.heroTitle || defaultContent.heroTitle;
+    const heroSubtitle = dynamicContent?.heroSubtitle || defaultContent.heroSubtitle;
     const heroImageUrl =
         siteContent?.finishingPage?.heroImageUrl ||
         'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?fm=webp&q=75&w=1600&auto=format&fit=crop';
 
-    const handleActionOrRequest = (targetLink: string | undefined, defaultServiceTitle: string) => {
-        const normalized = normalizeActionTarget(targetLink, '/request-service');
-        if (normalized !== '/request-service') {
-            if (isExternalUrl(normalized)) {
-                window.open(normalized, '_blank', 'noopener,noreferrer');
-            } else {
-                navigate(normalized);
-            }
-            return;
-        }
-        handleRequestService(defaultServiceTitle);
+    const scrollToDirectory = () => {
+        document.getElementById('finishing-directory')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
-    // Direct routing to service's target partner or Platform Finishing Manager UUID
-    const handleRequestService = (
-        serviceTitle: string,
-        partnerId: string = PLATFORM_FINISHING_MANAGER_ID,
-        service?: FinishingService
-    ) => {
-        const resolvedServiceId = service?.id;
-        const resolvedServiceRef = resolvedServiceId
-            ? resolveServiceReferenceCode('finishing', resolvedServiceId, service?.referenceNumber)
-            : undefined;
-        navigate('/request-service', {
-            state: {
-                serviceTitle,
-                partnerId: service?.targetPartnerId || partnerId || PLATFORM_FINISHING_MANAGER_ID,
-                serviceType: 'finishing',
-                serviceId: resolvedServiceId,
-                serviceReference: resolvedServiceRef,
-                propertyId: linkedPropertyId || undefined,
-                propertyReference: linkedPropertyReference || undefined,
-                propertyTitle: linkedPropertyTitle || undefined,
-                cityId: effectiveCityId,
-            },
-        });
-    };
-
-    const handleBookTier = (service: FinishingService, tier: FinishingPricingTier) => {
-        const serviceTitle = service.title[language] || service.title.en;
-        const resolvedServiceRef = resolveServiceReferenceCode('finishing', service.id, service.referenceNumber);
-        navigate('/request-service', {
-            state: {
-                serviceTitle,
-                partnerId: service.targetPartnerId || PLATFORM_FINISHING_MANAGER_ID,
-                serviceType: 'finishing',
-                serviceId: service.id,
-                serviceReference: resolvedServiceRef,
-                tierId: tier.id,
-                tier: tier,
-                isBooking: true,
-                propertyId: linkedPropertyId || undefined,
-                propertyReference: linkedPropertyReference || undefined,
-                propertyTitle: linkedPropertyTitle || undefined,
-                cityId: effectiveCityId,
-            },
-        });
-    };
-    
     const handleShare = async () => {
         const urlToShare = window.location.href;
-        const shareData = {
-            title: `${t.nav.finishing} | ONLY HELIO`,
-            text: content.heroSubtitle,
-            url: urlToShare,
-        };
+        const shareData = { title: `${t.nav.finishing}`, text: heroSubtitle, url: urlToShare };
         try {
             if (navigator.share && navigator.canShare(shareData)) {
                 await navigator.share(shareData);
@@ -399,78 +186,39 @@ const FinishingPage: React.FC = () => {
         }
     };
 
-    // Partition partners by real capabilities and service specialties
-    const { turnkeyCompanies, designStudios } = useMemo(() => {
-        if (!partners || partners.length === 0) return { turnkeyCompanies: [], designStudios: [] };
-        
-        const turnkey = partners.filter(p => 
-            p.name.toLowerCase().includes('finish') || 
-            p.name.toLowerCase().includes('touch') || 
-            p.name.toLowerCase().includes('contract') || 
-            p.nameAr?.includes('تشطيب') ||
-            p.subscriptionPlan === 'professional' ||
-            p.subscriptionPlan === 'elite'
-        );
-
-        const studios = partners.filter(p => !turnkey.some(t => t.id === p.id));
-
-        return { 
-            turnkeyCompanies: turnkey.length > 0 ? turnkey : partners, 
-            designStudios: studios 
-        };
-    }, [partners]);
-
-    if (isLoading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-                <div className="text-center space-y-4">
-                    <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                    <p className="text-gray-500">{language === 'ar' ? 'جاري تحميل باقات التشطيب...' : 'Loading finishing packages...'}</p>
-                </div>
-            </div>
-        );
-    }
+    const isLoading = categoriesQuery.isLoading || directoryQuery.isLoading;
+    const isError = categoriesQuery.isError || directoryQuery.isError;
 
     return (
         <div className="bg-white dark:bg-gray-900 text-gray-800 dark:text-white">
-            <SEO title={`${t.nav.finishing} | ONLY HELIO`} description={content.heroSubtitle} />
-            
-            {/* Hero Section */}
+            <SEO title={`${t.nav.finishing}`} description={heroSubtitle} />
+
+            {/* Hero */}
             <section
-                className="relative h-[48vh] min-h-[380px] flex items-center justify-center text-center bg-cover bg-center"
-                style={{
-                    backgroundImage: `url('${heroImageUrl}')`,
-                }}
+                className="relative h-[44vh] min-h-[340px] flex items-center justify-center text-center bg-cover bg-center"
+                style={{ backgroundImage: `url('${heroImageUrl}')` }}
             >
-                <div className="absolute top-0 left-0 w-full h-full bg-black/70 z-10"></div>
+                <div className="absolute inset-0 bg-black/70 z-10"></div>
                 <div className="relative z-20 px-4 container mx-auto text-white">
-                    <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold text-shadow mb-4">
-                        {content.heroTitle}
-                    </h1>
-                    <p className="max-w-3xl mx-auto text-base md:text-xl text-gray-200 text-shadow">
-                        {content.heroSubtitle}
-                    </p>
-                    
+                    <h1 className="text-3xl md:text-5xl font-extrabold text-shadow mb-4">{heroTitle}</h1>
+                    <p className="max-w-3xl mx-auto text-base md:text-xl text-gray-200 text-shadow">{heroSubtitle}</p>
                     <div className="mt-6 flex flex-wrap justify-center items-center gap-3">
+                        <Button onClick={scrollToDirectory} className="font-bold">
+                            {defaultContent.ctaButton}
+                        </Button>
                         <Button
                             onClick={handleShare}
                             variant="secondary"
                             className="bg-white/20 text-white border-white/50 hover:bg-white/30 backdrop-blur-sm"
                         >
-                            <ShareIcon className="w-5 h-5 mr-2" />
+                            <ShareIcon className="w-5 h-5 me-2" />
                             {t.sharing.share}
-                        </Button>
-                        <Button
-                            onClick={() => handleActionOrRequest(heroButtonLink, language === 'ar' ? 'طلب استشارة تشطيب عامة' : 'General Finishing Inquiry')}
-                            className="bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold"
-                        >
-                            {heroButtonLabel}
                         </Button>
                     </div>
                 </div>
             </section>
 
-            {/* Linked Property Alert Banner */}
+            {/* Linked property banner */}
             {linkedPropertyId && (
                 <section className="bg-amber-500/10 border-y border-amber-500/30 py-3.5 px-4">
                     <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
@@ -480,7 +228,7 @@ const FinishingPage: React.FC = () => {
                             </span>
                             <div>
                                 <span className="font-bold text-gray-900 dark:text-white">
-                                    {language === 'ar' ? 'طلب تشطيب مرتبط بالعقار:' : 'Finishing inquiry for property:'}
+                                    {language === 'ar' ? 'طلبك مرتبط بالعقار:' : 'Your request is linked to property:'}
                                 </span>{' '}
                                 {linkedPropertyReference && (
                                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 me-1.5">
@@ -490,18 +238,10 @@ const FinishingPage: React.FC = () => {
                                 <span className="font-semibold text-amber-600 dark:text-amber-400">
                                     {linkedPropertyTitle || linkedPropertyId}
                                 </span>
-                                {linkedPropertyArea && (
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                                        ({linkedPropertyArea} {language === 'ar' ? 'م²' : 'm²'})
-                                    </span>
-                                )}
                             </div>
                         </div>
-                        <Link 
-                            to={`/properties/${linkedPropertyId}`} 
-                            className="text-xs font-bold text-amber-700 dark:text-amber-300 hover:underline"
-                        >
-                            {language === 'ar' ? 'الرجوع لصفحة العقار ←' : 'Back to Property →'}
+                        <Link to={`/properties/${linkedPropertyId}`} className="text-xs font-bold text-amber-700 dark:text-amber-300 hover:underline">
+                            {language === 'ar' ? 'الرجوع لصفحة العقار' : 'Back to property'}
                         </Link>
                     </div>
                 </section>
@@ -509,168 +249,107 @@ const FinishingPage: React.FC = () => {
 
             <BannerDisplay location="finishing" />
 
-            {/* Canonical Finishing Packages Section (Tabbed) */}
-            {isServicesError && services.length === 0 ? (
-                <section className="py-16 text-center">
-                    <div className="container mx-auto px-6 max-w-lg bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 shadow-sm">
-                        <p className="text-gray-800 dark:text-gray-200 font-semibold mb-2">
-                            {language === 'ar' ? 'تعذر تحميل خدمات التشطيب المعتمدة' : 'Failed to load finishing services'}
-                        </p>
-                        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-                            {language === 'ar' ? 'يرجى التحقق من الاتصال وإعادة المحاولة.' : 'Please check your connection and try again.'}
-                        </p>
-                        <button
-                            onClick={() => refetchServices()}
-                            className="px-6 py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-600 transition-colors text-sm"
-                        >
-                            {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
-                        </button>
+            {/* Provider directory by category */}
+            <section id="finishing-directory" className="py-16 md:py-20 scroll-mt-20">
+                <div className="container mx-auto px-6">
+                    <div className="text-center mb-10 max-w-3xl mx-auto">
+                        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">{defaultContent.servicesTitle}</h2>
+                        <p className="text-lg text-gray-500 dark:text-gray-400 mt-3">{defaultContent.servicesSubtitle}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{defaultContent.servicesIntro}</p>
                     </div>
-                </section>
-            ) : services.length > 0 && (
-                <section className="py-16 md:py-20">
-                    <div className="container mx-auto px-6">
-                        <div className="text-center mb-10 max-w-3xl mx-auto">
-                            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
-                                {content.servicesTitle}
-                            </h2>
-                            <p className="text-lg text-gray-500 dark:text-gray-400 mt-3">
-                                {content.servicesSubtitle}
-                            </p>
-                            <p className="text-sm md:text-base text-gray-600 dark:text-gray-300 mt-2">
-                                {content.servicesIntro}
-                            </p>
-                        </div>
 
-                        {/* Service Package Tabs */}
-                        <div className="flex flex-wrap justify-center gap-3 mb-10" role="tablist">
-                            {services.map((service, index) => (
-                                <button
-                                    key={service.id || index}
-                                    role="tab"
-                                    aria-selected={safeServiceIndex === index}
-                                    onClick={() => setActiveServiceIndex(index)}
-                                    className={`px-5 py-2.5 rounded-full font-bold text-sm md:text-base transition-all duration-200 outline-none focus:ring-2 focus:ring-amber-500 ${
-                                        safeServiceIndex === index
-                                            ? 'bg-amber-500 text-gray-900 shadow-md transform -translate-y-0.5'
-                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                    }`}
-                                >
-                                    {service.title[language] || service.title.en}
-                                </button>
-                            ))}
+                    {isLoading ? (
+                        <div className="py-16 text-center">
+                            <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
                         </div>
+                    ) : isError ? (
+                        <div className="max-w-lg mx-auto text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8">
+                            <p className="font-semibold mb-4">
+                                {language === 'ar' ? 'تعذر تحميل مقدمي خدمات التشطيب' : 'Failed to load finishing providers'}
+                            </p>
+                            <Button
+                                onClick={() => {
+                                    categoriesQuery.refetch();
+                                    directoryQuery.refetch();
+                                }}
+                            >
+                                {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                            </Button>
+                        </div>
+                    ) : groups.length === 0 ? null : (
+                        <>
+                            <div className="flex flex-wrap justify-center gap-3 mb-6" role="tablist">
+                                {groups.map(({ category, entries }) => {
+                                    const selected = activeGroup?.category.id === category.id;
+                                    return (
+                                        <button
+                                            key={category.id}
+                                            role="tab"
+                                            aria-selected={selected}
+                                            onClick={() => setActiveCategoryId(category.id)}
+                                            className={`px-5 py-2.5 rounded-full font-bold text-sm md:text-base transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 ${
+                                                selected
+                                                    ? 'bg-amber-500 text-gray-900 shadow-md'
+                                                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            {localized(category.name, language)}
+                                            <span className="ms-2 text-xs opacity-70">({entries.length})</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
 
-                        {/* Active Service Card with Canonical Decoupled Pricing */}
-                        <div className="max-w-5xl mx-auto min-h-[420px]">
-                            {services[safeServiceIndex] && (
-                                <div key={services[safeServiceIndex].id || safeServiceIndex} className="animate-fadeIn">
-                                    <ServicePackageCard
-                                        service={services[safeServiceIndex]}
-                                        onBookTier={handleBookTier}
-                                        onRequestCustomQuote={(svc) => {
-                                            const localized = svc.title[language] || svc.title.en;
-                                            handleRequestService(
-                                                language === 'ar' ? `طلب مقايسة خاصة: ${localized}` : `Custom Quote: ${localized}`,
-                                                svc.targetPartnerId || PLATFORM_FINISHING_MANAGER_ID,
-                                                svc
-                                            );
-                                        }}
-                                        linkedPropertyArea={linkedPropertyArea}
-                                        language={language}
-                                        t={t}
-                                    />
+                            {activeGroup && (
+                                <div role="tabpanel">
+                                    <p className="text-center text-gray-600 dark:text-gray-300 max-w-2xl mx-auto mb-8">
+                                        {localized(activeGroup.category.description, language)}
+                                    </p>
+                                    {activeGroup.entries.length === 0 ? (
+                                        <p className="text-center text-gray-500 dark:text-gray-400 py-10">
+                                            {language === 'ar'
+                                                ? 'لا يوجد مقدمو خدمة معتمدون في هذه الفئة حاليًا.'
+                                                : 'There are no approved providers in this category yet.'}
+                                        </p>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {activeGroup.entries.map((entry) => (
+                                                <ProviderServiceCard
+                                                    key={entry.service.id}
+                                                    entry={entry}
+                                                    category={activeGroup.category}
+                                                    cityName={cityName}
+                                                    requestContext={requestContext}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                        </div>
-                    </div>
-                </section>
-            )}
+                        </>
+                    )}
+                </div>
+            </section>
 
-            {/* Interactive Finishing Cost Estimator & RFQ Builder (P2) */}
+            {/* Indicative cost calculator (managed in Phase 3) */}
             <div className="container mx-auto px-6">
                 <FinishingCostEstimator
                     defaultArea={linkedPropertyArea}
                     defaultPropertyType={linkedPropertyType}
-                    propertyId={linkedPropertyId || undefined}
-                    propertyReference={linkedPropertyReference || undefined}
-                    propertyTitle={linkedPropertyTitle || undefined}
+                    propertyId={linkedPropertyId}
+                    propertyReference={linkedPropertyReference}
+                    propertyTitle={linkedPropertyTitle}
                     cityId={effectiveCityId}
-                    onRfqLaunched={() => {
-                        // Optional callback
-                    }}
                 />
             </div>
 
-            {/* Turnkey Contractors Showcase */}
-            {turnkeyCompanies.length > 0 && (
-                <section className="py-16 md:py-20 bg-gray-50 dark:bg-gray-800/50">
-                    <div className="container mx-auto px-6">
-                        <div className="text-center mb-12 max-w-3xl mx-auto">
-                            <h2 className="text-3xl md:text-4xl font-bold">
-                                {language === 'ar' ? 'شركات المقاولات والتشطيب المعتمدة' : content.partnerCompaniesTitle}
-                            </h2>
-                            <p className="text-base text-gray-500 dark:text-gray-400 mt-3">
-                                {content.partnerCompaniesSubtitle}
-                            </p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                            {turnkeyCompanies.map((partner) => (
-                                <PartnerCompanyCard
-                                    key={partner.id}
-                                    partner={partner}
-                                    t={t}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                </section>
-            )}
-
-            {/* Design Studios & Specialized Providers */}
-            {designStudios.length > 0 && (
-                <section className="py-16 md:py-20">
-                    <div className="container mx-auto px-6">
-                        <div className="text-center mb-12 max-w-3xl mx-auto">
-                            <h2 className="text-3xl md:text-4xl font-bold">
-                                {language === 'ar' ? 'مكاتب التصميم الداخلي والاستشارات' : content.serviceProvidersTitle}
-                            </h2>
-                            <p className="text-base text-gray-500 dark:text-gray-400 mt-3">
-                                {content.serviceProvidersSubtitle}
-                            </p>
-                        </div>
-                        <div className="max-w-4xl mx-auto space-y-4">
-                            {designStudios.map((partner) => (
-                                <ServiceProviderCard
-                                    key={partner.id}
-                                    partner={partner}
-                                    onRequest={handleRequestService}
-                                    t={t}
-                                    buttonText={t.finishingPage.requestButton}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                </section>
-            )}
-
-            {/* Platform Finishing Manager CTA */}
-            <section className="py-20 bg-gradient-to-b from-gray-50 to-white dark:from-gray-800 dark:to-gray-900 border-t border-gray-100 dark:border-gray-800">
+            <section className="py-16 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800">
                 <div className="container mx-auto px-6 text-center">
-                    <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4 text-gray-900 dark:text-white">
-                        {content.ctaTitle}
-                    </h2>
-                    <p className="max-w-2xl mx-auto text-base text-gray-500 dark:text-gray-400 mb-8">
-                        {content.ctaSubtitle}
-                    </p>
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                        <Button
-                            onClick={() => handleActionOrRequest(ctaButtonLink, language === 'ar' ? 'طلب معاينة واستشارة للموقع' : 'Site Visit & Consultation Request')}
-                            className="w-full sm:w-auto bg-amber-500 text-gray-900 font-bold px-8 py-3.5 rounded-lg text-base hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
-                        >
-                            {ctaButtonLabel}
-                        </Button>
-                    </div>
+                    <h2 className="text-2xl md:text-3xl font-bold mb-3 text-gray-900 dark:text-white">{defaultContent.ctaTitle}</h2>
+                    <p className="max-w-2xl mx-auto text-gray-500 dark:text-gray-400 mb-6">{defaultContent.ctaSubtitle}</p>
+                    <Button onClick={scrollToDirectory} className="font-bold px-8">
+                        {defaultContent.ctaButton}
+                    </Button>
                 </div>
             </section>
         </div>

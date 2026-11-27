@@ -1,19 +1,19 @@
 
 export const services = {
     "finishingPage": {
-        "heroTitle": "Finishing & Interior Design in New Heliopolis",
-        "heroSubtitle": "We offer custom finishing and interior design services for your projects in New Heliopolis, turning your vision into a tangible reality.",
-        "servicesTitle": "Start Planning Your Project with Us",
-        "servicesSubtitle": "Choose the package that fits your current needs, whether you're in the planning phase or ready for execution.",
-        "servicesIntro": "Through our specialized team, we offer consultation and design services to help you plan your project. If you're looking for execution, you can browse our trusted partners below.",
-        "requestButton": "Request Service",
-        "partnerCompaniesTitle": "Choose an Execution Partner Company",
-        "partnerCompaniesSubtitle": "Browse our network of trusted finishing and design companies with profiles and portfolios.",
-        "serviceProvidersTitle": "Or Contact a Service Provider Directly",
-        "serviceProvidersSubtitle": "A list of finishing service providers on our free plan. You can request their service directly.",
-        "ctaTitle": "Do you have a project in New Heliopolis?",
-        "ctaSubtitle": "If you own a unit in New Heliopolis and want to finish it to the highest quality, contact us today for a free consultation.",
-        "ctaButton": "Start Your Project Now"
+        "heroTitle": "Finishing engineers and companies in one place",
+        "heroSubtitle": "Browse independent engineers and finishing companies approved on the platform, compare their work, and request a quote directly from the provider that fits you.",
+        "servicesTitle": "Choose a service type",
+        "servicesSubtitle": "Each category lists the providers approved for it. Every provider sets its own offer and price, contracts and executes the work itself.",
+        "servicesIntro": "The platform lists providers and receives, routes and follows up on your request.",
+        "requestButton": "Request a quote from this provider",
+        "partnerCompaniesTitle": "Finishing service providers",
+        "partnerCompaniesSubtitle": "Independent engineers and companies approved on the platform.",
+        "serviceProvidersTitle": "Service providers",
+        "serviceProvidersSubtitle": "Request a quote directly from a provider.",
+        "ctaTitle": "Not sure where to start?",
+        "ctaSubtitle": "Start with the consultation & concept category, or use the calculator for an indicative estimate before requesting quotes.",
+        "ctaButton": "Browse finishing providers"
     },
     "decorationsPage": {
         "heroTitle": "Artistic Creations to Adorn Your Walls",

@@ -332,11 +332,11 @@ export const admin = {
         },
         "finishingManagement": {
             "title": "Finishing Management",
-            "subtitle": "Manage platform finishing requests and packages.",
+            "subtitle": "Manage finishing providers, their approved services and customer requests.",
             "tabs": {
                 "dashboard": "Dashboard",
                 "requests": "Requests",
-                "services": "Service Packages",
+                "services": "Providers & Categories",
                 "plans": "Pricing Plans"
             },
             "dashboardTitle": "Finishing Dashboard",

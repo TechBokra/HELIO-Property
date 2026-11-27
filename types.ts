@@ -158,6 +158,7 @@ export interface Partner {
     createdAt?: string;
     isDemo?: boolean;
     allowedCities?: string[];
+    profileKind?: FinishingProviderKind;
 }
 
 export type CitySlug = 'hub' | 'heliopolis' | 'shorouk' | 'badr' | string;
@@ -1083,4 +1084,52 @@ export interface AIEstimatorConfig {
     prompt?: string;
     options?: any;
     stages: AIEstimatorStage[];
+}
+// =========================================================================
+// Finishing Marketplace (partner-owned services, admin-approved)
+// =========================================================================
+
+export type FinishingProviderKind = 'company' | 'engineer';
+export type FinishingServiceApprovalStatus = 'pending' | 'approved' | 'rejected' | 'disabled';
+export type FinishingPricingDisplay = 'on_request' | 'starting_from' | 'per_sqm' | 'fixed';
+
+export interface FinishingMarketCategory {
+    id: string;
+    name: { ar: string; en: string };
+    description: { ar: string; en: string };
+    displayOrder: number;
+    isVisible: boolean;
+}
+
+export interface PartnerFinishingService {
+    id: string;
+    partnerId: string;
+    categoryId: string;
+    title: { ar: string; en: string };
+    description: { ar: string; en: string };
+    scope: { ar: string; en: string };
+    pricingDisplay: FinishingPricingDisplay;
+    priceFrom?: number | null;
+    currency: string;
+    isListed: boolean;
+    approvalStatus: FinishingServiceApprovalStatus;
+    adminNote?: string | null;
+    reviewedAt?: string | null;
+    displayOrder: number;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface FinishingProviderSummary {
+    id: string;
+    name: { ar: string; en: string };
+    description: { ar: string; en: string };
+    imageUrl?: string;
+    profileKind: FinishingProviderKind;
+    servedCities: string[];
+}
+
+export interface FinishingDirectoryEntry {
+    provider: FinishingProviderSummary;
+    service: PartnerFinishingService;
 }

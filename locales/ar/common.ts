@@ -75,6 +75,7 @@ export const common = {
         "editCategory": "تعديل القسم"
     },
     "nav": {
+        "finishingServices": "خدماتي في التشطيبات",
         "home": "الرئيسية",
         "properties": "العقارات",
         "projects": "المشاريع",
