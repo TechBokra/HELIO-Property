@@ -5101,6 +5101,61 @@ async function runTests() {
         }
     });
 
+    console.log('\n--- Suite 16: Supabase Catalog Regression & Read-Only Migration Diagnostic ---');
+
+    await test('SUPA.1: DNS/ENOTFOUND errors classify as PROP-NET-01, live property types map accurately, and SQL diagnostic is read-only', async () => {
+        const { sanitizePropertyReadError } = await import('../utils/propertyUtils');
+        const { mapPropertyFromDb } = await import('../services/properties');
+        const dnsErr = new Error('getaddrinfo ENOTFOUND ygajpxznposoqfjlwtqi.supabase.co');
+        const sanitizedDns = sanitizePropertyReadError(dnsErr, 'ar');
+        assert.strictEqual(sanitizedDns.diagnosticCode, 'PROP-NET-01');
+        assert.strictEqual(sanitizedDns.category, 'network');
+        assert.ok(!sanitizedDns.visitorMessage.includes('supabase.co'));
+
+        const netErr = new Error('ERR_NAME_NOT_RESOLVED');
+        assert.strictEqual(sanitizePropertyReadError(netErr, 'en').diagnosticCode, 'PROP-NET-01');
+
+        const clinicRow = mapPropertyFromDb({
+            id: 'clinic-1',
+            partner_id: 'p-1',
+            title_en: 'Medical Clinic',
+            title_ar: 'عيادة طبية',
+            status: 'For Sale',
+            type: 'Clinic',
+            price: 1500000,
+            area: 49,
+            floor: null,
+            listing_status: 'active',
+        });
+        assert.strictEqual(clinicRow.type.ar, 'عيادة');
+        assert.strictEqual(clinicRow.type.en, 'Clinic');
+
+        const diagSql = fs.readFileSync(
+            path.join(process.cwd(), 'supabase/diagnostics/check_catalog_migrations.sql'),
+            'utf8'
+        );
+        assert.ok(diagSql.includes('20261015_multi_city_only_property_architecture.sql'));
+        assert.ok(diagSql.includes('20261125_property_listing_bidirectional_link.sql'));
+        assert.ok(!/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b/i.test(diagSql));
+    });
+
+    await test('SUPA.2: Placeholder VITE_SUPABASE_* values fall back cleanly and Neon remains disabled unless explicitly enabled', async () => {
+        const { resolveSupabaseConfig } = await import('../lib/supabase');
+        const { getCatalogDataSource, setCatalogDataSourceOverride } = await import('../utils/catalogSource');
+
+        const fromPlaceholders = resolveSupabaseConfig('https://your-project.supabase.co', 'your-anon-key');
+        assert.ok(fromPlaceholders.supabaseUrl.includes('xyyvgpchkznznwbxbgrp.supabase.co'));
+        assert.ok(fromPlaceholders.supabaseAnonKey.startsWith('eyJ'));
+
+        const validJwt = 'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig';
+        const fromReal = resolveSupabaseConfig('https://customref123.supabase.co ', ` ${validJwt} `);
+        assert.strictEqual(fromReal.supabaseUrl, 'https://customref123.supabase.co');
+        assert.strictEqual(fromReal.supabaseAnonKey, validJwt);
+
+        setCatalogDataSourceOverride(null);
+        assert.strictEqual(getCatalogDataSource(), 'supabase');
+    });
+
     useAuthStore.setState({ currentUser: null, permissions: [] });
 
     console.log('\n======================================================');

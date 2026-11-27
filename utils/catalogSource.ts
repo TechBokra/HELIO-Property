@@ -9,35 +9,36 @@ export const setCatalogDataSourceOverride = (source: CatalogDataSource | null): 
     runtimeCatalogSourceOverride = source;
 };
 
-const readConfiguredCatalogSource = (): string | undefined => {
+const readEnvString = (key: string): string | undefined => {
     try {
         const metaEnv = (import.meta as any)?.env;
-        if (metaEnv && typeof metaEnv.VITE_CATALOG_DATA_SOURCE === 'string') {
-            return metaEnv.VITE_CATALOG_DATA_SOURCE;
+        if (metaEnv && typeof metaEnv[key] === 'string') {
+            return metaEnv[key];
         }
     } catch {
         // Ignore outside Vite runtime
     }
 
-    if (typeof process !== 'undefined' && process.env && typeof process.env.VITE_CATALOG_DATA_SOURCE === 'string') {
-        return process.env.VITE_CATALOG_DATA_SOURCE;
+    if (typeof process !== 'undefined' && process.env && typeof process.env[key] === 'string') {
+        return process.env[key];
     }
 
     return undefined;
 };
 
 /**
- * Explicit opt-in switch for the Neon read-only catalog POC.
- * Defaults strictly to 'supabase' unless VITE_CATALOG_DATA_SOURCE='neon'
- * (or an explicit test override) is configured.
+ * Explicit opt-in switch for the postponed Neon read-only catalog POC.
+ * Defaults strictly to 'supabase' unless explicitly overridden in tests or both
+ * VITE_ENABLE_NEON_CATALOG_POC='true' and VITE_CATALOG_DATA_SOURCE='neon' are set.
  */
 export const getCatalogDataSource = (): CatalogDataSource => {
     if (runtimeCatalogSourceOverride) {
         return runtimeCatalogSourceOverride;
     }
 
-    const configured = (readConfiguredCatalogSource() || '').trim().toLowerCase();
-    return configured === 'neon' ? 'neon' : 'supabase';
+    const pocActive = (readEnvString('VITE_ENABLE_NEON_CATALOG_POC') || '').trim().toLowerCase() === 'true';
+    const configured = (readEnvString('VITE_CATALOG_DATA_SOURCE') || '').trim().toLowerCase();
+    return pocActive && configured === 'neon' ? 'neon' : 'supabase';
 };
 
 export const isNeonCatalogEnabled = (): boolean => {

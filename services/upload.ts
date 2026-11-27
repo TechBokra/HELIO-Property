@@ -85,12 +85,18 @@ export const getCloudinarySettings = async (): Promise<CloudinaryConfig> => {
         // fallback to env
     }
 
+    const cleanEnv = (val?: string) => {
+        const trimmed = val?.trim();
+        if (!trimmed || /^your_/i.test(trimmed)) return undefined;
+        return trimmed;
+    };
+
     // 3. Fallback to Env / Defaults
     cachedConfig = {
-        cloudName: env.VITE_CLOUDINARY_CLOUD_NAME || 'dwg0hr34g',
-        uploadPreset: env.VITE_CLOUDINARY_UPLOAD_PRESET || 'onlyhelio_uploads',
-        folder: env.VITE_CLOUDINARY_FOLDER || 'onlyhelio',
-        apiKey: env.VITE_CLOUDINARY_API_KEY
+        cloudName: cleanEnv(env.VITE_CLOUDINARY_CLOUD_NAME) || 'dwg0hr34g',
+        uploadPreset: cleanEnv(env.VITE_CLOUDINARY_UPLOAD_PRESET) || 'onlyhelio_uploads',
+        folder: cleanEnv(env.VITE_CLOUDINARY_FOLDER) || 'onlyhelio',
+        apiKey: cleanEnv(env.VITE_CLOUDINARY_API_KEY)
     };
 
     return cachedConfig;

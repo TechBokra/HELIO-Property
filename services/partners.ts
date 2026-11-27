@@ -1,5 +1,5 @@
 
-import { supabase, supabasePublic } from '../lib/supabase';
+import { supabase, supabasePublic, getSupabaseClientConfig } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { Role, Permission, type Partner, type PartnerStatus, type PartnerRequest, type AdminPartner, type SubscriptionPlan, type PartnerType } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
@@ -42,12 +42,7 @@ export const getFallbackPartners = (): Partner[] => {
 // the main 'supabase' client (used by the Admin) from switching sessions 
 // when a new user is signed up.
 const getTemporaryClient = () => {
-    const getEnv = () => {
-        try { return (import.meta as any).env || {}; } catch { return {}; }
-    };
-    const env = getEnv();
-    const supabaseUrl = env.VITE_SUPABASE_URL || 'https://xyyvgpchkznznwbxbgrp.supabase.co';
-    const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM';
+    const { supabaseUrl, supabaseAnonKey } = getSupabaseClientConfig();
     
     return createClient(supabaseUrl, supabaseAnonKey, {
         auth: {

@@ -20,12 +20,47 @@ const getEnv = (key: string): string | undefined => {
     return undefined;
 };
 
-const envUrl = getEnv('VITE_SUPABASE_URL')?.trim();
-const envKey = getEnv('VITE_SUPABASE_ANON_KEY')?.trim();
+const isPlaceholderSupabaseUrl = (val?: string): boolean => {
+    if (!val) return true;
+    const lower = val.toLowerCase();
+    if (lower.includes('your-project') || lower.includes('your_project') || lower.includes('placeholder')) {
+        return true;
+    }
+    try {
+        const parsed = new URL(val);
+        return parsed.protocol !== 'https:' && parsed.protocol !== 'http:';
+    } catch {
+        return true;
+    }
+};
+
+const isPlaceholderSupabaseKey = (val?: string): boolean => {
+    if (!val) return true;
+    const lower = val.toLowerCase();
+    if (lower.includes('your-anon-key') || lower.includes('your_anon_key') || lower.includes('placeholder')) {
+        return true;
+    }
+    // Supabase anon keys are JWT strings starting with eyJ
+    return !val.startsWith('eyJ') || val.split('.').length !== 3;
+};
+
+export const resolveSupabaseConfig = (
+    envUrlInput?: string,
+    envKeyInput?: string
+): { supabaseUrl: string; supabaseAnonKey: string } => {
+    const trimmedUrl = envUrlInput?.trim();
+    const trimmedKey = envKeyInput?.trim();
+    const validUrl = !isPlaceholderSupabaseUrl(trimmedUrl) ? trimmedUrl! : FALLBACK_URL;
+    const validKey = !isPlaceholderSupabaseKey(trimmedKey) ? trimmedKey! : FALLBACK_KEY;
+    return { supabaseUrl: validUrl, supabaseAnonKey: validKey };
+};
+
+export const getSupabaseClientConfig = (): { supabaseUrl: string; supabaseAnonKey: string } => {
+    return resolveSupabaseConfig(getEnv('VITE_SUPABASE_URL'), getEnv('VITE_SUPABASE_ANON_KEY'));
+};
 
 // Production MUST NOT depend on localStorage for Supabase credentials or security decisions
-const supabaseUrl = (envUrl && envUrl.length > 0) ? envUrl : FALLBACK_URL;
-const supabaseAnonKey = (envKey && envKey.length > 0) ? envKey : FALLBACK_KEY;
+const { supabaseUrl, supabaseAnonKey } = getSupabaseClientConfig();
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
