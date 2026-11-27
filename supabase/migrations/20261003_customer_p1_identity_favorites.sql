@@ -272,7 +272,15 @@ CREATE TABLE IF NOT EXISTS public.customer_favorites (
 );
 
 CREATE INDEX IF NOT EXISTS idx_customer_favorites_user ON public.customer_favorites(user_id);
-CREATE INDEX IF NOT EXISTS idx_customer_favorites_user_prop ON public.customer_favorites(user_id, property_id);
+-- Production keeps the (user_id, item_id, item_type) shape used by services/favorites.ts;
+-- only index property_id when that legacy column exists.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'customer_favorites' AND column_name = 'property_id') THEN
+        CREATE INDEX IF NOT EXISTS idx_customer_favorites_user_prop ON public.customer_favorites(user_id, property_id);
+    END IF;
+END $$;
 
 ALTER TABLE public.customer_favorites ENABLE ROW LEVEL SECURITY;
 

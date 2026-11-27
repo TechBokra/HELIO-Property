@@ -62,7 +62,7 @@ BEGIN
         -- Non-admins cannot self-activate or self-assign elite plans
         IF NOT v_is_relations_manager THEN
             IF NEW.status IS NOT NULL AND NEW.status::text IN ('active', 'approved') AND v_caller_id = NEW.id THEN
-                NEW.status := 'pending'::partner_status;
+                NEW.status := 'pending';
             END IF;
             IF NEW.subscription_plan IS NOT NULL AND NEW.subscription_plan NOT IN ('basic', 'commission') THEN
                 NEW.subscription_plan := 'basic';

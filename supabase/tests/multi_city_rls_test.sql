@@ -25,10 +25,10 @@ BEGIN
     ON CONFLICT (id) DO UPDATE SET is_active = FALSE;
 
     -- Seed test properties in heliopolis (active) and paused city (active listing inside paused city)
-    INSERT INTO public.properties (id, city_id, partner_id, title_ar, title_en, listing_status, status, price_numeric, type, type_en, price_ar, price_en)
+    INSERT INTO public.properties (id, city_id, partner_id, title_ar, title_en, listing_status, status, price, area, type)
     VALUES
-        ('aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa', 'heliopolis', v_partner_helio, 'عقار هليو', 'Helio Prop', 'active', 'available', 1000000, 'شقة', 'Apartment', '1,000,000', '1,000,000'),
-        ('bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb', v_paused_city_id, v_partner_helio, 'عقار مدينة متوقفة', 'Paused City Prop', 'active', 'available', 2000000, 'شقة', 'Apartment', '2,000,000', '2,000,000')
+        ('aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa', 'heliopolis', v_partner_helio, 'عقار هليو', 'Helio Prop', 'active', 'available', 1000000, 150, 'شقة'),
+        ('bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb', v_paused_city_id, v_partner_helio, 'عقار مدينة متوقفة', 'Paused City Prop', 'active', 'available', 2000000, 150, 'شقة')
     ON CONFLICT (id) DO NOTHING;
 
     -- Seed test requests in heliopolis and shorouk

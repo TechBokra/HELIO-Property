@@ -4,7 +4,9 @@
 -- 1. Add 'customer' value to partner_role enum if not already present
 DO $$
 BEGIN
-    IF NOT EXISTS (
+    -- Only when partners.role is the partner_role enum (production stores role as text)
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'partner_role' AND typnamespace = 'public'::regnamespace)
+    AND NOT EXISTS (
         SELECT 1 FROM pg_type t 
         JOIN pg_enum e ON t.oid = e.enumtypid 
         WHERE t.typname = 'partner_role' AND e.enumlabel = 'customer'
@@ -68,9 +70,9 @@ BEGIN
 
         IF NOT v_is_relations_manager THEN
             IF NEW.role::text = 'customer' THEN
-                NEW.status := 'active'::partner_status;
+                NEW.status := 'active';
             ELSIF NEW.status IS NOT NULL AND NEW.status::text IN ('active', 'approved') AND v_caller_id = NEW.id THEN
-                NEW.status := 'pending'::partner_status;
+                NEW.status := 'pending';
             END IF;
 
             IF NEW.subscription_plan IS NOT NULL AND NEW.subscription_plan NOT IN ('basic', 'commission') THEN

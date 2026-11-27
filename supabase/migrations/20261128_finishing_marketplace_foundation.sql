@@ -26,7 +26,7 @@ AS $$
         SELECT 1 FROM public.partners p
         WHERE p.id = auth.uid()
           AND p.status = 'active'
-          AND p.role::text IN ('super_admin', 'platform_finishing_manager', 'finishing_market_manager', 'partner_relations_manager')
+          AND lower(p.role::text) IN ('super_admin', 'platform_finishing_manager', 'finishing_market_manager', 'partner_relations_manager')
     );
 $$;
 REVOKE ALL ON FUNCTION public.is_finishing_admin() FROM PUBLIC;
@@ -508,6 +508,45 @@ WITH CHECK (
     auth.uid() = partner_id
     AND status NOT IN ('accepted')
     AND public.partner_can_access_request(request_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- 6C. SECURITY: finishing_request_history was readable and writable by any
+--     authenticated user in production (USING true / WITH CHECK true).
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.finishing_request_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users view finishing request history" ON public.finishing_request_history;
+DROP POLICY IF EXISTS "Authenticated users insert finishing request history" ON public.finishing_request_history;
+
+DROP POLICY IF EXISTS "Finishing admins manage request history" ON public.finishing_request_history;
+CREATE POLICY "Finishing admins manage request history"
+ON public.finishing_request_history FOR ALL TO authenticated
+USING (public.is_finishing_admin())
+WITH CHECK (public.is_finishing_admin());
+
+DROP POLICY IF EXISTS "Partners view history of accessible requests" ON public.finishing_request_history;
+CREATE POLICY "Partners view history of accessible requests"
+ON public.finishing_request_history FOR SELECT TO authenticated
+USING (public.partner_can_access_request(request_id));
+
+DROP POLICY IF EXISTS "Partners add history to accessible requests" ON public.finishing_request_history;
+CREATE POLICY "Partners add history to accessible requests"
+ON public.finishing_request_history FOR INSERT TO authenticated
+WITH CHECK (public.partner_can_access_request(request_id));
+
+DROP POLICY IF EXISTS "Customers view history of own requests" ON public.finishing_request_history;
+CREATE POLICY "Customers view history of own requests"
+ON public.finishing_request_history FOR SELECT TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM public.requests r
+        WHERE r.id = finishing_request_history.request_id
+        AND (
+            (r.customer_id IS NOT NULL AND r.customer_id = auth.uid())
+            OR r.requester_email = auth.jwt()->>'email'
+        )
+    )
 );
 
 COMMIT;
