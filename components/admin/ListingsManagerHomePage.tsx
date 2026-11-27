@@ -11,6 +11,8 @@ import { useLanguage } from '../shared/LanguageContext';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
 import type { Property } from '../../types';
+import { useAuthStore } from '../../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -18,8 +20,13 @@ const ListingsManagerHomePage: React.FC = () => {
     const { language, t: i18n } = useLanguage();
     const t = i18n.adminDashboard.listingsManagerHome;
     const t_dash = i18n.adminDashboard.propertiesDashboard;
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
 
-    const { data: properties, isLoading: loadingProps } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties });
+    const { data: properties, isLoading: loadingProps } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
     const { data: projects, isLoading: loadingProjs } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
 
     const isLoading = loadingProps || loadingProjs;

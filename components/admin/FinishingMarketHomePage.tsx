@@ -14,16 +14,23 @@ import { isListingActive } from '../../utils/propertyUtils';
 import type { PartnerRequest } from '../../types';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
+import { useAuthStore } from '../../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const FinishingMarketHomePage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_admin = t.adminDashboard;
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
 
     const { data: partners, isLoading: loadingPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
     const { data: projects, isLoading: loadingProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
-    const { data: properties, isLoading: loadingProperties } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties });
+    const { data: properties, isLoading: loadingProperties } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
     const { data: partnerRequests, isLoading: loadingRequests } = useQuery({ queryKey: ['partnerRequests'], queryFn: getAllPartnerRequests });
 
     const isLoading = loadingPartners || loadingProjects || loadingProperties || loadingRequests;

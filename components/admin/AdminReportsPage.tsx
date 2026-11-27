@@ -16,6 +16,8 @@ import { ChartBarIcon, FileDownloadIcon, FunnelIcon, TableCellsIcon, CheckCircle
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/Table';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
+import { useAuthStore } from '../../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -54,9 +56,15 @@ const AdminReportsPage: React.FC = () => {
     const statusFilter = watch('statusFilter');
     const dateRangeShortcut = watch('dateRangeShortcut');
 
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
+
     // Fetch Data
     const { data: leads, isLoading: loadingLeads } = useQuery({ queryKey: ['allLeads'], queryFn: getAllLeads });
-    const { data: properties, isLoading: loadingProps } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties });
+    const { data: properties, isLoading: loadingProps } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
     const { data: partners, isLoading: loadingPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
 
     // Configuration Definitions

@@ -5156,6 +5156,643 @@ async function runTests() {
         assert.strictEqual(getCatalogDataSource(), 'supabase');
     });
 
+    console.log('\n--- Suite 17: Property Cache Key Unification, Service Cache Isolation & Lifecycle ---');
+
+    await test('CACHE.1: Unified propertyQueryKeys isolate detail modes, sources, cities, normalized filters, and users', async () => {
+        const { propertyQueryKeys } = await import('../utils/propertyQueryKeys');
+
+        const visitorKey = propertyQueryKeys.publicDetail('prop-1', 'supabase');
+        const reviewAdminKey = propertyQueryKeys.reviewDetail(
+            'prop-1',
+            { id: 'admin-1', role: Role.SUPER_ADMIN, isDemo: false },
+            'supabase'
+        );
+        const editAdminKey = propertyQueryKeys.editDetail(
+            'prop-1',
+            { id: 'admin-1', role: Role.SUPER_ADMIN, isDemo: false },
+            'supabase'
+        );
+        const reviewPartnerKey = propertyQueryKeys.reviewDetail(
+            'prop-1',
+            { id: 'partner-dev-100', role: Role.DEVELOPER_PARTNER, isDemo: false },
+            'supabase'
+        );
+
+        assert.notDeepStrictEqual(visitorKey, reviewAdminKey);
+        assert.notDeepStrictEqual(visitorKey, editAdminKey);
+        assert.notDeepStrictEqual(reviewAdminKey, editAdminKey);
+        assert.notDeepStrictEqual(reviewAdminKey, reviewPartnerKey);
+
+        // Source & city isolation
+        assert.notDeepStrictEqual(
+            propertyQueryKeys.publicList('heliopolis', 'supabase'),
+            propertyQueryKeys.publicList('heliopolis', 'neon')
+        );
+        assert.notDeepStrictEqual(
+            propertyQueryKeys.publicList('heliopolis', 'supabase'),
+            propertyQueryKeys.publicList('shorouk', 'supabase')
+        );
+        assert.deepStrictEqual(
+            propertyQueryKeys.publicList('hub', 'supabase'),
+            propertyQueryKeys.publicList('all', 'supabase')
+        );
+
+        // Normalized filters: ignore view & whitespace padding, sort amenities cleanly
+        const paginatedA = propertyQueryKeys.publicPaginated({
+            cityId: 'heliopolis',
+            page: 1,
+            filters: { status: 'For Sale', query: '  garden ', amenities: ['Pool', 'Security'], view: 'grid' } as any,
+            source: 'supabase',
+        });
+        const paginatedB = propertyQueryKeys.publicPaginated({
+            cityId: 'heliopolis',
+            page: 1,
+            filters: { status: 'For Sale', query: 'garden', amenities: ['Security', 'Pool'], view: 'list' } as any,
+            source: 'supabase',
+        });
+        assert.deepStrictEqual(paginatedA, paginatedB);
+        assert.notDeepStrictEqual(
+            paginatedA,
+            propertyQueryKeys.publicPaginated({
+                cityId: 'shorouk',
+                page: 1,
+                filters: { status: 'For Sale', query: 'garden', amenities: ['Security', 'Pool'] } as any,
+                source: 'supabase',
+            })
+        );
+    });
+
+    await test('CACHE.2: Service-layer memory cache isolates users & blocks stale in-flight writes after invalidation', async () => {
+        const { supabase, supabasePublic } = await import('../lib/supabase');
+        const {
+            getAllProperties,
+            getProperties,
+            invalidatePropertiesCache,
+        } = await import('../services/properties');
+
+        const originalFrom = (supabase as any).from;
+        const originalPublicFrom = (supabasePublic as any).from;
+
+        const baseRows = [
+            {
+                id: 'iso-prop-100',
+                partner_id: 'partner-dev-100',
+                city_id: 'heliopolis',
+                title_ar: 'شقة مطور 100',
+                title_en: 'Dev 100 Draft Unit',
+                status: 'For Sale',
+                type: 'Apartment',
+                price: 2000000,
+                area: 140,
+                listing_status: 'draft',
+                created_at: new Date().toISOString(),
+            },
+            {
+                id: 'iso-prop-200',
+                partner_id: 'partner-dev-200',
+                city_id: 'heliopolis',
+                title_ar: 'شقة مطور 200',
+                title_en: 'Dev 200 Active Unit',
+                status: 'For Sale',
+                type: 'Apartment',
+                price: 3500000,
+                area: 180,
+                listing_status: 'active',
+                created_at: new Date().toISOString(),
+            },
+        ];
+
+        let publicReadsCount = 0;
+        let delayNextAllRead: { promise: Promise<void>; release: () => void } | null = null;
+        let delayNextPublicRead: { promise: Promise<void>; release: () => void } | null = null;
+        let currentPrice = 2000000;
+        let currentPublicRows = [baseRows[1]];
+
+        const createGate = () => {
+            let release!: () => void;
+            const promise = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            return { promise, release };
+        };
+
+        const makeTableStub = (isPublicClient: boolean) => (table: string) => {
+            if (table === 'partners' || table === 'projects') {
+                const b: any = {
+                    select: () => b,
+                    eq: () => b,
+                    order: () => Promise.resolve({ data: [], error: null }),
+                    maybeSingle: async () => ({ data: null, error: null }),
+                };
+                return b;
+            }
+            if (table === 'properties') {
+                let pendingPromise: Promise<any> | null = null;
+                const exec = async () => {
+                    if (isPublicClient) {
+                        publicReadsCount += 1;
+                        if (delayNextPublicRead) {
+                            const gate = delayNextPublicRead;
+                            delayNextPublicRead = null;
+                            const snapshot = JSON.parse(JSON.stringify(currentPublicRows));
+                            await gate.promise;
+                            return { data: snapshot, error: null };
+                        }
+                        return { data: JSON.parse(JSON.stringify(currentPublicRows)), error: null };
+                    }
+
+                    const activeUser = useAuthStore.getState().currentUser;
+                    if (delayNextAllRead) {
+                        const gate = delayNextAllRead;
+                        delayNextAllRead = null;
+                        const staleSnapshot = JSON.parse(
+                            JSON.stringify(
+                                baseRows.map((r) => (r.id === 'iso-prop-100' ? { ...r, price: currentPrice } : r))
+                            )
+                        );
+                        await gate.promise;
+                        return { data: staleSnapshot, error: null };
+                    }
+                    const scoped =
+                        activeUser?.role === Role.DEVELOPER_PARTNER
+                            ? baseRows.filter((r) => r.partner_id === activeUser.id)
+                            : baseRows;
+                    return {
+                        data: JSON.parse(
+                            JSON.stringify(scoped.map((r) => (r.id === 'iso-prop-100' ? { ...r, price: currentPrice } : r)))
+                        ),
+                        error: null,
+                    };
+                };
+                const b: any = {
+                    select: () => b,
+                    in: () => b,
+                    eq: () => b,
+                    order: () => {
+                        pendingPromise = exec();
+                        return pendingPromise;
+                    },
+                    then: (resolve: any, reject: any) => (pendingPromise || exec()).then(resolve, reject),
+                };
+                return b;
+            }
+            return originalFrom.call(supabase, table);
+        };
+
+        try {
+            invalidatePropertiesCache();
+            (supabase as any).from = makeTableStub(false);
+            (supabasePublic as any).from = makeTableStub(true);
+
+            // 1. User-scoped cachedAllProperties prevents partner A from leaking into partner B
+            useAuthStore.getState().setCurrentUser({
+                id: 'partner-dev-100',
+                email: 'p100@example.com',
+                type: 'developer',
+                role: Role.DEVELOPER_PARTNER,
+                status: 'active',
+            } as any);
+            const p100List = await getAllProperties();
+            assert.deepStrictEqual(p100List.map((p) => p.id), ['iso-prop-100']);
+
+            useAuthStore.getState().setCurrentUser({
+                id: 'partner-dev-200',
+                email: 'p200@example.com',
+                type: 'developer',
+                role: Role.DEVELOPER_PARTNER,
+                status: 'active',
+            } as any);
+            const p200List = await getAllProperties();
+            assert.deepStrictEqual(p200List.map((p) => p.id), ['iso-prop-200']);
+
+            // 2. Stale in-flight getAllProperties cannot poison cache after invalidatePropertiesCache()
+            useAuthStore.getState().setCurrentUser({
+                id: 'admin-super-1',
+                email: 'owner@onlyhelio.com',
+                type: 'admin',
+                role: Role.SUPER_ADMIN,
+                status: 'active',
+            } as any);
+            invalidatePropertiesCache();
+            const allGate = createGate();
+            delayNextAllRead = allGate;
+            const delayedAllPromise = getAllProperties();
+            currentPrice = 2750000;
+            invalidatePropertiesCache();
+            allGate.release();
+            await delayedAllPromise;
+            const freshAll = await getAllProperties();
+            const updatedProp = freshAll.find((p) => p.id === 'iso-prop-100');
+            assert.strictEqual(updatedProp?.priceNumeric, 2750000, 'Late-resolving getAllProperties must not overwrite cache after invalidation');
+
+            // 3. Stale in-flight getProperties cannot poison public cache after invalidatePropertiesCache()
+            invalidatePropertiesCache();
+            const pubGate = createGate();
+            delayNextPublicRead = pubGate;
+            const delayedPubPromise = getProperties('heliopolis');
+            currentPublicRows = [
+                ...baseRows.map((r) => (r.id === 'iso-prop-100' ? { ...r, listing_status: 'active' } : r)),
+            ];
+            invalidatePropertiesCache();
+            pubGate.release();
+            await delayedPubPromise;
+            const freshPub = await getProperties('heliopolis');
+            assert.ok(freshPub.some((p) => p.id === 'iso-prop-100'), 'Late-resolving getProperties must not cache stale public snapshot');
+            assert.ok(publicReadsCount >= 2);
+        } finally {
+            invalidatePropertiesCache();
+            (supabase as any).from = originalFrom;
+            (supabasePublic as any).from = originalPublicFrom;
+        }
+    });
+
+    await test('CACHE.3: Full isolated lifecycle (Draft -> Review/Visitor isolation -> Publish -> Hide) via QueryClient & invalidateAllPropertyQueries', async () => {
+        const { QueryClient } = await import('@tanstack/react-query');
+        const { supabase, supabasePublic } = await import('../lib/supabase');
+        const {
+            addProperty,
+            updateProperty,
+            deleteProperty,
+            getAllProperties,
+            getProperties,
+            getPaginatedProperties,
+            getPropertiesByProjectId,
+            getPublicPropertiesByPartnerId,
+            getPropertiesByPartnerId,
+            getPropertyById,
+            invalidatePropertiesCache,
+        } = await import('../services/properties');
+        const { isListingActive } = await import('../utils/propertyUtils');
+        const { propertyQueryKeys } = await import('../utils/propertyQueryKeys');
+        const { invalidateAllPropertyQueries } = await import('../utils/queryInvalidation');
+
+        const partnerId = 'partner-dev-100';
+        const projectIdA = 'proj-iso-cache-a';
+        const projectIdB = 'proj-iso-cache-b';
+
+        const partnerRow = {
+            id: partnerId,
+            email: 'dev100@example.com',
+            name_en: 'Dev 100',
+            name_ar: 'مطور 100',
+            type: 'developer',
+            role: 'developer',
+            status: 'active',
+            display_type: 'standard',
+        };
+        const projectRows = [
+            {
+                id: projectIdA,
+                partner_id: partnerId,
+                city_id: 'heliopolis',
+                name_en: 'Cache Project A',
+                name_ar: 'مشروع كاش أ',
+                features: [],
+                created_at: new Date().toISOString(),
+            },
+            {
+                id: projectIdB,
+                partner_id: partnerId,
+                city_id: 'heliopolis',
+                name_en: 'Cache Project B',
+                name_ar: 'مشروع كاش ب',
+                features: [],
+                created_at: new Date().toISOString(),
+            },
+        ];
+        const propertyRows: any[] = [];
+        const historyRows: any[] = [];
+
+        const originalFrom = (supabase as any).from;
+        const originalPublicFrom = (supabasePublic as any).from;
+
+        const makeLifecycleClient = (isPublicClient: boolean) => (table: string) => {
+            if (table === 'partners') {
+                const predicates: ((r: any) => boolean)[] = [];
+                const b: any = {
+                    select: () => b,
+                    eq: (col: string, val: any) => {
+                        predicates.push((r) => r?.[col] === val);
+                        return b;
+                    },
+                    order: () => Promise.resolve({ data: [partnerRow].filter((r) => predicates.every((p) => p(r))), error: null }),
+                    maybeSingle: async () => ({
+                        data: [partnerRow].filter((r) => predicates.every((p) => p(r)))[0] || null,
+                        error: null,
+                    }),
+                };
+                return b;
+            }
+            if (table === 'projects') {
+                const predicates: ((r: any) => boolean)[] = [];
+                const b: any = {
+                    select: () => b,
+                    eq: (col: string, val: any) => {
+                        predicates.push((r) => r?.[col] === val);
+                        return b;
+                    },
+                    order: () => Promise.resolve({ data: projectRows.filter((r) => predicates.every((p) => p(r))), error: null }),
+                    maybeSingle: async () => ({
+                        data: projectRows.filter((r) => predicates.every((p) => p(r)))[0] || null,
+                        error: null,
+                    }),
+                };
+                return b;
+            }
+            if (table === 'property_history') {
+                return {
+                    insert: async (row: any) => {
+                        historyRows.push(row);
+                        return { error: null };
+                    },
+                    select: () => ({
+                        eq: () => ({
+                            order: async () => ({ data: historyRows, error: null }),
+                        }),
+                    }),
+                };
+            }
+            if (table === 'properties') {
+                return {
+                    select: () => {
+                        const predicates: ((r: any) => boolean)[] = [];
+                        if (isPublicClient) {
+                            predicates.push((r) => r.listing_status === 'active' || r.listing_status === 'sold');
+                        }
+                        const run = async () => {
+                            const filtered = propertyRows.filter((r) => predicates.every((p) => p(r)));
+                            return { data: JSON.parse(JSON.stringify(filtered)), error: null };
+                        };
+                        const b: any = {
+                            eq: (col: string, val: any) => {
+                                predicates.push((r) => r?.[col] === val);
+                                return b;
+                            },
+                            in: (col: string, vals: any[]) => {
+                                predicates.push((r) => vals.includes(r?.[col]));
+                                return b;
+                            },
+                            order: () => b,
+                            maybeSingle: async () => {
+                                const res = await run();
+                                return { data: res.data[0] || null, error: null };
+                            },
+                            then: (resolve: any, reject: any) => run().then(resolve, reject),
+                        };
+                        return b;
+                    },
+                    insert: (payload: any) => ({
+                        select: () => ({
+                            single: async () => {
+                                const row = JSON.parse(JSON.stringify(payload));
+                                propertyRows.push(row);
+                                return { data: JSON.parse(JSON.stringify(row)), error: null };
+                            },
+                        }),
+                    }),
+                    update: (patch: any) => ({
+                        eq: (col: string, val: any) => ({
+                            select: () => ({
+                                single: async () => {
+                                    const idx = propertyRows.findIndex((r) => r?.[col] === val);
+                                    if (idx < 0) return { data: null, error: { message: 'Not found' } };
+                                    propertyRows[idx] = { ...propertyRows[idx], ...JSON.parse(JSON.stringify(patch)) };
+                                    return { data: JSON.parse(JSON.stringify(propertyRows[idx])), error: null };
+                                },
+                            }),
+                        }),
+                    }),
+                    delete: () => ({
+                        eq: async (col: string, val: any) => {
+                            const idx = propertyRows.findIndex((r) => r?.[col] === val);
+                            if (idx >= 0) propertyRows.splice(idx, 1);
+                            return { error: null };
+                        },
+                    }),
+                };
+            }
+            return originalFrom.call(supabase, table);
+        };
+
+        const queryClient = new QueryClient({
+            defaultOptions: {
+                queries: { staleTime: 5 * 60 * 1000, gcTime: 10 * 60 * 1000, retry: false },
+            },
+        });
+
+        const authorizedPartner = {
+            id: partnerId,
+            email: 'dev100@example.com',
+            type: 'developer',
+            role: Role.DEVELOPER_PARTNER,
+            status: 'active',
+        } as any;
+
+        const fetchAllVisitorViews = async (propId: string) => {
+            const listKey = propertyQueryKeys.publicPaginated({
+                cityId: 'heliopolis',
+                page: 1,
+                filters: { status: 'all', type: 'all' },
+                source: 'supabase',
+            });
+            const homeKey = propertyQueryKeys.publicList('heliopolis', 'supabase');
+            const projectKeyA = propertyQueryKeys.projectPublic(projectIdA, 'supabase');
+            const projectKeyB = propertyQueryKeys.projectPublic(projectIdB, 'supabase');
+            const partnerKey = propertyQueryKeys.partnerPublic(partnerId, 'supabase');
+            const detailKey = propertyQueryKeys.publicDetail(propId, 'supabase');
+
+            const [listRes, homeAllRes, projARes, projBRes, partnerRes, directRes] = await Promise.all([
+                queryClient.fetchQuery({
+                    queryKey: listKey,
+                    queryFn: () => getPaginatedProperties({ page: 1, limit: 12, filters: {} as any, cityId: 'heliopolis' }),
+                }),
+                queryClient.fetchQuery({
+                    queryKey: homeKey,
+                    queryFn: () => getProperties('heliopolis'),
+                }),
+                queryClient.fetchQuery({
+                    queryKey: projectKeyA,
+                    queryFn: () => getPropertiesByProjectId(projectIdA, { publicOnly: true }),
+                }),
+                queryClient.fetchQuery({
+                    queryKey: projectKeyB,
+                    queryFn: () => getPropertiesByProjectId(projectIdB, { publicOnly: true }),
+                }),
+                queryClient.fetchQuery({
+                    queryKey: partnerKey,
+                    queryFn: () => getPublicPropertiesByPartnerId(partnerId),
+                }),
+                queryClient.fetchQuery({
+                    queryKey: detailKey,
+                    queryFn: async () => (await getPropertyById(propId, { publicOnly: true })) ?? null,
+                }),
+            ]);
+
+            return {
+                listIds: listRes.properties.map((p) => p.id),
+                homeLatestIds: homeAllRes.filter(isListingActive).map((p) => p.id),
+                projectAIds: projARes.map((p) => p.id),
+                projectBIds: projBRes.map((p) => p.id),
+                partnerIds: partnerRes.map((p) => p.id),
+                directProp: directRes,
+            };
+        };
+
+        try {
+            invalidatePropertiesCache();
+            (supabase as any).from = makeLifecycleClient(false);
+            (supabasePublic as any).from = makeLifecycleClient(true);
+            useAuthStore.getState().setCurrentUser(authorizedPartner);
+
+            // 1. Create Draft linked to projectIdA + partnerId
+            const draft = await addProperty({
+                partnerId,
+                projectId: projectIdA,
+                cityId: 'heliopolis',
+                imageUrl: 'https://example.com/u1.jpg',
+                gallery: [],
+                title: { ar: 'وحدة مسودة كاش', en: 'Cache Draft Unit' },
+                description: { ar: 'وصف', en: 'Desc' },
+                address: { ar: 'هليوبوليس الجديدة', en: 'New Heliopolis' },
+                status: { en: 'For Sale', ar: 'للبيع' },
+                type: { en: 'Apartment', ar: 'شقة' },
+                price: { en: 'EGP 3,000,000', ar: '3,000,000 ج.م' },
+                priceNumeric: 3000000,
+                area: 150,
+                beds: 3,
+                baths: 2,
+                amenities: { ar: [], en: [] },
+                location: { lat: 30.1, lng: 31.6 },
+                listingStatus: 'draft',
+                publicationStatus: 'draft',
+                availabilityStatus: 'available',
+                verificationStatus: 'pending',
+                imageUrl_small: '',
+                imageUrl_medium: '',
+                imageUrl_large: '',
+            } as any);
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: draft.id,
+                projectId: projectIdA,
+                partnerId,
+            });
+
+            // Open draft with authorized account (review, edit, operational, partner dashboard)
+            const [reviewDraft, editDraft, opsDrafts, partnerDrafts] = await Promise.all([
+                queryClient.fetchQuery({
+                    queryKey: propertyQueryKeys.reviewDetail(draft.id, authorizedPartner, 'supabase'),
+                    queryFn: async () => (await getPropertyById(draft.id)) ?? null,
+                }),
+                queryClient.fetchQuery({
+                    queryKey: propertyQueryKeys.editDetail(draft.id, authorizedPartner, 'supabase'),
+                    queryFn: async () => (await getPropertyById(draft.id)) ?? null,
+                }),
+                queryClient.fetchQuery({
+                    queryKey: propertyQueryKeys.operationalAll(authorizedPartner, 'supabase'),
+                    queryFn: () => getAllProperties(),
+                }),
+                queryClient.fetchQuery({
+                    queryKey: propertyQueryKeys.partnerAll(partnerId, authorizedPartner, 'supabase'),
+                    queryFn: () => getPropertiesByPartnerId(partnerId),
+                }),
+            ]);
+            assert.strictEqual(reviewDraft?.listingStatus, 'draft');
+            assert.strictEqual(editDraft?.id, draft.id);
+            assert.ok(opsDrafts.some((p) => p.id === draft.id));
+            assert.ok(partnerDrafts.some((p) => p.id === draft.id));
+
+            // Switch to visitor -> verify draft does NOT appear in any visitor surface or direct link
+            useAuthStore.getState().setCurrentUser(null);
+            const visitorDraftCheck = await fetchAllVisitorViews(draft.id);
+            assert.strictEqual(visitorDraftCheck.listIds.includes(draft.id), false);
+            assert.strictEqual(visitorDraftCheck.homeLatestIds.includes(draft.id), false);
+            assert.strictEqual(visitorDraftCheck.projectAIds.includes(draft.id), false);
+            assert.strictEqual(visitorDraftCheck.partnerIds.includes(draft.id), false);
+            assert.strictEqual(visitorDraftCheck.directProp, null);
+            // Review cache still keeps authorized view separated from visitor detail key
+            assert.ok(
+                queryClient.getQueryData(propertyQueryKeys.reviewDetail(draft.id, authorizedPartner, 'supabase')),
+                'Authorized review cache key remains isolated from visitor publicDetail key'
+            );
+
+            // 2. Publish with authorized partner + invalidateAllPropertyQueries
+            useAuthStore.getState().setCurrentUser(authorizedPartner);
+            await updateProperty(draft.id, { listingStatus: 'active', publicationStatus: 'published' });
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: draft.id,
+                projectId: projectIdA,
+                partnerId,
+            });
+
+            // Visitor must IMMEDIATELY see newly published property across List, Home, Project, Partner, Direct Link
+            useAuthStore.getState().setCurrentUser(null);
+            const visitorPublishedCheck = await fetchAllVisitorViews(draft.id);
+            assert.strictEqual(visitorPublishedCheck.listIds.includes(draft.id), true);
+            assert.strictEqual(visitorPublishedCheck.homeLatestIds.includes(draft.id), true);
+            assert.strictEqual(visitorPublishedCheck.projectAIds.includes(draft.id), true);
+            assert.strictEqual(visitorPublishedCheck.partnerIds.includes(draft.id), true);
+            assert.strictEqual(visitorPublishedCheck.directProp?.id, draft.id);
+
+            // 3. Reassign project (A -> B) + pass previousProjectId -> updates both project caches cleanly
+            useAuthStore.getState().setCurrentUser(authorizedPartner);
+            await updateProperty(draft.id, { projectId: projectIdB });
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: draft.id,
+                projectId: projectIdB,
+                previousProjectId: projectIdA,
+                partnerId,
+            });
+            useAuthStore.getState().setCurrentUser(null);
+            const visitorProjectMove = await fetchAllVisitorViews(draft.id);
+            assert.strictEqual(visitorProjectMove.projectAIds.includes(draft.id), false);
+            assert.strictEqual(visitorProjectMove.projectBIds.includes(draft.id), true);
+
+            // 4. Hide property -> disappears from List, Home, Project B, Partner, and Direct Link; review/edit stays accessible
+            useAuthStore.getState().setCurrentUser(authorizedPartner);
+            await updateProperty(draft.id, { listingStatus: 'inactive' });
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: draft.id,
+                projectId: projectIdB,
+                partnerId,
+            });
+
+            useAuthStore.getState().setCurrentUser(null);
+            const visitorHiddenCheck = await fetchAllVisitorViews(draft.id);
+            assert.strictEqual(visitorHiddenCheck.listIds.includes(draft.id), false);
+            assert.strictEqual(visitorHiddenCheck.homeLatestIds.includes(draft.id), false);
+            assert.strictEqual(visitorHiddenCheck.projectBIds.includes(draft.id), false);
+            assert.strictEqual(visitorHiddenCheck.partnerIds.includes(draft.id), false);
+            assert.strictEqual(visitorHiddenCheck.directProp, null);
+
+            useAuthStore.getState().setCurrentUser(authorizedPartner);
+            const reviewHidden = await queryClient.fetchQuery({
+                queryKey: propertyQueryKeys.reviewDetail(draft.id, authorizedPartner, 'supabase'),
+                queryFn: async () => (await getPropertyById(draft.id)) ?? null,
+            });
+            assert.strictEqual(reviewHidden?.listingStatus, 'inactive');
+            assert.strictEqual(reviewHidden?.publicationStatus, 'archived');
+
+            // 5. Delete property + invalidateAllPropertyQueries clears operational caches too
+            const deleted = await deleteProperty(draft.id);
+            assert.strictEqual(deleted, true);
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: draft.id,
+                projectId: projectIdB,
+                partnerId,
+            });
+            const opsAfterDelete = await queryClient.fetchQuery({
+                queryKey: propertyQueryKeys.operationalAll(authorizedPartner, 'supabase'),
+                queryFn: () => getAllProperties(),
+            });
+            assert.strictEqual(opsAfterDelete.some((p) => p.id === draft.id), false);
+        } finally {
+            queryClient.clear();
+            invalidatePropertiesCache();
+            (supabase as any).from = originalFrom;
+            (supabasePublic as any).from = originalPublicFrom;
+        }
+    });
+
     useAuthStore.setState({ currentUser: null, permissions: [] });
 
     console.log('\n======================================================');

@@ -20,6 +20,7 @@ import { useCityStore } from '../../../store/useCityStore';
 import { useAuth } from '../../auth/AuthContext';
 import { filterRecordsByCityScope } from '../../../utils/cityScope';
 import { invalidateAllProjectQueries, invalidateAllPropertyQueries } from '../../../utils/queryInvalidation';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../../utils/propertyQueryKeys';
 
 const AdminProjectsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -35,9 +36,13 @@ const AdminProjectsPage: React.FC = () => {
         return target ? target.name[language] : (language === 'ar' ? 'هليوبوليس الجديدة' : 'New Heliopolis');
     };
 
+    const propertySource = getEffectivePropertySource();
     const { data: rawProjects, isLoading: loadingProjects, isError: isErrorProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
     const { data: partners, isLoading: loadingPartners, isError: isErrorPartners, refetch: refetchPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
-    const { data: properties, isLoading: loadingProperties, isError: isErrorProperties, refetch: refetchProperties } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties });
+    const { data: properties, isLoading: loadingProperties, isError: isErrorProperties, refetch: refetchProperties } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
 
     const projects = React.useMemo(() => {
         if (!rawProjects) return [];

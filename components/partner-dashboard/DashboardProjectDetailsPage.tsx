@@ -18,6 +18,7 @@ import { useToast } from '../shared/ToastContext';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/Table';
 import { invalidateAllProjectQueries, invalidateAllPropertyQueries } from '../../utils/queryInvalidation';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 const DashboardProjectDetailsPage: React.FC = () => {
     const { projectId } = useParams<{ projectId: string }>();
@@ -31,8 +32,9 @@ const DashboardProjectDetailsPage: React.FC = () => {
     const t_analytics = t.dashboard.projectAnalytics;
 
     const { data: projects, isLoading: loadingProjects, isError: errorProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
+    const propertySource = getEffectivePropertySource();
     const { data: partnerProperties, isLoading: loadingProperties, isError: errorProperties, refetch: refetchProperties } = useQuery({
-        queryKey: ['partnerProperties', currentUser?.id, 'all'],
+        queryKey: propertyQueryKeys.partnerAll(currentUser?.id, currentUser, propertySource),
         queryFn: () => getPropertiesByPartnerId(currentUser!.id, { publicOnly: false }),
         enabled: !!currentUser,
     });

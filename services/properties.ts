@@ -559,19 +559,34 @@ const hydratePropertiesBatch = async (properties: Property[], options?: { client
 };
 
 // In-memory cache & deduplication for properties
-let cachedAllProperties: { data: Property[]; timestamp: number } | null = null;
-let inFlightAllPropertiesPromise: Promise<Property[]> | null = null;
+let cacheGeneration = 0;
+
+let cachedAllProperties: { data: Property[]; timestamp: number; source: string; userKey: string } | null = null;
+let inFlightAllProperties: { key: string; promise: Promise<Property[]> } | null = null;
 
 let cachedPublicProperties: { data: Property[]; timestamp: number; source: string; cityKey: string } | null = null;
-let inFlightPublicPropertiesPromise: Promise<Property[]> | null = null;
+let inFlightPublicProperties: { key: string; promise: Promise<Property[]> } | null = null;
 
 const PROPERTIES_CACHE_TTL = 90 * 1000; // 90 seconds in-memory cache
 
+const getActiveReadUserKey = (): string => {
+    try {
+        const user = useAuthStore.getState().currentUser;
+        if (user?.id) {
+            return `${user.isDemo ? 'demo' : 'auth'}:${user.id}:${user.role || 'unknown'}`;
+        }
+    } catch {
+        // Ignore outside browser runtime
+    }
+    return 'guest';
+};
+
 export const invalidatePropertiesCache = () => {
+    cacheGeneration += 1;
     cachedAllProperties = null;
-    inFlightAllPropertiesPromise = null;
+    inFlightAllProperties = null;
     cachedPublicProperties = null;
-    inFlightPublicPropertiesPromise = null;
+    inFlightPublicProperties = null;
 };
 
 /**
@@ -585,12 +600,22 @@ export const getAllProperties = async (cityIdOrOptions?: string | PropertyQueryO
         return filterPropertiesByCity(propertiesData, cityId);
     }
 
+    const activeSource = getCatalogDataSource();
+    const userKey = getActiveReadUserKey();
+    const flightKey = `${activeSource}:${userKey}`;
     const useCache = !opts.client && !opts.forceRefresh;
     const now = Date.now();
-    if (useCache && cachedAllProperties && now - cachedAllProperties.timestamp < PROPERTIES_CACHE_TTL) {
+    if (
+        useCache &&
+        cachedAllProperties &&
+        cachedAllProperties.source === activeSource &&
+        cachedAllProperties.userKey === userKey &&
+        now - cachedAllProperties.timestamp < PROPERTIES_CACHE_TTL
+    ) {
         return filterPropertiesByCity(cachedAllProperties.data, cityId);
     }
 
+    const generationAtStart = cacheGeneration;
     const executeFetch = async (): Promise<Property[]> => {
         const dbClient = getReadClient(opts.client, false);
         const { data, error } = await dbClient
@@ -605,23 +630,26 @@ export const getAllProperties = async (cityIdOrOptions?: string | PropertyQueryO
 
         const rawProperties = (data || []).map(mapPropertyFromDb);
         const hydrated = await hydratePropertiesBatch(rawProperties, { client: opts.client });
-        if (!opts.client) {
-            cachedAllProperties = { data: hydrated, timestamp: Date.now() };
+        if (!opts.client && generationAtStart === cacheGeneration) {
+            cachedAllProperties = { data: hydrated, timestamp: Date.now(), source: activeSource, userKey };
         }
         return hydrated;
     };
 
     if (!opts.client && !opts.forceRefresh) {
-        if (inFlightAllPropertiesPromise) {
-            const list = await inFlightAllPropertiesPromise;
+        if (inFlightAllProperties?.key === flightKey) {
+            const list = await inFlightAllProperties.promise;
             return filterPropertiesByCity(list, cityId);
         }
 
-        inFlightAllPropertiesPromise = executeFetch().finally(() => {
-            inFlightAllPropertiesPromise = null;
+        const promise = executeFetch().finally(() => {
+            if (inFlightAllProperties?.promise === promise) {
+                inFlightAllProperties = null;
+            }
         });
+        inFlightAllProperties = { key: flightKey, promise };
 
-        const result = await inFlightAllPropertiesPromise;
+        const result = await promise;
         return filterPropertiesByCity(result, cityId);
     }
 
@@ -661,16 +689,38 @@ export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOpti
             return filterPropertiesByCity(cachedPublicProperties.data, cityId);
         }
 
-        const qs = cityKey !== 'all' ? `?cityId=${encodeURIComponent(cityKey)}` : '';
-        const result = await fetchNeonCatalogJson(`/api/catalog/properties${qs}`, { fetchImpl: opts.fetchImpl });
-        const rows = Array.isArray(result?.data?.properties) ? result!.data.properties : [];
-        const visible = rows
-            .map(mapNeonPropertyRow)
-            .filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true }));
+        const generationAtStart = cacheGeneration;
+        const flightKey = `neon:${cityKey}`;
+        const executeNeonFetch = async (): Promise<Property[]> => {
+            const qs = cityKey !== 'all' ? `?cityId=${encodeURIComponent(cityKey)}` : '';
+            const result = await fetchNeonCatalogJson(`/api/catalog/properties${qs}`, { fetchImpl: opts.fetchImpl });
+            const rows = Array.isArray(result?.data?.properties) ? result!.data.properties : [];
+            const visible = rows
+                .map(mapNeonPropertyRow)
+                .filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true }));
 
-        if (!opts.fetchImpl) {
-            cachedPublicProperties = { data: visible, timestamp: Date.now(), source: 'neon', cityKey };
+            if (!opts.fetchImpl && generationAtStart === cacheGeneration) {
+                cachedPublicProperties = { data: visible, timestamp: Date.now(), source: 'neon', cityKey };
+            }
+            return visible;
+        };
+
+        if (useCache) {
+            if (inFlightPublicProperties?.key === flightKey) {
+                const list = await inFlightPublicProperties.promise;
+                return filterPropertiesByCity(list, cityId);
+            }
+            const promise = executeNeonFetch().finally(() => {
+                if (inFlightPublicProperties?.promise === promise) {
+                    inFlightPublicProperties = null;
+                }
+            });
+            inFlightPublicProperties = { key: flightKey, promise };
+            const visible = await promise;
+            return filterPropertiesByCity(visible, cityId);
         }
+
+        const visible = await executeNeonFetch();
         return filterPropertiesByCity(visible, cityId);
     }
 
@@ -686,6 +736,8 @@ export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOpti
         return filterPropertiesByCity(cachedPublicProperties.data, cityId);
     }
 
+    const generationAtStart = cacheGeneration;
+    const flightKey = `${activeSource}:all`;
     const executeFetch = async (): Promise<Property[]> => {
         const dbClient = getReadClient(opts.client, true);
         const { data, error } = await dbClient
@@ -703,23 +755,26 @@ export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOpti
             .map(mapPropertyFromDb)
             .filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: true }));
         const hydrated = await hydratePropertiesBatch(rawProperties, { client: opts.client });
-        if (!opts.client) {
+        if (!opts.client && generationAtStart === cacheGeneration) {
             cachedPublicProperties = { data: hydrated, timestamp: Date.now(), source: activeSource, cityKey: 'all' };
         }
         return hydrated;
     };
 
     if (!opts.client && !opts.forceRefresh) {
-        if (inFlightPublicPropertiesPromise) {
-            const list = await inFlightPublicPropertiesPromise;
+        if (inFlightPublicProperties?.key === flightKey) {
+            const list = await inFlightPublicProperties.promise;
             return filterPropertiesByCity(list, cityId);
         }
 
-        inFlightPublicPropertiesPromise = executeFetch().finally(() => {
-            inFlightPublicPropertiesPromise = null;
+        const promise = executeFetch().finally(() => {
+            if (inFlightPublicProperties?.promise === promise) {
+                inFlightPublicProperties = null;
+            }
         });
+        inFlightPublicProperties = { key: flightKey, promise };
 
-        const result = await inFlightPublicPropertiesPromise;
+        const result = await promise;
         return filterPropertiesByCity(result, cityId);
     }
 
@@ -836,12 +891,15 @@ export const getPropertiesByProjectId = async (
  */
 export const getPropertyById = async (
     id: string,
-    options?: { forceSupabase?: boolean; fetchImpl?: typeof fetch; client?: any }
+    options?: { publicOnly?: boolean; forceSupabase?: boolean; fetchImpl?: typeof fetch; client?: any }
 ): Promise<Property | undefined> => {
     if (!id) return undefined;
+    const publicOnly = Boolean(options?.publicOnly);
 
     if (isDemoModeEnabled() && !options?.client) {
-        return propertiesData.find((p) => p.id === id);
+        const prop = propertiesData.find((p) => p.id === id);
+        if (!prop) return undefined;
+        return publicOnly && !isPropertyPubliclyVisible(prop, { includeSold: true }) ? undefined : prop;
     }
 
     if (!options?.client && !options?.forceSupabase && isNeonCatalogEnabled()) {
@@ -856,8 +914,12 @@ export const getPropertyById = async (
         return isPropertyPubliclyVisible(mapped, { includeSold: true }) ? mapped : undefined;
     }
 
-    const dbClient = getReadClient(options?.client, false);
-    const { data, error } = await dbClient.from('properties').select('*').eq('id', id).maybeSingle();
+    const dbClient = getReadClient(options?.client, publicOnly);
+    let query = dbClient.from('properties').select('*').eq('id', id);
+    if (publicOnly) {
+        query = query.in('listing_status', ['active', 'sold']);
+    }
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
         console.error('Supabase error in getPropertyById:', error);
@@ -869,6 +931,9 @@ export const getPropertyById = async (
     }
 
     const rawProp = mapPropertyFromDb(data);
+    if (publicOnly && !isPropertyPubliclyVisible(rawProp, { includeSold: true })) {
+        return undefined;
+    }
     try {
         const [partner, project] = await Promise.all([
             rawProp.partnerId

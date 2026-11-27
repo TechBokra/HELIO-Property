@@ -14,6 +14,7 @@ import type { Property } from '../../../types';
 import { useCityStore } from '../../../store/useCityStore';
 import { useAuth } from '../../auth/AuthContext';
 import { filterRecordsByCityScope } from '../../../utils/cityScope';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../../utils/propertyQueryKeys';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -23,7 +24,12 @@ const AdminPropertiesDashboard: React.FC = () => {
     const { currentUser } = useAuth();
     const adminCityScope = useCityStore((s) => s.adminCityScope);
     
-    const { data: rawProperties, isLoading: loadingProps } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties });
+    const propertySource = getEffectivePropertySource();
+    
+    const { data: rawProperties, isLoading: loadingProps } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
     const { data: partners, isLoading: loadingPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
 
     const properties = useMemo(() => {

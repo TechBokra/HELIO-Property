@@ -10,6 +10,8 @@ import { Input } from '../../ui/Input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/Table';
 import { DocumentCheckIcon, SearchIcon, ArrowPathIcon } from '../../ui/Icons';
 import { Link } from 'react-router-dom';
+import { useAuthStore } from '../../../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../../utils/propertyQueryKeys';
 
 interface AuditEntry {
     id: string;
@@ -30,6 +32,9 @@ const AdminAuditLogPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [domainFilter, setDomainFilter] = useState<'all' | 'properties' | 'partners' | 'requests' | 'credentials'>('all');
 
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
+
     // 1. Fetch live operational entities
     const { 
         data: requests, 
@@ -43,7 +48,10 @@ const AdminAuditLogPage: React.FC = () => {
         isLoading: loadingProperties, 
         isError: errorProperties, 
         refetch: refetchProperties 
-    } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties });
+    } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
 
     const { 
         data: partners, 

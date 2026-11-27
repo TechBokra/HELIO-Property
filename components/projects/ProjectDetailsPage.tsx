@@ -22,6 +22,7 @@ import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
 import ProjectDetailsSkeleton from '../shared/ProjectDetailsSkeleton';
 import ErrorState from '../shared/ErrorState';
 import { Button } from '../ui/Button';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 
 const iconMap: { [key: string]: React.FC<{ className?: string }> } = {
@@ -53,13 +54,14 @@ const ProjectDetailsPage: React.FC = () => {
         staleTime: 1000 * 60 * 5
     });
 
+    const propertySource = getEffectivePropertySource();
     const {
         data: rawProjectProperties = [],
         isLoading: isLoadingProps,
         isError: isErrorProps,
         refetch: refetchProps
     } = useQuery({
-        queryKey: ['project-properties', projectId],
+        queryKey: propertyQueryKeys.projectPublic(projectId, propertySource),
         queryFn: () => getPropertiesByProjectId(projectId!, { publicOnly: true }),
         enabled: !!projectId,
         staleTime: 1000 * 60 * 2

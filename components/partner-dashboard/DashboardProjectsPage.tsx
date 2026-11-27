@@ -14,6 +14,7 @@ import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardContent } from '../ui/Card';
 import ErrorState from '../shared/ErrorState';
 import ProjectCardSkeleton from '../shared/ProjectCardSkeleton';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 const DashboardProjectsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -29,8 +30,9 @@ const DashboardProjectsPage: React.FC = () => {
         refetch: refetchProjects 
     } = useSubscriptionUsage('projects');
 
+    const propertySource = getEffectivePropertySource();
     const { data: properties, isLoading: isLoadingProperties, isError: isErrorProperties, refetch: refetchProperties } = useQuery({
-        queryKey: ['partnerProperties', currentUser?.id, 'all'],
+        queryKey: propertyQueryKeys.partnerAll(currentUser?.id, currentUser, propertySource),
         queryFn: () => getPropertiesByPartnerId(currentUser!.id, { publicOnly: false }),
         enabled: !!currentUser && currentUser.role === Role.DEVELOPER_PARTNER,
     });

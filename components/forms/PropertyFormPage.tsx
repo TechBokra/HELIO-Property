@@ -29,6 +29,7 @@ import LocationPickerModal from '../shared/LocationPickerModal';
 import { useCityStore } from '../../store/useCityStore';
 import { getAccessibleCitiesForUser, resolveAdminDefaultScope } from '../../utils/cityScope';
 import { invalidateAllPropertyQueries } from '../../utils/queryInvalidation';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 import {
     validateEgyptPhone,
     validatePropertyMediaFiles,
@@ -88,11 +89,13 @@ const PropertyFormPage: React.FC = () => {
     const usageType = currentUser?.type === 'developer' ? 'units' : 'properties';
     const { isLimitReached } = useSubscriptionUsage(usageType);
 
+    const propertySource = getEffectivePropertySource();
     // Fetch single property if editing
     const { data: propertyToEdit, isLoading: loadingProperty } = useQuery({ 
-        queryKey: ['property', propertyId], 
-        queryFn: () => getPropertyById(propertyId!),
-        enabled: !!propertyId
+        queryKey: propertyQueryKeys.editDetail(propertyId, currentUser, propertySource), 
+        queryFn: async () => (await getPropertyById(propertyId!)) ?? null,
+        enabled: !!propertyId,
+        staleTime: 0,
     });
 
     const { data: projects, isLoading: isLoadingProjs } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
@@ -145,7 +148,9 @@ const PropertyFormPage: React.FC = () => {
         invalidateAllPropertyQueries(queryClient, {
             propertyId: property?.id || propertyId,
             projectId,
+            previousProjectId: propertyToEdit?.projectId,
             partnerId: resolvedPartnerId,
+            previousPartnerId: propertyToEdit?.partnerId,
         });
         
         if (hasPermission(Permission.VIEW_ADMIN_DASHBOARD)) {

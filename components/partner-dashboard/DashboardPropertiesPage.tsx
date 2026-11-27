@@ -71,7 +71,6 @@ const DashboardPropertiesPage: React.FC = () => {
             });
             showToast(language === 'ar' ? 'تم حذف العقار بنجاح' : 'Property deleted successfully', 'success');
             setPropertyToDelete(null);
-            refetch();
         } catch (err: any) {
             showToast(err?.message || (language === 'ar' ? 'فشل حذف العقار' : 'Failed to delete property'), 'error');
         }

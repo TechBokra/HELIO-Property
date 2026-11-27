@@ -7,18 +7,24 @@ import { useQuery } from '@tanstack/react-query';
 import { getAllProperties } from '../services/properties';
 import { getAllProjects } from '../services/projects';
 import { getAllPortfolioItems } from '../services/portfolio';
+import { getEffectivePropertySource, propertyQueryKeys } from '../utils/propertyQueryKeys';
 
 type UsageType = 'properties' | 'projects' | 'units' | 'portfolio';
 
 export const useSubscriptionUsage = (usageType: UsageType) => {
     const { currentUser } = useAuth();
     
+    const propertySource = getEffectivePropertySource();
     const { 
         data: allProperties, 
         isLoading: isLoadingProperties, 
         isError: isErrorProperties,
         refetch: refetchProperties 
-    } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties, enabled: !!currentUser });
+    } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+        enabled: !!currentUser,
+    });
 
     const { 
         data: allProjects, 

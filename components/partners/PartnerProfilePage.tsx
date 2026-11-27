@@ -16,6 +16,7 @@ import ErrorState from '../shared/ErrorState';
 import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
 import { isPropertyPubliclyVisible } from '../../utils/propertyUtils';
 import { useCityStore } from '../../store/useCityStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 
 const PartnerProfileSkeleton: React.FC = () => (
@@ -74,13 +75,14 @@ const PartnerProfilePage: React.FC = () => {
     });
 
     // Fetch strictly publicly visible properties (for developers/agencies)
+    const propertySource = getEffectivePropertySource();
     const {
         data: rawPartnerProperties,
         isLoading: isLoadingProperties,
         isError: isErrorProperties,
         refetch: refetchProperties
     } = useQuery({
-        queryKey: ['partnerProperties', partnerId, 'public'],
+        queryKey: propertyQueryKeys.partnerPublic(partnerId, propertySource),
         queryFn: () => getPublicPropertiesByPartnerId(partnerId!),
         enabled: !!partnerId && (!partnerInfo || partnerInfo.type === 'developer' || partnerInfo.type === 'agency')
     });

@@ -11,6 +11,7 @@ import { getAllProperties } from '../../../services/properties';
 import { getAllProjects } from '../../../services/projects';
 import { getAllPartnersForAdmin } from '../../../services/partners';
 import { getRecordCityId, getUserAllowedCityIds } from '../../../utils/cityScope';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../../utils/propertyQueryKeys';
 
 const DEFAULT_CITY_HERO_IMAGE =
     'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?q=80&w=1400&auto=format&fit=crop';
@@ -19,9 +20,10 @@ const AdminCitiesPage: React.FC = () => {
     const { language } = useLanguage();
     const isAr = language === 'ar';
     const navigate = useNavigate();
-    const { hasPermission } = useAuth();
+    const { currentUser, hasPermission } = useAuth();
     const { showToast } = useToast();
     const canManageCities = hasPermission(Permission.MANAGE_CITIES);
+    const propertySource = getEffectivePropertySource();
 
     const cities = useCityStore((s) => s.cities);
     const loadCities = useCityStore((s) => s.loadCities);
@@ -40,7 +42,10 @@ const AdminCitiesPage: React.FC = () => {
         loadCities().catch(() => {});
     }, [loadCities]);
 
-    const { data: allProperties } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties });
+    const { data: allProperties } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
     const { data: allProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
     const { data: allPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
 

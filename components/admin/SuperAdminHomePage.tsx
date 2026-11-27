@@ -21,6 +21,8 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Toolti
 import { Bar } from 'react-chartjs-2';
 import { getCommercialKPIs, getAnalyticsEventCounts } from '../../services/analytics';
 import { useCityStore } from '../../store/useCityStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -41,9 +43,14 @@ const SuperAdminHomePage: React.FC = () => {
     const t_home = t.adminDashboard.home;
     const t_analytics = t.adminAnalytics;
     const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
     
     const { data: partners, isLoading: loadingPartners, refetch: refetchPartners } = useQuery({ queryKey: ['allPartnersAdmin'], queryFn: getAllPartnersForAdmin });
-    const { data: rawProperties, isLoading: loadingProperties, refetch: refetchProperties } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties });
+    const { data: rawProperties, isLoading: loadingProperties, refetch: refetchProperties } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
     const { data: rawProjects, isLoading: loadingProjects, refetch: refetchProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects });
     const { data: leads, isLoading: loadingLeads, refetch: refetchLeads } = useQuery({ queryKey: ['allLeads'], queryFn: getAllLeads });
     const { data: rawRequests, isLoading: loadingRequests, refetch: refetchRequests } = useQuery({ queryKey: ['allRequestsAdmin'], queryFn: getAllRequests });

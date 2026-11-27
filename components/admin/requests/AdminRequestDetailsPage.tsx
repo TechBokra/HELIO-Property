@@ -130,6 +130,7 @@ const AdminRequestDetailsPage: React.FC = () => {
                  invalidateAllPropertyQueries(queryClient, {
                      propertyId: res.property.id,
                      partnerId: res.property.partnerId,
+                     projectId: res.property.projectId,
                  });
                  showToast(
                      res.alreadyExisted

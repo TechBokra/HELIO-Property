@@ -5,6 +5,8 @@ import { getAllRequests } from '../services/requests';
 import { getAllProperties } from '../services/properties';
 import { getAllPartnersForAdmin } from '../services/partners';
 import { useLanguage } from '../components/shared/LanguageContext';
+import { useAuthStore } from '../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../utils/propertyQueryKeys';
 
 export type TimePeriod = '7d' | '30d' | 'month' | 'year';
 
@@ -15,8 +17,13 @@ export const useAdminAnalytics = () => {
 
     const [timePeriod, setTimePeriod] = useState<TimePeriod>('30d');
 
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
     const { data: requests, isLoading: loadingRequests } = useQuery({ queryKey: ['allRequests'], queryFn: getAllRequests });
-    const { data: properties, isLoading: loadingProperties } = useQuery({ queryKey: ['allPropertiesAnalytics'], queryFn: getAllProperties });
+    const { data: properties, isLoading: loadingProperties } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
     const { data: partners, isLoading: loadingPartners } = useQuery({ queryKey: ['allPartnersAnalytics'], queryFn: getAllPartnersForAdmin });
 
     const loading = loadingRequests || loadingProperties || loadingPartners;

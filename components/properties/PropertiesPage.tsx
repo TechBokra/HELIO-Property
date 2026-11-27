@@ -20,6 +20,7 @@ import Pagination from '../shared/Pagination';
 import { useCityStore } from '../../store/useCityStore';
 import ErrorState from '../shared/ErrorState';
 import { sanitizePropertyReadError } from '../../utils/propertyUtils';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -77,6 +78,7 @@ const PropertiesPage: React.FC = () => {
 
     // Fetch properties
     const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+    const propertySource = getEffectivePropertySource();
     const { 
         data: propertiesData, 
         isLoading: propsLoading,
@@ -84,7 +86,12 @@ const PropertiesPage: React.FC = () => {
         error: propsError,
         refetch: refetchProps
     } = useQuery({
-        queryKey: ['properties', activeCityId, safePage, queryFilters],
+        queryKey: propertyQueryKeys.publicPaginated({
+            cityId: activeCityId,
+            page: safePage,
+            filters: queryFilters,
+            source: propertySource,
+        }),
         queryFn: () => getPaginatedProperties({ 
             page: safePage, 
             limit: ITEMS_PER_PAGE, 

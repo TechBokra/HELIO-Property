@@ -13,18 +13,24 @@ import { CubeIcon, BuildingIcon, InboxIcon, ClipboardDocumentListIcon, PhotoIcon
 import { useLanguage } from '../shared/LanguageContext';
 import RequestList from '../shared/RequestList';
 import ErrorState from '../shared/ErrorState';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 const DashboardHomePage: React.FC = () => {
     const { language, t } = useLanguage();
     const { currentUser } = useAuth();
     const t_home = t.dashboardHome;
     
+    const propertySource = getEffectivePropertySource();
     const { 
         data: allProperties, 
         isLoading: loadingProps, 
         isError: errorProps, 
         refetch: refetchProps 
-    } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties, enabled: !!currentUser });
+    } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+        enabled: !!currentUser,
+    });
     
     const { 
         data: allProjects, 

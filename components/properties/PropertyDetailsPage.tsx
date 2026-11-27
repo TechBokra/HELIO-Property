@@ -5,7 +5,7 @@ import {
     BedIcon, BathIcon, AreaIcon, CheckBadgeIcon, ShareIcon, HeartIcon, HeartIconSolid, 
     FloorIcon, CalendarIcon, WalletIcon, BuildingIcon, WrenchScrewdriverIcon, CompoundIcon, BanknotesIcon, WhatsAppIcon, PhoneIcon, LocationMarkerIcon
 } from '../ui/Icons';
-import type { Language } from '../../types';
+import { Role, type Language } from '../../types';
 import { useFavorites } from '../shared/FavoritesContext';
 import Lightbox from '../shared/Lightbox';
 import BannerDisplay from '../shared/BannerDisplay';
@@ -25,6 +25,7 @@ import UnifiedMap from '../shared/UnifiedMap';
 import { useAuth } from '../auth/AuthContext';
 import { trackPropertyView, trackWhatsAppClick, trackCallClick } from '../../services/analytics';
 import { resolvePropertyReferenceCode } from '../../utils/propertyFormShared';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 const PropertyDetailsPage: React.FC = () => {
     const { propertyId } = useParams<{ propertyId: string }>();
@@ -35,16 +36,27 @@ const PropertyDetailsPage: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
 
-    const fetchProperty = useCallback(() => getPropertyById(propertyId!), [propertyId]);
+    const canUseReviewRead = Boolean(
+        currentUser && currentUser.role !== Role.CUSTOMER && currentUser.type !== 'customer'
+    );
+    const propertySource = getEffectivePropertySource();
+
+    const fetchProperty = useCallback(
+        async () => (await getPropertyById(propertyId!, canUseReviewRead ? undefined : { publicOnly: true })) ?? null,
+        [propertyId, canUseReviewRead]
+    );
     const { 
         data: property, 
         isLoading: isLoadingProp, 
         isError: isPropError, 
         refetch: refetchProperty 
     } = useQuery({ 
-        queryKey: ['property', propertyId], 
+        queryKey: canUseReviewRead
+            ? propertyQueryKeys.reviewDetail(propertyId, currentUser, propertySource)
+            : propertyQueryKeys.publicDetail(propertyId, propertySource), 
         queryFn: fetchProperty, 
-        enabled: !!propertyId 
+        enabled: !!propertyId,
+        staleTime: canUseReviewRead ? 0 : 1000 * 60 * 2,
     });
     
     const { data: partner, isLoading: isLoadingPartner } = useQuery({

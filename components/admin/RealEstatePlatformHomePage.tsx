@@ -11,14 +11,21 @@ import { useLanguage } from '../shared/LanguageContext';
 import { Property, Lead } from '../../types';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
+import { useAuthStore } from '../../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const RealEstatePlatformHomePage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_dash = t.adminDashboard.propertiesDashboard;
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
     
-    const { data: properties, isLoading: loadingProps } = useQuery({ queryKey: ['allPropertiesAdmin'], queryFn: getAllProperties });
+    const { data: properties, isLoading: loadingProps } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+    });
     const { data: leads, isLoading: loadingLeads } = useQuery({ queryKey: ['allLeads'], queryFn: getAllLeads });
 
     const isLoading = loadingProps || loadingLeads;

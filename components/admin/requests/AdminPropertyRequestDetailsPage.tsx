@@ -115,7 +115,11 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
             });
         },
         onSuccess: ({ property, alreadyExisted }) => {
-            invalidateAllPropertyQueries(queryClient, { propertyId: property.id, partnerId: property.partnerId });
+            invalidateAllPropertyQueries(queryClient, {
+                propertyId: property.id,
+                partnerId: property.partnerId,
+                projectId: property.projectId,
+            });
             queryClient.invalidateQueries({ queryKey: ['propertyRequests'] });
             queryClient.invalidateQueries({ queryKey: ['request', requestId] });
             queryClient.invalidateQueries({ queryKey: ['allRequests'] });

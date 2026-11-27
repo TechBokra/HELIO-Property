@@ -7,6 +7,8 @@ import { getAllProjects } from '@/services/projects';
 import { SearchIcon, CloseIcon } from '@/components/ui/Icons';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useLanguage } from '@/components/shared/LanguageContext';
+import { useAuthStore } from '@/store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '@/utils/propertyQueryKeys';
 
 const GlobalSearch: React.FC = () => {
     const { language } = useLanguage();
@@ -15,9 +17,15 @@ const GlobalSearch: React.FC = () => {
     const debouncedQuery = useDebounce(query, 300);
     const navigate = useNavigate();
     const searchRef = useRef<HTMLDivElement>(null);
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
 
     const { data: partners, isLoading: loadingPartners } = useQuery({ queryKey: ['allPartners'], queryFn: getAllPartnersForAdmin, enabled: isFocused });
-    const { data: properties, isLoading: loadingProperties } = useQuery({ queryKey: ['allProperties'], queryFn: getAllProperties, enabled: isFocused });
+    const { data: properties, isLoading: loadingProperties } = useQuery({
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
+        enabled: isFocused,
+    });
     const { data: projects, isLoading: loadingProjects } = useQuery({ queryKey: ['allProjects'], queryFn: getAllProjects, enabled: isFocused });
 
     const isLoading = loadingPartners || loadingProperties || loadingProjects;

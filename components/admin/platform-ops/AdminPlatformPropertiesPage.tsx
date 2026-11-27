@@ -5,14 +5,18 @@ import { getAllProperties } from '../../../services/properties';
 import { useLanguage } from '../../shared/LanguageContext';
 import { Property } from '../../../types';
 import AdminPropertiesListPage from '../properties/AdminPropertiesListPage';
+import { useAuthStore } from '../../../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../../utils/propertyQueryKeys';
 
 const AdminPlatformPropertiesPage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_admin = t?.adminDashboard;
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
 
     const { data: allProperties, isLoading } = useQuery({ 
-        queryKey: ['allPropertiesAdmin'], 
-        queryFn: getAllProperties 
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource), 
+        queryFn: () => getAllProperties(), 
     });
 
     const platformProperties = useMemo(() => {

@@ -11,6 +11,7 @@ import { useLanguage } from '../shared/LanguageContext';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { BuildingIcon, InboxIcon, ChartBarIcon } from '../ui/Icons';
 import StatCard from '../shared/StatCard';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -19,8 +20,9 @@ const DashboardAnalyticsPage: React.FC = () => {
     const { language, t } = useLanguage();
     const t_analytics = t.dashboardAnalytics;
 
+    const propertySource = getEffectivePropertySource();
     const { data: properties, isLoading: loadingProperties } = useQuery({
-        queryKey: [`partner-properties-${currentUser?.id}`],
+        queryKey: propertyQueryKeys.partnerAll(currentUser?.id, currentUser, propertySource),
         queryFn: () => getPropertiesByPartnerId(currentUser!.id),
         enabled: !!currentUser,
     });

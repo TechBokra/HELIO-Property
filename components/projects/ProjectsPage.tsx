@@ -17,6 +17,7 @@ import { useSiteContent } from '../../hooks/useSiteContent';
 import { getResponsiveImageSources } from '../../utils/imageUtils';
 import { useCityStore } from '../../store/useCityStore';
 import { isPropertyPubliclyVisible } from '../../utils/propertyUtils';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 import ErrorState from '../shared/ErrorState';
 
 interface ProjectCardProps {
@@ -108,8 +109,9 @@ const ProjectsPage: React.FC = () => {
     queryFn: () => getPublicPartners(),
     staleTime: 1000 * 60 * 5
   });
+  const propertySource = getEffectivePropertySource();
   const { data: properties } = useQuery<Property[]>({
-    queryKey: ['properties', activeCityId],
+    queryKey: propertyQueryKeys.publicList(activeCityId, propertySource),
     queryFn: () => getProperties(activeCityId),
     staleTime: 1000 * 60 * 5
   });

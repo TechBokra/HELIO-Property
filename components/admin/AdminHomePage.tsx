@@ -27,6 +27,7 @@ import {
     isGlobalCityAdmin,
     resolveAdminDefaultScope,
 } from '../../utils/cityScope';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { 
     BuildingIcon, 
@@ -94,6 +95,8 @@ const AdminHomePage: React.FC = () => {
     const accessibleCities = useMemo(() => getAccessibleCitiesForUser(cities, currentUser), [cities, currentUser]);
     const effectiveAdminCityScope = resolveAdminDefaultScope(currentUser, adminCityScope);
 
+    const propertySource = getEffectivePropertySource();
+
     // 2. Selective React Query execution
     const { 
         data: rawProperties, 
@@ -101,8 +104,8 @@ const AdminHomePage: React.FC = () => {
         isError: errorProperties, 
         refetch: refetchProperties 
     } = useQuery({ 
-        queryKey: ['allProperties'], 
-        queryFn: getAllProperties,
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource), 
+        queryFn: () => getAllProperties(),
         enabled: canViewProperties,
     });
 

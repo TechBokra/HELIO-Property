@@ -23,6 +23,7 @@ import { useCityStore } from '../../../store/useCityStore';
 import { useAuth } from '../../auth/AuthContext';
 import { filterRecordsByCityScope } from '../../../utils/cityScope';
 import { invalidateAllPropertyQueries } from '../../../utils/queryInvalidation';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../../utils/propertyQueryKeys';
 
 interface AdminPropertiesListPageProps {
     title?: string;
@@ -51,19 +52,20 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
     const [actionToConfirm, setActionToConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(null);
     const highlightedId = searchParams.get('highlight');
 
+    const { currentUser } = useAuth();
+    const adminCityScope = useCityStore((s) => s.adminCityScope);
+    const cities = useCityStore((s) => s.cities);
+    const propertySource = getEffectivePropertySource();
+
     // Fetch data
     const { data: fetchedProperties, isLoading: fetchedIsLoading, isError, refetch } = useQuery({ 
-        queryKey: ['allPropertiesAdmin'], 
-        queryFn: getAllProperties,
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource), 
+        queryFn: () => getAllProperties(),
         enabled: !propProperties 
     });
 
     const { data: propertyTypes } = useQuery({ queryKey: ['propertyTypes'], queryFn: getAllPropertyTypes });
     const { data: finishingStatuses } = useQuery({ queryKey: ['finishingStatuses'], queryFn: getAllFinishingStatuses });
-    
-    const { currentUser } = useAuth();
-    const adminCityScope = useCityStore((s) => s.adminCityScope);
-    const cities = useCityStore((s) => s.cities);
 
     const getCityBadgeName = (cityId?: string) => {
         const target = cities.find(c => c.id === (cityId || 'heliopolis'));

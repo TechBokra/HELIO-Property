@@ -18,6 +18,8 @@ import FormField, { inputClasses, selectClasses } from '../ui/FormField';
 import { PATTERNS, MESSAGES, CONFIG } from '../../utils/validation';
 import { uploadFile } from '../../services/upload';
 import { useCityStore } from '../../store/useCityStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 
 interface DynamicFormProps {
     slug: string;
@@ -64,9 +66,12 @@ const DynamicForm: FC<DynamicFormProps> = ({
     const hasProjectSelector = formDef?.fields?.some(f => f.type === 'project_selector');
     const hasPartnerSelector = formDef?.fields?.some(f => f.type === 'partner_selector');
 
+    const currentUser = useAuthStore((s) => s.currentUser);
+    const propertySource = getEffectivePropertySource();
+
     const { data: properties } = useQuery({
-        queryKey: ['allPropertiesForForm'],
-        queryFn: getAllProperties,
+        queryKey: propertyQueryKeys.operationalAll(currentUser, propertySource),
+        queryFn: () => getAllProperties(),
         enabled: !!hasPropertySelector,
     });
 
