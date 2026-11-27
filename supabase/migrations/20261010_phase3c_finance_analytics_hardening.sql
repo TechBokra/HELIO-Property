@@ -82,6 +82,15 @@ USING (
     )
 );
 
+-- Data: production stored the legacy status 'completed', which the app does not
+-- recognise ('paid' is the canonical TransactionStatus) and which the integrity
+-- trigger below rejects. Keep a copy of the original values, then normalise.
+CREATE SCHEMA IF NOT EXISTS _migration_backup;
+CREATE TABLE IF NOT EXISTS _migration_backup.transactions_status_20260928 AS
+SELECT id, status, NOW() AS captured_at FROM public.transactions
+WHERE status NOT IN ('pending', 'reviewing', 'paid', 'failed', 'refunded');
+UPDATE public.transactions SET status = 'paid' WHERE status = 'completed';
+
 CREATE OR REPLACE FUNCTION public.protect_transaction_integrity()
 RETURNS TRIGGER
 LANGUAGE plpgsql

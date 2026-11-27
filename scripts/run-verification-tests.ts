@@ -29,6 +29,13 @@ import {
 } from '../services/analytics';
 import { AuthorizationError } from '../services/authGuard';
 import { useAuthStore } from '../store/useAuthStore';
+import {
+    mapPartnerFinishingService,
+    mapFinishingProvider,
+    toPartnerServiceRow,
+    groupDirectoryByCategory,
+} from '../services/finishingMarketplace';
+import { buildProviderRequestState, formatPartnerPrice } from '../components/finishing/marketplaceShared';
 
 // Test runner helpers
 let passedCount = 0;
@@ -5791,6 +5798,79 @@ async function runTests() {
             (supabase as any).from = originalFrom;
             (supabasePublic as any).from = originalPublicFrom;
         }
+    });
+
+
+    // ========================================================================
+    // FINISHING MARKETPLACE (Phase 0/1)
+    // ========================================================================
+    console.log('\n--- Finishing Marketplace: partner-owned services ---');
+
+    const fmCategories = [
+        { id: 'turnkey', name: { ar: 'تنفيذ', en: 'Turnkey' }, description: { ar: '', en: '' }, displayOrder: 3, isVisible: true },
+        { id: 'consultation', name: { ar: 'استشارة', en: 'Consultation' }, description: { ar: '', en: '' }, displayOrder: 1, isVisible: true },
+        { id: 'design_3d', name: { ar: 'تصميم', en: 'Design' }, description: { ar: '', en: '' }, displayOrder: 2, isVisible: true },
+        { id: 'hidden', name: { ar: 'مخفية', en: 'Hidden' }, description: { ar: '', en: '' }, displayOrder: 0, isVisible: false },
+    ];
+    const fmProviderRow = { id: 'p-1', name_ar: 'شركة', name_en: 'Co', status: 'active', profile_kind: 'company', allowed_cities: ['heliopolis', '*', 'shorouk'] };
+    const fmServiceRow = (id: string, category: string, extra: any = {}) => ({
+        id, partner_id: 'p-1', category_id: category, title_ar: 'خدمة', title_en: 'Service',
+        pricing_display: 'on_request', approval_status: 'approved', is_listed: true, display_order: 0, ...extra,
+    });
+
+    await test('FM.1: one provider with design + turnkey appears under both categories from one profile', () => {
+        const provider = mapFinishingProvider(fmProviderRow);
+        const entries = [fmServiceRow('s1', 'design_3d'), fmServiceRow('s2', 'turnkey')].map((r) => ({ provider, service: mapPartnerFinishingService(r) }));
+        const groups = groupDirectoryByCategory(fmCategories, entries);
+        assert.deepStrictEqual(groups.map((g) => g.category.id), ['consultation', 'design_3d', 'turnkey']);
+        assert.strictEqual(groups.find((g) => g.category.id === 'design_3d')!.entries[0].provider.id, 'p-1');
+        assert.strictEqual(groups.find((g) => g.category.id === 'turnkey')!.entries[0].provider.id, 'p-1');
+        assert.strictEqual(groups.find((g) => g.category.id === 'consultation')!.entries.length, 0);
+    });
+
+    await test('FM.2: served cities ignore the global wildcard and profile kind defaults to company', () => {
+        const provider = mapFinishingProvider({ ...fmProviderRow, profile_kind: undefined });
+        assert.deepStrictEqual(provider.servedCities, ['heliopolis', 'shorouk']);
+        assert.strictEqual(provider.profileKind, 'company');
+        assert.strictEqual(mapFinishingProvider({ ...fmProviderRow, profile_kind: 'engineer' }).profileKind, 'engineer');
+    });
+
+    await test('FM.3: partner payload never carries review fields and enforces a price when one is displayed', () => {
+        const row: any = toPartnerServiceRow({ partnerId: 'p-1', categoryId: 'turnkey', approvalStatus: 'approved', pricingDisplay: 'per_sqm', priceFrom: 4000 } as any);
+        assert.strictEqual('approval_status' in row, false);
+        assert.strictEqual('admin_note' in row, false);
+        assert.strictEqual(row.price_from, 4000);
+        assert.throws(() => toPartnerServiceRow({ partnerId: 'p-1', categoryId: 'turnkey', pricingDisplay: 'fixed', priceFrom: null }));
+        const onRequest: any = toPartnerServiceRow({ partnerId: 'p-1', categoryId: 'turnkey', pricingDisplay: 'on_request', priceFrom: 999 });
+        assert.strictEqual(onRequest.price_from, null);
+    });
+
+    await test('FM.4: price label belongs to the partner and falls back to "on quote"', () => {
+        const svc = mapPartnerFinishingService(fmServiceRow('s1', 'turnkey'));
+        assert.strictEqual(formatPartnerPrice(svc, 'en'), 'Price on quote');
+        const perSqm = mapPartnerFinishingService(fmServiceRow('s2', 'turnkey', { pricing_display: 'per_sqm', price_from: 4100 }));
+        assert.ok(formatPartnerPrice(perSqm, 'en').includes('/ m²'));
+    });
+
+    await test('FM.5: direct quote request is routed to the provider, not the platform manager', () => {
+        const provider = mapFinishingProvider(fmProviderRow);
+        const svc = mapPartnerFinishingService(fmServiceRow('s2', 'turnkey'));
+        const state = buildProviderRequestState(provider, svc, fmCategories[0] as any, 'ar', { propertyId: 'prop-1', cityId: 'heliopolis' });
+        assert.strictEqual(state.partnerId, 'p-1');
+        assert.strictEqual(state.serviceId, 's2');
+        assert.strictEqual(state.categoryId, 'turnkey');
+        assert.strictEqual(state.serviceType, 'finishing');
+        assert.strictEqual(state.propertyId, 'prop-1');
+    });
+
+    await test('FM.6: finishing page no longer partitions partners by name or shows platform packages', () => {
+        const page = fs.readFileSync(path.join(process.cwd(), 'components/finishing/FinishingPage.tsx'), 'utf8');
+        assert.strictEqual(page.includes("includes('finish')"), false);
+        assert.strictEqual(page.includes('PLATFORM_FINISHING_MANAGER_ID'), false);
+        assert.strictEqual(page.includes('getFinishingServices'), false);
+        const finishingSvc = fs.readFileSync(path.join(process.cwd(), 'services/finishing.ts'), 'utf8');
+        assert.strictEqual(finishingSvc.includes('rating: 4.9'), false);
+        assert.strictEqual(finishingSvc.includes('projectsCompleted: 24'), false);
     });
 
     useAuthStore.setState({ currentUser: null, permissions: [] });

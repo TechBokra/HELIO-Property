@@ -168,8 +168,14 @@ WHERE role = 'super_admin';
 CREATE INDEX IF NOT EXISTS idx_properties_city_id_status ON public.properties (city_id, status);
 CREATE INDEX IF NOT EXISTS idx_projects_city_id ON public.projects (city_id);
 CREATE INDEX IF NOT EXISTS idx_requests_city_id_created_at ON public.requests (city_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_banners_city_id_status ON public.banners (city_id, status);
-CREATE INDEX IF NOT EXISTS idx_transactions_city_id_date ON public.transactions (city_id, transaction_date DESC);
+DO $$
+BEGIN
+    -- Banners live in site_content in production; index the table only where it exists
+    IF to_regclass('public.banners') IS NOT NULL THEN
+        CREATE INDEX IF NOT EXISTS idx_banners_city_id_status ON public.banners (city_id, status);
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_transactions_city_id_date ON public.transactions (city_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_city_id_created ON public.analytics_events (city_id, created_at DESC);
 
 -- 5. Helper function to check whether an authenticated partner/admin can manage a specific city

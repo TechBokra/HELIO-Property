@@ -75,6 +75,7 @@ export const common = {
         "editCategory": "Edit Category"
     },
     "nav": {
+        "finishingServices": "My finishing services",
         "home": "Home",
         "properties": "Properties",
         "projects": "Projects",

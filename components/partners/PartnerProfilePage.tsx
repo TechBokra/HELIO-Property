@@ -17,6 +17,8 @@ import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
 import { isPropertyPubliclyVisible } from '../../utils/propertyUtils';
 import { useCityStore } from '../../store/useCityStore';
 import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
+import { getFinishingMarketCategories, getPublicPartnerFinishingServices } from '../../services/finishingMarketplace';
+import { buildProviderRequestState, formatPartnerPrice, localized, providerKindLabel } from '../finishing/marketplaceShared';
 
 
 const PartnerProfileSkeleton: React.FC = () => (
@@ -49,6 +51,7 @@ const PartnerProfilePage: React.FC = () => {
     const navigate = useNavigate();
     const { showToast } = useToast();
     const activeCityId = useCityStore((state) => state.activeCityId);
+    const cities = useCityStore((state) => state.cities);
 
     // Fetch partner data from DB
     const {
@@ -73,6 +76,26 @@ const PartnerProfilePage: React.FC = () => {
         queryFn: () => getPortfolioByPartnerId(partnerId!),
         enabled: !!partnerId && partnerInfo?.type === 'finishing'
     });
+
+    // Approved finishing services of this provider (same records shown in the finishing directory)
+    const isFinishingProvider = partnerInfo?.type === 'finishing';
+    const { data: finishingServices = [] } = useQuery({
+        queryKey: ['publicPartnerFinishingServices', partnerId],
+        queryFn: () => getPublicPartnerFinishingServices(partnerId!),
+        enabled: !!partnerId && isFinishingProvider
+    });
+    const { data: finishingCategories = [] } = useQuery({
+        queryKey: ['finishingMarketCategories'],
+        queryFn: () => getFinishingMarketCategories(),
+        enabled: isFinishingProvider,
+        staleTime: 60000
+    });
+    const visibleFinishingServices = useMemo(() => {
+        const order = new Map(finishingCategories.map((c) => [c.id, c.displayOrder]));
+        return finishingServices
+            .filter((s) => order.has(s.categoryId))
+            .sort((a, b) => (order.get(a.categoryId) ?? 0) - (order.get(b.categoryId) ?? 0));
+    }, [finishingServices, finishingCategories]);
 
     // Fetch strictly publicly visible properties (for developers/agencies)
     const propertySource = getEffectivePropertySource();
@@ -127,6 +150,10 @@ const PartnerProfilePage: React.FC = () => {
     
     const handleRequestService = () => {
         if (!partnerInfo || !displayPartner) return;
+        if (isFinishingProvider && visibleFinishingServices.length > 0) {
+            document.getElementById('provider-services')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
         const serviceTitle = `${t.partnerProfilePage.serviceRequestFor} ${displayPartner.name}`;
         navigate('/request-service', {
             state: {
@@ -224,6 +251,21 @@ const PartnerProfilePage: React.FC = () => {
                 <div className="container mx-auto px-6 text-center">
                     <img src={displayPartner.imageUrl} alt={displayPartner.name} className="w-32 h-32 rounded-full object-cover mx-auto mb-6 border-4 border-white dark:border-gray-700 shadow-lg"/>
                     <h1 className="text-4xl md:text-5xl font-bold text-amber-500">{displayPartner.name}</h1>
+                    {isFinishingProvider && (
+                        <div className="mt-3 flex flex-wrap justify-center gap-2 text-sm">
+                            <span className="px-3 py-1 rounded-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 font-semibold text-gray-700 dark:text-gray-200">
+                                {providerKindLabel(partnerInfo.profileKind || 'company', language)}
+                            </span>
+                            {(partnerInfo.allowedCities || []).filter((c) => c && c !== '*').map((cityId) => {
+                                const city = cities.find((c) => c.id === cityId || c.slug === cityId);
+                                return (
+                                    <span key={cityId} className="px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
+                                        {city ? localized(city.name, language) : cityId}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    )}
                     <p className="max-w-3xl mx-auto text-lg text-gray-600 dark:text-gray-400 mt-4 whitespace-pre-line leading-relaxed">{displayPartner.description}</p>
                     <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
                         <Button
@@ -231,7 +273,11 @@ const PartnerProfilePage: React.FC = () => {
                             size="lg"
                             className="shadow-lg shadow-amber-500/20"
                         >
-                            {t.partnerProfilePage.requestService}
+                            {isFinishingProvider
+                                ? (partnerInfo.profileKind === 'engineer'
+                                    ? (language === 'ar' ? 'اطلب عرضًا من المهندس' : 'Request a quote from the engineer')
+                                    : (language === 'ar' ? 'اطلب عرضًا من الشركة' : 'Request a quote from the company'))
+                                : t.partnerProfilePage.requestService}
                         </Button>
                         {showCallButton && (
                             <a href={`tel:${displayPartner.contactMethods?.phone?.number}`} className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:text-lg">
@@ -253,6 +299,64 @@ const PartnerProfilePage: React.FC = () => {
                 </div>
             </section>
             
+            {isFinishingProvider && visibleFinishingServices.length > 0 && (
+                <section id="provider-services" className="py-16 scroll-mt-20">
+                    <div className="container mx-auto px-6">
+                        <div className="text-center mb-10">
+                            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
+                                {language === 'ar' ? 'الخدمات المعتمدة' : 'Approved services'}
+                            </h2>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {visibleFinishingServices.map((service) => {
+                                const category = finishingCategories.find((c) => c.id === service.categoryId);
+                                const scope = localized(service.scope, language);
+                                return (
+                                    <div key={service.id} className="flex flex-col p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
+                                        {category && (
+                                            <span className="self-start px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 mb-3">
+                                                {localized(category.name, language)}
+                                            </span>
+                                        )}
+                                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                                            {localized(service.title, language) || (category ? localized(category.name, language) : '')}
+                                        </h3>
+                                        {localized(service.description, language) && (
+                                            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">{localized(service.description, language)}</p>
+                                        )}
+                                        {scope && (
+                                            <div className="mt-3 text-sm">
+                                                <p className="font-semibold text-gray-800 dark:text-gray-200">{language === 'ar' ? 'نطاق الخدمة' : 'Scope'}</p>
+                                                <p className="text-gray-600 dark:text-gray-300 whitespace-pre-line">{scope}</p>
+                                            </div>
+                                        )}
+                                        <div className="mt-auto pt-4 flex items-center justify-between gap-3">
+                                            <span className="font-bold text-gray-900 dark:text-white text-sm">{formatPartnerPrice(service, language)}</span>
+                                            <Button
+                                                size="sm"
+                                                onClick={() =>
+                                                    navigate('/request-service', {
+                                                        state: buildProviderRequestState(
+                                                            { id: partnerInfo.id, name: { ar: (partnerInfo as AdminPartner).nameAr || partnerInfo.name, en: partnerInfo.name } },
+                                                            service,
+                                                            category,
+                                                            language,
+                                                            { cityId: activeCityId || 'heliopolis' }
+                                                        )
+                                                    })
+                                                }
+                                            >
+                                                {language === 'ar' ? 'اطلب عرضًا من مقدم الخدمة' : 'Request a quote'}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </section>
+            )}
+
             {partnerInfo.type === 'finishing' && (
                 <section className="py-20">
                     <div className="container mx-auto px-6">
