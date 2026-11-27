@@ -1,12 +1,12 @@
 
-import React, { useMemo, useEffect, useState, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Language, SubscriptionPlan, SubscriptionPlanDetails } from '../../types';
 import { useAuth } from '../auth/AuthContext';
 import { CheckCircleIcon } from '../ui/Icons';
-import { getPlanLimit } from '../../utils/subscriptionUtils';
-import { useSubscriptionUsage } from '../shared/useSubscriptionUsage';
+import { useSubscriptionUsage } from '../../hooks/useSubscriptionUsage';
 import { useLanguage } from '../shared/LanguageContext';
+import ErrorState from '../shared/ErrorState';
 
 const PlanCard: React.FC<{
     planKey: SubscriptionPlan,
@@ -67,7 +67,7 @@ const DashboardSubscriptionPage: React.FC = () => {
         }
     }, [currentUser]);
 
-    const { usageCount, limit: currentLimit, isLoading } = useSubscriptionUsage(usageType);
+    const { usageCount, limit: currentLimit, isLoading, isError, refetch } = useSubscriptionUsage(usageType);
 
     const usageLabel = useMemo(() => {
         if (!currentUser || !('type' in currentUser)) return '';
@@ -102,8 +102,19 @@ const DashboardSubscriptionPage: React.FC = () => {
         });
     };
 
+    const planOrder: SubscriptionPlan[] = useMemo(() => {
+        if (currentUser && 'type' in currentUser && currentUser.type === 'finishing') {
+            return ['commission', 'professional', 'elite'];
+        }
+        return ['basic', 'professional', 'elite'];
+    }, [currentUser]);
+
     if (!currentUser || isLoading || !('type' in currentUser)) {
         return <div>Loading...</div>;
+    }
+
+    if (isError) {
+        return <ErrorState onRetry={refetch} />;
     }
 
     const planCategory = currentUser.type as 'developer' | 'agency' | 'finishing';
@@ -116,13 +127,6 @@ const DashboardSubscriptionPage: React.FC = () => {
     const currentPlanDetails = plansForCurrentUserType[currentPlanKey as keyof typeof plansForCurrentUserType];
     
     const usagePercentage = currentLimit === Infinity ? 0 : (usageCount / currentLimit) * 100;
-    
-    const planOrder: SubscriptionPlan[] = useMemo(() => {
-        if (currentUser.type === 'finishing') {
-            return ['commission', 'professional', 'elite'];
-        }
-        return ['basic', 'professional', 'elite'];
-    }, [currentUser.type]);
 
     const upgradeOptions = planOrder.filter(p => planOrder.indexOf(p) > planOrder.indexOf(currentPlanKey));
 
