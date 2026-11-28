@@ -31,6 +31,8 @@ const mapLeadFromDb = (row: any, messages: any[] = []): Lead => {
 
     return {
         id: row.id,
+        requestChannel: payload.requestChannel,
+        providerName: payload.providerName,
         cityId: row.city_id || payload.cityId || 'heliopolis',
         partnerId: payload.partnerId || row.assigned_to,
         partnerName: payload.partnerName,

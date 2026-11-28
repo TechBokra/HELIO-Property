@@ -35,6 +35,7 @@ import {
 import { StatusBadge } from '../../ui/StatusBadge';
 import { Select } from '../../ui/Select';
 import { Textarea } from '../../ui/Textarea';
+import { formatRequestReference } from '../../../utils/requestReference';
 
 interface OperationalRequestDrawerProps {
     request: UnifiedRequest | null;
@@ -179,7 +180,7 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <span className="font-mono text-xs font-bold text-gray-500 bg-white px-2 py-0.5 rounded border border-gray-200">
-                                    #{request.id.slice(0, 8)}
+                                    {formatRequestReference(request.id)}
                                 </span>
                                 <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${opBadgeColors[request.operationalStatus]}`}>
                                     {request.operationalStatus}

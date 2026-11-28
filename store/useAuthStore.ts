@@ -133,6 +133,7 @@ export const useAuthStore = create<AuthState>()(
                     // 1. Attempt Authenticated Login via Supabase Auth
                     let authSuccessful = false;
                     let supabaseUser: any = null;
+                    let authFailure: string | null = null;
 
                     try {
                         const { data, error } = await supabase.auth.signInWithPassword({
@@ -143,8 +144,12 @@ export const useAuthStore = create<AuthState>()(
                         if (!error && data?.user) {
                             authSuccessful = true;
                             supabaseUser = data.user;
+                        } else if (error) {
+                            authFailure = `${error.message || 'Auth error'}${(error as any).status ? ` (HTTP ${(error as any).status})` : ''}`;
+                            console.error('Supabase sign-in failed:', error);
                         }
-                    } catch (supabaseErr) {
+                    } catch (supabaseErr: any) {
+                        authFailure = supabaseErr?.message || String(supabaseErr);
                         console.warn("Supabase auth attempt failed, checking demo fallback:", supabaseErr);
                     }
 
@@ -227,8 +232,12 @@ export const useAuthStore = create<AuthState>()(
                         }
                     }
 
-                    // Neither Supabase nor demo credentials matched
-                    throw new Error("Invalid login credentials.");
+                    // Neither Supabase nor demo credentials matched. Surface the real cause so
+                    // "wrong password" is distinguishable from a profile/network/server problem.
+                    if (authSuccessful) {
+                        throw new Error('Signed in, but the account profile could not be loaded.');
+                    }
+                    throw new Error(authFailure || "Invalid login credentials.");
                 } catch (error: any) {
                     set({ currentUser: null, permissions: [], isLoading: false });
                     throw error;

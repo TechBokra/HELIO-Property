@@ -20,6 +20,7 @@ import { Input } from '../ui/Input';
 import { StatusBadge } from '../ui/StatusBadge';
 import ErrorState from '../shared/ErrorState';
 import { WhatsAppIcon, PhoneIcon } from '../ui/Icons';
+import { formatRequestReference } from '../../utils/requestReference';
 
 type SortConfig = {
     key: keyof Lead;
@@ -243,6 +244,12 @@ const DashboardLeadsPage: React.FC = () => {
                     <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{t_dash.leadTable.service}</p>
                     <div className="flex items-center gap-1.5 flex-wrap">
                         <p className="font-medium text-gray-800 dark:text-gray-200 line-clamp-2">{lead.serviceTitle}</p>
+                        {lead.requestChannel === 'direct_provider' && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
+                                {language === 'ar' ? 'طلب مباشر لك' : 'Direct request'}
+                            </span>
+                        )}
+                        <span className="font-mono text-[10px] text-gray-500" dir="ltr">{formatRequestReference(lead.id)}</span>
                         {(lead.serviceType === 'finishing' || (lead as any).category === 'turnkey' || lead.serviceTitle?.includes('تشطيب')) && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700 whitespace-nowrap">
                                 {language === 'ar' ? 'مناقصة تشطيب' : 'Finishing RFQ'}

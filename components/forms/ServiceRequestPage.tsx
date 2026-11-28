@@ -55,7 +55,8 @@ const ServiceRequestPage: React.FC = () => {
         isBooking, 
         isPurchase, 
         categoryId,
-        categoryName 
+        categoryName,
+        requestChannel
     } = location.state || {};
 
     const resolvedCityId = rawCityId || workItem?.cityId || activeCityId || 'heliopolis';
@@ -186,6 +187,9 @@ const ServiceRequestPage: React.FC = () => {
             categoryId: resolvedCategoryId,
             categoryName: resolvedCategoryName,
             partnerName: resolvedPartnerName,
+            // Direct quote request from a provider profile: the database re-checks that this
+            // service is approved and routes the request to its provider.
+            ...(requestChannel === 'direct_provider' ? { requestChannel, providerServiceId: serviceId } : {}),
             ...(workItem ? { workItem } : {}),
         };
 

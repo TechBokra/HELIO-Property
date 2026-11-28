@@ -34,6 +34,7 @@ import {
     UsersIcon,
     ClipboardDocumentListIcon
 } from '../../ui/Icons';
+import { formatRequestReference } from '../../../utils/requestReference';
 
 const AdminOperationsCenterPage: React.FC = () => {
     const { language } = useLanguage();
@@ -348,7 +349,7 @@ const AdminOperationsCenterPage: React.FC = () => {
                                                 {/* ID & Age */}
                                                 <TableCell className="whitespace-nowrap">
                                                     <span className="font-mono text-[11px] font-bold text-gray-700 block">
-                                                        #{req.id.slice(0, 8)}
+                                                        {formatRequestReference(req.id)}
                                                     </span>
                                                     <span className={`text-[10px] font-mono ${req.isAged ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
                                                         {req.ageHours}h ago
@@ -477,7 +478,7 @@ const AdminOperationsCenterPage: React.FC = () => {
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-1.5">
                                                 <span className="font-mono text-xs font-bold text-gray-700">
-                                                    #{req.id.slice(0, 8)}
+                                                    {formatRequestReference(req.id)}
                                                 </span>
                                                 <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${opBadgeColors[req.operationalStatus]}`}>
                                                     {req.operationalStatus}

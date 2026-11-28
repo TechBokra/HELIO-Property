@@ -9,7 +9,6 @@ import {
 } from '../types';
 import { getFormBySlug } from './forms';
 import { evaluateRoutingRules } from './routingRules';
-import { addNotification } from './notifications';
 import { uploadFile } from './upload';
 import { getAttribution } from '../utils/attribution';
 import { resolveEligibleManager } from './requests';
@@ -435,21 +434,8 @@ export const submitIntake = async (params: IntakeSubmissionParams): Promise<Inta
         console.warn('Could not record initial intake message:', e);
     }
 
-    // 11. Staff Notification (Linking to Phase 3B Operations Center)
-    if (assignedTo) {
-        try {
-            await addNotification({
-                userId: assignedTo,
-                message: {
-                    ar: `طلب جديد وارد (${requestType}) من "${requesterName}".`,
-                    en: `New incoming intake (${requestType}) from "${requesterName}".`,
-                },
-                link: `/admin/operations?id=${requestId}`,
-            });
-        } catch (e) {
-            console.warn('Could not send intake assignment notification:', e);
-        }
-    }
+    // 11. Notifications for the assignee and the customer are created by the database
+    //     trigger notify_request_parties (visitors cannot write other users' notifications).
 
     return {
         success: true,
