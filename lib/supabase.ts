@@ -62,14 +62,14 @@ export const getSupabaseClientConfig = (): { supabaseUrl: string; supabaseAnonKe
 // Production MUST NOT depend on localStorage for Supabase credentials or security decisions
 const { supabaseUrl, supabaseAnonKey } = getSupabaseClientConfig();
 
+// No custom global headers: Supabase Auth's CORS policy only allows a fixed header list,
+// so an extra header (e.g. x-application-name) makes the browser block every sign-in
+// request at preflight ("Failed to fetch") while data requests keep working.
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true
-    },
-    global: {
-        headers: { 'x-application-name': 'onlyhelio' }
     }
 });
 
@@ -82,8 +82,5 @@ export const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false
-    },
-    global: {
-        headers: { 'x-application-name': 'onlyhelio-public' }
     }
 });
