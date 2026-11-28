@@ -2,6 +2,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/sb/:path*",
+      "destination": "https://xyyvgpchkznznwbxbgrp.supabase.co/:path*"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

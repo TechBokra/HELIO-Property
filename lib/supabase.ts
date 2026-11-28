@@ -60,7 +60,31 @@ export const getSupabaseClientConfig = (): { supabaseUrl: string; supabaseAnonKe
 };
 
 // Production MUST NOT depend on localStorage for Supabase credentials or security decisions
-const { supabaseUrl, supabaseAnonKey } = getSupabaseClientConfig();
+const { supabaseUrl: directSupabaseUrl, supabaseAnonKey } = getSupabaseClientConfig();
+
+/**
+ * In the deployed site the browser talks to Supabase through the site's own domain
+ * (vercel.json rewrites /sb/* to the Supabase project). Some networks block *.supabase.co,
+ * which made every data request and every sign-in fail with "Failed to fetch".
+ * Set VITE_SUPABASE_DIRECT=true to bypass the proxy. Local development stays direct.
+ */
+const resolveBrowserSupabaseUrl = (directUrl: string): string => {
+    try {
+        if (typeof window === 'undefined' || !window.location) return directUrl;
+        if (getEnv('VITE_SUPABASE_DIRECT') === 'true') return directUrl;
+        const host = window.location.hostname;
+        if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) return directUrl;
+        if (!/^https?:$/.test(window.location.protocol)) return directUrl;
+        if (!directUrl.includes('xyyvgpchkznznwbxbgrp.supabase.co')) return directUrl;
+        return `${window.location.origin}/sb`;
+    } catch {
+        return directUrl;
+    }
+};
+
+const supabaseUrl = resolveBrowserSupabaseUrl(directSupabaseUrl);
+// Keep the session key tied to the project (not to the proxy host) so existing sessions survive.
+const AUTH_STORAGE_KEY = 'sb-xyyvgpchkznznwbxbgrp-auth-token';
 
 // No custom global headers: Supabase Auth's CORS policy only allows a fixed header list,
 // so an extra header (e.g. x-application-name) makes the browser block every sign-in
@@ -69,7 +93,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
+        storageKey: AUTH_STORAGE_KEY
     }
 });
 
