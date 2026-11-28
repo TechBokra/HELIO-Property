@@ -24,6 +24,7 @@ import { FinishingMilestonesTracker } from '../finishing/FinishingMilestonesTrac
 import type { Request, FinishingQuote } from '../../types';
 import { useToast } from '../shared/ToastContext';
 import ConfirmationModal from '../shared/ConfirmationModal';
+import { formatRequestReference } from '../../utils/requestReference';
 
 interface ClientFinishingDetailsModalProps {
     isOpen: boolean;
@@ -129,7 +130,7 @@ export const ClientFinishingDetailsModal: React.FC<ClientFinishingDetailsModalPr
                             {payload.serviceTitle || (isAr ? 'طلب تشطيب وحدة سكنية' : 'Finishing Inquiry')}
                         </h2>
                         <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            {isAr ? 'رقم الطلب:' : 'Request ID:'} <span className="font-mono">{request.id.slice(0, 12)}...</span> • {new Date(request.createdAt).toLocaleDateString(language, { dateStyle: 'long' })}
+                            {isAr ? 'رقم الطلب:' : 'Request ID:'} <span className="font-mono">{formatRequestReference(request.id)}</span> • {new Date(request.createdAt).toLocaleDateString(language, { dateStyle: 'long' })}
                         </p>
                     </div>
 

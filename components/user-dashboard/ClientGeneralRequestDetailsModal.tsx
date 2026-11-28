@@ -15,6 +15,7 @@ import { getRequestHistory, getRequestMessages } from '../../services/requests';
 import type { Request, Lead } from '../../types';
 import { DecorationStageTracker } from '../shared/DecorationStageTracker';
 import { RequestHistoryTimeline } from '../shared/RequestHistoryTimeline';
+import { formatRequestReference } from '../../utils/requestReference';
 
 interface ClientGeneralRequestDetailsModalProps {
     isOpen: boolean;
@@ -92,7 +93,7 @@ export const ClientGeneralRequestDetailsModal: React.FC<ClientGeneralRequestDeta
                             {payload.serviceTitle || payload.propertyDetails?.title?.ar || payload.propertyTitle || typeLabel}
                         </h2>
                         <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            {isAr ? 'رقم الطلب:' : 'Request ID:'} <span className="font-mono">{request.id.slice(0, 10)}...</span> • {new Date(request.createdAt).toLocaleDateString(language, { dateStyle: 'long' })}
+                            {isAr ? 'رقم الطلب:' : 'Request ID:'} <span className="font-mono">{formatRequestReference(request.id)}</span> • {new Date(request.createdAt).toLocaleDateString(language, { dateStyle: 'long' })}
                         </p>
                     </div>
 

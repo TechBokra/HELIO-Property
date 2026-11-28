@@ -472,6 +472,8 @@ export interface OperationalMetrics {
 
 export interface Lead {
     id: string;
+    requestChannel?: string;
+    providerName?: string;
     cityId?: string;
     partnerId: string;
     managerId?: string;
