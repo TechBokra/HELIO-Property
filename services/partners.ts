@@ -1,6 +1,6 @@
 
-import { supabase, supabasePublic, getSupabaseClientConfig } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, supabasePublic } from '../lib/supabase';
+import { createAccountOnServer } from './credentials';
 import { Role, Permission, type Partner, type PartnerStatus, type PartnerRequest, type AdminPartner, type SubscriptionPlan, type PartnerType } from '../types';
 import { mapPartnerTypeToRole } from '../data/permissions';
 import { requirePermission, requireAnyPermission } from './authGuard';
@@ -34,22 +34,6 @@ export const getFallbackPartners = (): Partner[] => {
             createdAt: p.createdAt,
             allowedCities: (p as any).allowedCities || (resolvedRole === Role.SUPER_ADMIN ? ['*'] : ['heliopolis', 'shorouk', 'badr'])
         };
-    });
-};
-
-// --- HELPER: Isolated Client ---
-// We create a temporary client for registration actions to prevent 
-// the main 'supabase' client (used by the Admin) from switching sessions 
-// when a new user is signed up.
-const getTemporaryClient = () => {
-    const { supabaseUrl, supabaseAnonKey } = getSupabaseClientConfig();
-    
-    return createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-            detectSessionInUrl: false
-        }
     });
 };
 
@@ -323,22 +307,11 @@ export const addPartner = async (
     if (options?.client && (request as any).id && !String((request as any).id).startsWith('req-')) {
         newPartnerId = (request as any).id;
     } else {
-        // Use Temporary Client to avoid logging out the current admin
-        const tempSupabase = getTemporaryClient();
-        const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-            email: request.contactEmail,
-            password: password || 'tempPass123!',
-            options: {
-                data: {
-                    name: request.companyName,
-                    type: request.companyType
-                }
-            }
-        });
-
-        if (authError) throw authError;
-        if (!authData.user) throw new Error("Auth user creation failed");
-        newPartnerId = authData.user.id;
+        // Created server-side so the current admin stays signed in.
+        // No password given (e.g. approving a partner request): use a random one; the admin
+        // sets a real password later from the credentials screen.
+        const initialPassword = password || `Tmp-${crypto.randomUUID()}`;
+        newPartnerId = await createAccountOnServer(request.contactEmail, initialPassword, request.companyName);
     }
 
     const allowedCities =
@@ -388,15 +361,7 @@ export const addInternalUser = async (userData: any, options?: { client?: any })
     if (options?.client && userData.id) {
         newId = userData.id;
     } else {
-        const tempSupabase = getTemporaryClient();
-        const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-            email: userData.email,
-            password: userData.password,
-        });
-
-        if (authError) throw authError;
-        if (!authData.user) throw new Error("Auth user creation failed");
-        newId = authData.user.id;
+        newId = await createAccountOnServer(userData.email, userData.password, userData.name);
     }
 
     const resolvedRole = mapPartnerTypeToRole(userData.type, userData.role || userData.type);
@@ -549,16 +514,7 @@ export const getTeamMembers = async (parentId: string): Promise<AdminPartner[]> 
 };
 
 export const addTeamMember = async (parentId: string, memberData: any): Promise<Partner> => {
-    const tempSupabase = getTemporaryClient();
-
-    const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-        email: memberData.email,
-        password: memberData.password,
-    });
-    
-    if (authError) throw authError;
-
-    const newId = authData.user!.id;
+    const newId = await createAccountOnServer(memberData.email, memberData.password, memberData.name);
     
     const dbPayload = {
         id: newId,

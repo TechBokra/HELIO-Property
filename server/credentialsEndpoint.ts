@@ -1,11 +1,19 @@
-import { createClient } from '@supabase/supabase-js';
 import { Role } from '../types';
+import {
+    createNeonAdminAuthClient,
+    createNeonAuthVerifyClient,
+    createNeonServerClient,
+    DEFAULT_SITE_ORIGIN,
+} from './neonAuthAdapters';
 
 export interface CredentialsRequestBody {
-    action: 'send_password_reset' | 'reset_password';
+    action: 'send_password_reset' | 'reset_password' | 'create_account';
     targetUserId?: string;
     targetUserEmail?: string;
     newPassword?: string;
+    email?: string;
+    password?: string;
+    name?: string;
 }
 
 export interface EndpointResult {
@@ -14,6 +22,7 @@ export interface EndpointResult {
         success?: boolean;
         message?: string;
         error?: string;
+        userId?: string;
     };
 }
 
@@ -21,8 +30,12 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface CredentialsEndpointEnv {
+    /** Neon Auth base URL (defaults to the Helio project). */
+    authUrl?: string;
+    /** Kept for test compatibility; unused on Neon. */
     supabaseUrl?: string;
     supabaseAnonKey?: string;
+    /** Privileged server connection (NEON_DATABASE_URL). Named for test compatibility. */
     supabaseServiceKey?: string;
     authVerifyClient?: any;
     serverClient?: any;
@@ -45,16 +58,16 @@ export async function handleAdminCredentialsRequest(
     rawBody: any,
     env: CredentialsEndpointEnv = {}
 ): Promise<EndpointResult> {
-    const supabaseUrl = env.supabaseUrl || process.env.VITE_SUPABASE_URL || 'https://xyyvgpchkznznwbxbgrp.supabase.co';
-    const supabaseAnonKey = env.supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5eXZncGNoa3puem53YnhiZ3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NTI1MDksImV4cCI6MjA4MTAyODUwOX0.1oRRd_bm3Ug9zXVR5Ae2xelGt0aN6uMP2rKpUu2AGVM';
-    const serviceRoleKey = env.supabaseServiceKey !== undefined ? env.supabaseServiceKey : process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const authUrl = env.authUrl || process.env.NEON_AUTH_URL || undefined;
+    const siteOrigin = process.env.SITE_ORIGIN || DEFAULT_SITE_ORIGIN;
+    const serviceRoleKey = env.supabaseServiceKey !== undefined ? env.supabaseServiceKey : process.env.NEON_DATABASE_URL;
 
     // 1. Require valid privileged server configuration (P0.2)
     // Never substitute anonymous client for privileged administrative operations or audit logging
     if (!serviceRoleKey) {
         return {
             status: 500,
-            body: { error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for administrative credential operations' }
+            body: { error: 'Server configuration error: NEON_DATABASE_URL is required for administrative credential operations' }
         };
     }
 
@@ -75,9 +88,7 @@ export async function handleAdminCredentialsRequest(
     }
 
     // Client for token verification
-    const authVerifyClient = env.authVerifyClient || createClient(supabaseUrl, supabaseAnonKey, {
-        auth: { persistSession: false, autoRefreshToken: false }
-    });
+    const authVerifyClient = env.authVerifyClient || createNeonAuthVerifyClient(authUrl, siteOrigin);
 
     // Authoritative token verification via Supabase Auth
     const { data: authUserData, error: tokenError } = await authVerifyClient.auth.getUser(token);
@@ -92,9 +103,7 @@ export async function handleAdminCredentialsRequest(
     const actorId = actorUser.id;
 
     // Privileged server client using verified service role key (P0.2)
-    const serverClient = env.serverClient || createClient(supabaseUrl, serviceRoleKey, {
-        auth: { persistSession: false, autoRefreshToken: false }
-    });
+    const serverClient = env.serverClient || createNeonServerClient(serviceRoleKey);
 
     // Helper to log append-only audit events to public.credential_audit_log (P0.1)
     // Every insert result is checked; never silences audit failures
@@ -151,6 +160,29 @@ export async function handleAdminCredentialsRequest(
 
     // 5. Authoritative Super Admin definition strictly via canonical role === 'super_admin' (P0.3)
     const isSuperAdmin = isAuthoritativeSuperAdmin(actorProfile);
+
+    const earlyBody: CredentialsRequestBody = typeof rawBody === 'object' && rawBody !== null ? rawBody : ({} as any);
+    if (earlyBody.action === 'create_account') {
+        const actorRole = String(actorProfile.role || '').trim().toLowerCase();
+        const actorType = String(actorProfile.type || '').trim().toLowerCase();
+        if (actorRole === 'customer' || actorType === 'customer') {
+            return { status: 403, body: { error: 'Forbidden: customers cannot create accounts' } };
+        }
+        const email = String(earlyBody.email || '').trim().toLowerCase();
+        const password = String(earlyBody.password || '');
+        if (!EMAIL_REGEX.test(email)) {
+            return { status: 400, body: { error: 'Valid email is required' } };
+        }
+        if (password.length < 8 || password.length > 128) {
+            return { status: 400, body: { error: 'Password must be 8-128 characters' } };
+        }
+        const adminAuthClient = env.adminAuthClient || createNeonAdminAuthClient(serviceRoleKey, authUrl, siteOrigin);
+        const { data, error } = await adminAuthClient.auth.admin.createUser({ email, password, name: earlyBody.name });
+        if (error || !data?.user?.id) {
+            return { status: 400, body: { error: error?.message || 'Account creation failed' } };
+        }
+        return { status: 200, body: { success: true, userId: data.user.id, message: 'Account created' } };
+    }
     const customPerms: string[] = Array.isArray(actorProfile.custom_permissions) ? actorProfile.custom_permissions : [];
     const hasCredentialPermission = isSuperAdmin || customPerms.includes('manage_user_credentials');
 
@@ -232,16 +264,16 @@ export async function handleAdminCredentialsRequest(
         // Trigger password reset email via authoritative Supabase Auth
         try {
             const { error: resetError } = await authVerifyClient.auth.resetPasswordForEmail(targetEmail, {
-                redirectTo: `${supabaseUrl}/auth/v1/verify`
+                redirectTo: `${siteOrigin}/#/reset-password`
             });
 
             if (resetError) {
-                console.error('Supabase resetPasswordForEmail error:', resetError.message);
+                console.error('Password reset email error:', resetError.message);
                 await logAudit(
                     'PASSWORD_RESET_EMAIL_SENT',
                     targetProfile?.id || null,
                     false,
-                    `Supabase resetPasswordForEmail failed: ${resetError.message}`
+                    `Password reset email failed: ${resetError.message}`
                 );
                 return {
                     status: 500,
@@ -352,9 +384,7 @@ export async function handleAdminCredentialsRequest(
 
         try {
             // Server-side privileged execution via Supabase Auth Admin API
-            const adminAuthClient = env.adminAuthClient || createClient(supabaseUrl, serviceRoleKey, {
-                auth: { persistSession: false, autoRefreshToken: false }
-            });
+            const adminAuthClient = env.adminAuthClient || createNeonAdminAuthClient(serviceRoleKey, authUrl, siteOrigin);
 
             const { error: adminAuthError } = await adminAuthClient.auth.admin.updateUserById(
                 targetUserId,

@@ -2,6 +2,14 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/neon/auth/:path*",
+      "destination": "https://ep-red-thunder-bgarx58x.neonauth.c-9.eu-central-1.aws.neon.tech/helio/auth/:path*"
+    },
+    {
+      "source": "/neon/rest/:path*",
+      "destination": "https://ep-red-thunder-bgarx58x.apirest.c-9.eu-central-1.aws.neon.tech/helio/rest/:path*"
+    },
+    {
       "source": "/sb/:path*",
       "destination": "https://xyyvgpchkznznwbxbgrp.supabase.co/:path*"
     },

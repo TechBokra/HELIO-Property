@@ -159,3 +159,35 @@ export const adminResetPassword = async (
         message: 'تم تعيين كلمة المرور الجديدة للمستخدم بنجاح.'
     };
 };
+
+/**
+ * Creates a sign-in account on the server and returns its user id.
+ * Used when staff create partners, internal users or team members: doing the sign-up
+ * in the browser would replace the creator's own session.
+ */
+export const createAccountOnServer = async (
+    email: string,
+    password: string,
+    name?: string
+): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+        throw new Error('جلسة الدخول غير صالحة أو منتهية. يرجى إعادة تسجيل الدخول.');
+    }
+
+    const res = await fetch('/api/admin/credentials', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ action: 'create_account', email: email.trim().toLowerCase(), password, name })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.userId) {
+        throw new Error(data.error || 'تعذر إنشاء الحساب.');
+    }
+    return data.userId as string;
+};
