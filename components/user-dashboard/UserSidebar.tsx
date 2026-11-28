@@ -108,7 +108,7 @@ const UserSidebar = ({ user, onLogout, isOpen, setIsOpen }: UserSidebarProps) =>
                     </div>
                     <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
                          <div className="flex flex-col items-center px-4 mb-6">
-                             <img src={user.imageUrl || 'https://via.placeholder.com/150'} alt={user.name} className="h-16 w-16 rounded-full object-cover border-2 border-amber-100 mb-2" />
+                             <img loading="lazy" decoding="async" src={user.imageUrl || 'https://via.placeholder.com/150'} alt={user.name} className="h-16 w-16 rounded-full object-cover border-2 border-amber-100 mb-2" />
                              <h3 className="text-sm font-bold text-gray-900">{user.name}</h3>
                              <p className="text-xs text-gray-500">{user.email}</p>
                          </div>

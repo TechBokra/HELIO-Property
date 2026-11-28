@@ -5,6 +5,7 @@ import { useLanguage } from '../shared/LanguageContext';
 
 import { siteContentData as fallbackData } from '../../data/content';
 import { useCityStore } from '../../store/useCityStore';
+import { getOptimizedImageUrl } from '../../utils/imageUtils';
 
 const AboutCity: React.FC = () => {
     const { language } = useLanguage();
@@ -83,7 +84,7 @@ const AboutCity: React.FC = () => {
                      <div className="relative w-full h-[500px] rounded-2xl shadow-xl overflow-hidden border-4 border-white">
                         {images.map((image: any, index: number) => (
                             <div key={index} className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${index === currentSlide ? 'opacity-100' : 'opacity-0'}`}>
-                                <img src={image.src} alt={image.alt[language]} className="w-full h-full object-cover" />
+                                <img loading="lazy" decoding="async" src={getOptimizedImageUrl(image.src, 960)} alt={image.alt[language]} className="w-full h-full object-cover" />
                             </div>
                         ))}
                         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex space-x-2">

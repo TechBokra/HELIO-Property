@@ -166,7 +166,7 @@ const DashboardPortfolioPage: React.FC = () => {
                             <div className="relative aspect-square bg-gray-100 dark:bg-gray-700">
                                 <picture>
                                     <source type="image/webp" srcSet={`${item.imageUrl}&fm=webp`} />
-                                    <img src={item.imageUrl} alt={item.alt} className="w-full h-full object-cover" />
+                                    <img loading="lazy" decoding="async" src={item.imageUrl} alt={item.alt} className="w-full h-full object-cover" />
                                 </picture>
                             </div>
                             <CardContent className="p-4 flex-grow space-y-1">

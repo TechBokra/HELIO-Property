@@ -149,7 +149,7 @@ const DashboardAnalyticsPage: React.FC = () => {
                                             target="_blank"
                                             className="flex items-center gap-3 p-2 -m-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
                                         >
-                                            <img
+                                            <img loading="lazy" decoding="async"
                                                 src={property.imageUrl}
                                                 alt={property.title[language]}
                                                 className="w-12 h-12 rounded-md object-cover flex-shrink-0"

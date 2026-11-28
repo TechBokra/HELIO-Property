@@ -5,16 +5,15 @@ import PropertyCardSkeleton from '../shared/PropertyCardSkeleton';
 import ErrorState from '../shared/ErrorState';
 import SmartActionLink from '../shared/SmartActionLink';
 import { isListingActive } from '../../utils/propertyUtils';
-import { useProperties } from '../../hooks/useProperties';
+import { useLatestProperties } from '../../hooks/useProperties';
 import { useLanguage } from '../shared/LanguageContext';
 import { useSiteContent } from '../../hooks/useSiteContent';
 
 const LatestProperties: React.FC = () => {
   const { language, t } = useLanguage();
-  const { data: properties, isLoading, isError, refetch } = useProperties();
   const { data: siteContent } = useSiteContent();
-
   const config = siteContent?.homeListings;
+  const { data: properties, isLoading, isError, refetch } = useLatestProperties(config?.count || 4);
 
   const featuredProperties = useMemo(() => {
     if (!properties) return [];

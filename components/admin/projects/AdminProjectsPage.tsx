@@ -108,7 +108,7 @@ const AdminProjectsPage: React.FC = () => {
                         <TableRow key={p.id}>
                             <TableCell>
                                 <div className="flex items-center gap-3">
-                                    <img src={p.imageUrl} alt={p.name[language]} className="w-16 h-12 object-cover rounded-md"/>
+                                    <img loading="lazy" decoding="async" src={p.imageUrl} alt={p.name[language]} className="w-16 h-12 object-cover rounded-md"/>
                                     <div className="font-medium text-gray-900 dark:text-white">{p.name[language]}</div>
                                 </div>
                             </TableCell>
@@ -133,7 +133,7 @@ const AdminProjectsPage: React.FC = () => {
     const renderCard = (p: typeof projectsWithDetails[0]) => (
         <Card key={p.id} className="overflow-hidden">
             <div className="relative h-32 bg-gray-200">
-                 <img src={p.imageUrl} alt={p.name[language]} className="w-full h-full object-cover" />
+                 <img loading="lazy" decoding="async" src={p.imageUrl} alt={p.name[language]} className="w-full h-full object-cover" />
             </div>
             <CardContent className="p-4">
                 <h3 className="font-bold text-gray-900 dark:text-white mb-1">{p.name[language]}</h3>

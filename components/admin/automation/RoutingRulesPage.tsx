@@ -162,7 +162,7 @@ const RoutingRulesPage: React.FC = () => {
                                         <div className="flex items-center gap-2">
                                             <span className="text-gray-600 dark:text-gray-400">{t_auto.assignToAction}</span>
                                             <div className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1.5 rounded border border-gray-200 dark:border-gray-600 shadow-sm">
-                                                {assignedToUser?.imageUrl && <img src={assignedToUser.imageUrl} className="w-5 h-5 rounded-full object-cover" alt="" />}
+                                                {assignedToUser?.imageUrl && <img loading="lazy" decoding="async" src={assignedToUser.imageUrl} className="w-5 h-5 rounded-full object-cover" alt="" />}
                                                 <span className="font-semibold text-gray-900 dark:text-white">{assignedToName}</span>
                                             </div>
                                         </div>

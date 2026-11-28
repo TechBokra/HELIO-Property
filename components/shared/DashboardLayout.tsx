@@ -152,7 +152,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ navLinks }) => {
 
                         {/* User Identity & Role Badge */}
                         <div className="flex items-center gap-x-2.5">
-                            <img
+                            <img loading="lazy" decoding="async"
                                 className="h-8 w-8 rounded-full bg-gray-100 object-cover border border-gray-200"
                                 src={user.imageUrl || '/favicon.ico'}
                                 alt={partnerName}

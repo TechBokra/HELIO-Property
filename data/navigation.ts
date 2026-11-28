@@ -435,6 +435,17 @@ export const adminNavLinks: NavLinkItem[] = [
         permission: Permission.MANAGE_SETTINGS,
     },
     {
+        id: 'system_test_data',
+        name: () => 'بيانات الاختبار',
+        labelEn: 'Test data',
+        labelAr: 'بيانات الاختبار',
+        href: '/admin/test-data',
+        icon: CogIcon,
+        group: 'system',
+        permission: Permission.MANAGE_SETTINGS,
+        roles: [Role.SUPER_ADMIN],
+    },
+    {
         id: 'system_notifications',
         name: t => t.adminDashboard?.nav?.notifications || 'الإشعارات والتنبيهات',
         labelEn: 'Notifications',

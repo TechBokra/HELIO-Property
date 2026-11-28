@@ -204,7 +204,7 @@ const DashboardHomePage: React.FC = () => {
                              <li key={p.id} className="py-3">
                                 <Link to={`/properties/${p.id}`} target="_blank" className="flex items-center justify-between p-2 -m-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 group">
                                      <div className="flex items-center gap-3 overflow-hidden">
-                                        <img src={p.imageUrl} alt="" className="w-10 h-10 rounded-md object-cover flex-shrink-0"/>
+                                        <img loading="lazy" decoding="async" src={p.imageUrl} alt="" className="w-10 h-10 rounded-md object-cover flex-shrink-0"/>
                                         <div className="overflow-hidden">
                                             <p className="font-semibold text-sm truncate text-gray-800 dark:text-gray-200 group-hover:text-amber-500">{p.title[language]}</p>
                                             <p className="text-xs text-gray-500">{p.price[language]}</p>
@@ -225,7 +225,7 @@ const DashboardHomePage: React.FC = () => {
                         itemRenderer={(item) => (
                             <li key={item.id} className="py-3">
                                 <Link to="/dashboard/portfolio" className="flex items-center gap-3 group">
-                                    <img src={item.imageUrl} alt={item.alt} className="w-10 h-10 rounded-md object-cover"/>
+                                    <img loading="lazy" decoding="async" src={item.imageUrl} alt={item.alt} className="w-10 h-10 rounded-md object-cover"/>
                                     <div>
                                         <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 group-hover:text-amber-500">{item.title[language]}</p>
                                         <p className="text-xs text-gray-500">{item.category[language]}</p>

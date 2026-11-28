@@ -76,7 +76,7 @@ const UserDashboardLayout = () => {
 
                             <div className="flex items-center">
                                 <span className="sr-only">Open user menu</span>
-                                <img
+                                <img loading="lazy" decoding="async"
                                     className="h-8 w-8 rounded-full bg-gray-50 object-cover border border-gray-200"
                                     src={currentUser.imageUrl || 'https://via.placeholder.com/150'}
                                     alt=""

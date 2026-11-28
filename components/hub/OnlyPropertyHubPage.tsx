@@ -60,7 +60,7 @@ const OnlyPropertyHubPage: React.FC = () => {
 
             {/* 1. Architectural Hero & City Subdomain Launcher */}
             <section className="relative min-h-[84vh] flex items-center overflow-hidden bg-stone-950 text-white">
-                <img
+                <img loading="lazy" decoding="async"
                     src="/src/assets/images/hero_only_property_hub_1794779919905.jpg"
                     alt={language === 'ar' ? 'منظومة أونلي بروبرتي للمدن الجديدة' : 'Only Property Multi-City Ecosystem'}
                     referrerPolicy="no-referrer"
@@ -238,7 +238,7 @@ const OnlyPropertyHubPage: React.FC = () => {
                                 className="group bg-white rounded-xl border border-stone-200/90 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col"
                             >
                                 <div className="relative aspect-[4/3] overflow-hidden bg-stone-900">
-                                    <img
+                                    <img loading="lazy" decoding="async"
                                         src={city.heroImageUrl}
                                         alt={city.name[language]}
                                         referrerPolicy="no-referrer"

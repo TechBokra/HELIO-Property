@@ -27,7 +27,7 @@ const PropertyMedia: React.FC<PropertyMediaProps> = ({
                 <FormField label={td.mainImage} id="imageUrl">
                     <div className="flex flex-col sm:flex-row items-center gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/50">
                         {mainImage ? (
-                             <img src={mainImage} alt="Main preview" className="w-32 h-32 rounded-lg object-cover border border-amber-200 shadow-sm"/>
+                             <img loading="lazy" decoding="async" src={mainImage} alt="Main preview" className="w-32 h-32 rounded-lg object-cover border border-amber-200 shadow-sm"/>
                         ) : (
                             <div className="w-32 h-32 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-400 text-xs">No Image</div>
                         )}
@@ -42,7 +42,7 @@ const PropertyMedia: React.FC<PropertyMediaProps> = ({
                              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                                 {galleryImages.map((img, index) => (
                                     <div key={index} className="relative group">
-                                        <img src={img} alt={`Gallery ${index+1}`} className="w-full h-24 object-cover rounded-md shadow-sm border border-gray-200 dark:border-gray-700"/>
+                                        <img loading="lazy" decoding="async" src={img} alt={`Gallery ${index+1}`} className="w-full h-24 object-cover rounded-md shadow-sm border border-gray-200 dark:border-gray-700"/>
                                         <button 
                                             type="button" 
                                             onClick={() => removeGalleryImage(index)} 

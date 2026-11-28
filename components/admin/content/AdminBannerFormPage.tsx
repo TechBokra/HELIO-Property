@@ -20,15 +20,10 @@ import {
     isGlobalCityAdmin,
     resolveAdminDefaultScope,
 } from '../../../utils/cityScope';
+import { uploadFile } from '../../../services/upload';
 
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
+// Images go to Cloudinary; storing base64 in the database bloats every page load.
+const uploadImage = (file: File): Promise<string> => uploadFile(file, { folder: 'cms' });
 
 const LOCATION_GUIDE = {
     home: {
@@ -153,7 +148,12 @@ const AdminBannerFormPage: React.FC = () => {
 
         let imageUrl = bannerToEdit?.imageUrl || '';
         if (imageFile) {
-            imageUrl = await fileToBase64(imageFile);
+            try {
+                imageUrl = await uploadImage(imageFile);
+            } catch (err: any) {
+                window.alert(`تعذر رفع الصورة: ${err?.message || err}`);
+                return;
+            }
         }
 
         const dataToSave = {
@@ -213,7 +213,7 @@ const AdminBannerFormPage: React.FC = () => {
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t_page.bannerImage}</label>
                                 <div className={`relative aspect-video rounded-lg overflow-hidden border-2 border-dashed ${!imagePreview ? 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50' : 'border-amber-500'} transition-all group`}>
                                     {imagePreview ? (
-                                        <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                                        <img loading="lazy" decoding="async" src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
                                     ) : (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
                                             <PhotoIcon className="w-10 h-10 mb-2 opacity-50" />

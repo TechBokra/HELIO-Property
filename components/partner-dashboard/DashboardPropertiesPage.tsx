@@ -157,7 +157,7 @@ const DashboardPropertiesPage: React.FC = () => {
                         return (
                             <Card key={prop.id} className="group flex flex-col p-0 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                 <div className="relative">
-                                    <img src={prop.imageUrl} alt={prop.title[language]} className="w-full h-48 object-cover" />
+                                    <img loading="lazy" decoding="async" src={prop.imageUrl} alt={prop.title[language]} className="w-full h-48 object-cover" />
                                     <div className={`absolute top-3 ${language === 'ar' ? 'right-3' : 'left-3'} flex flex-col gap-1 items-start`}>
                                         <span className={`text-white font-semibold px-2.5 py-0.5 rounded-md text-xs shadow-sm ${
                                             isForSale ? 'bg-green-600' : 'bg-sky-600'

@@ -11,15 +11,10 @@ import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { inputClasses } from '../ui/FormField';
 import { ShieldCheckIcon } from '../ui/Icons';
+import { uploadFile } from '../../services/upload';
 
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
+// Images go to Cloudinary; storing base64 in the database bloats every page load.
+const uploadImage = (file: File): Promise<string> => uploadFile(file, { folder: 'profiles' });
 
 const UserProfilePage = () => {
     const { t, language } = useLanguage();
@@ -79,7 +74,12 @@ const UserProfilePage = () => {
 
         let imageUrl = currentUser.imageUrl;
         if (logoFile) {
-            imageUrl = await fileToBase64(logoFile);
+            try {
+                imageUrl = await uploadImage(logoFile);
+            } catch (err: any) {
+                window.alert(`تعذر رفع الصورة: ${err?.message || err}`);
+                return;
+            }
         }
         
         const updates: any = {
@@ -114,7 +114,7 @@ const UserProfilePage = () => {
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                         <div className="flex flex-col items-center mb-6">
                             <div className="relative w-28 h-28 mb-4">
-                                <img 
+                                <img loading="lazy" decoding="async" 
                                     src={logoPreview || 'https://via.placeholder.com/150'} 
                                     alt="Profile" 
                                     className="w-full h-full rounded-full object-cover border-4 border-amber-100 dark:border-gray-700" 

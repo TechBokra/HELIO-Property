@@ -194,7 +194,7 @@ const AdminPortfolioItemFormModal: React.FC<AdminPortfolioItemFormModalProps> = 
                     <div className="flex-grow overflow-y-auto p-6 space-y-6">
                         <FormField label={t_dash.workImageURL} id="imageUrl">
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                                {imagePreview && <img src={imagePreview} alt="Preview" className="w-20 h-20 rounded-md object-cover border-2 flex-shrink-0" />}
+                                {imagePreview && <img loading="lazy" decoding="async" src={imagePreview} alt="Preview" className="w-20 h-20 rounded-md object-cover border-2 flex-shrink-0" />}
                                 <div className="flex-1 w-full space-y-2">
                                     <input type="url" name="imageUrl" value={formData.imageUrl} onChange={handleChange} className={inputClasses} dir="ltr" placeholder="https://..." />
                                     <input type="file" id="imageFileUpload" accept="image/*" onChange={handleFileChange} className={`${inputClasses} p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100`} />

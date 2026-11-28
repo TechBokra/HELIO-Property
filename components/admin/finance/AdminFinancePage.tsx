@@ -60,7 +60,7 @@ const TransactionDetailsModal: React.FC<{ txn: Transaction; onClose: () => void 
                     <div className="border-t pt-4 mt-4">
                         <span className="text-sm text-gray-500 block mb-2">{language === 'ar' ? 'صورة الإيصال' : 'Receipt Image'}</span>
                         <a href={txn.receiptUrl} target="_blank" rel="noopener noreferrer" className="block">
-                            <img src={txn.receiptUrl} alt="Receipt" className="w-full max-h-60 object-contain border rounded bg-gray-100" />
+                            <img loading="lazy" decoding="async" src={txn.receiptUrl} alt="Receipt" className="w-full max-h-60 object-contain border rounded bg-gray-100" />
                         </a>
                     </div>
                 )}

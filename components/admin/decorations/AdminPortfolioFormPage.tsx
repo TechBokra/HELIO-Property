@@ -261,7 +261,7 @@ const AdminPortfolioFormPage: React.FC = () => {
                         <FormField label={t_dash.workImageURL} id="imageUrl">
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                                 {imagePreview ? (
-                                    <img src={imagePreview} alt="Preview" className="w-28 h-28 rounded-md object-cover border-2 border-gray-200 dark:border-gray-700 flex-shrink-0" />
+                                    <img loading="lazy" decoding="async" src={imagePreview} alt="Preview" className="w-28 h-28 rounded-md object-cover border-2 border-gray-200 dark:border-gray-700 flex-shrink-0" />
                                 ) : (
                                     <div className="w-28 h-28 bg-gray-100 dark:bg-gray-800 rounded-md flex items-center justify-center text-gray-400 text-xs flex-shrink-0">No Image</div>
                                 )}

@@ -18,6 +18,8 @@ import { useSiteContent } from '../../hooks/useSiteContent';
 import { isExternalUrl, normalizeActionTarget } from '../../utils/siteContentHelpers';
 import { resolveServiceReferenceCode } from '../../utils/propertyFormShared';
 import { useCityStore } from '../../store/useCityStore';
+import { useIncrementalList } from '../../hooks/useIncrementalList';
+import LoadMore from '../shared/LoadMore';
 
 const DecorationsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -92,6 +94,7 @@ const DecorationsPage: React.FC = () => {
             return workCatAr === categoryNameAr || workCatEn === categoryNameEn;
         });
     }, [allWorks, activeTabId, decorationCategories]);
+    const worksBatch = useIncrementalList(filteredWorks, 12, activeTabId);
 
     const isValidUUID = (id?: string) => id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : false;
 
@@ -257,7 +260,7 @@ const DecorationsPage: React.FC = () => {
                                 <div key={i} className="bg-gray-200 dark:bg-gray-800 rounded-xl aspect-[4/5] animate-pulse"></div>
                            ))
                        ) : filteredWorks.length > 0 ? (
-                           filteredWorks.map((work, index) => {
+                           worksBatch.visibleItems.map((work, index) => {
                                 const isFav = isFavorite(work.id, 'portfolio');
                                 const isBuyNow = work.availability === 'In Stock' && work.price;
                                 
@@ -350,6 +353,9 @@ const DecorationsPage: React.FC = () => {
                             </div>
                         )}
                    </div>
+                   {!isLoading && (
+                       <LoadMore hasMore={worksBatch.hasMore} onLoadMore={worksBatch.showMore} sentinelRef={worksBatch.sentinelRef} shown={worksBatch.shown} total={worksBatch.total} />
+                   )}
 
                 </div>
             </div>

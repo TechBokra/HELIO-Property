@@ -175,7 +175,7 @@ const DashboardProfilePage: React.FC = () => {
                             <div>
                                 <label htmlFor="partnerImageUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t_dash.partnerImageUrl}</label>
                                 <div className="flex items-center gap-4">
-                                    {logoPreview && <img src={logoPreview} alt="Logo preview" className="w-20 h-20 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600" />}
+                                    {logoPreview && <img loading="lazy" decoding="async" src={logoPreview} alt="Logo preview" className="w-20 h-20 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600" />}
                                     <input 
                                         type="file" 
                                         id="partnerImageUrl" 

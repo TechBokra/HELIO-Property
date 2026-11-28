@@ -103,7 +103,7 @@ const PropertyListItem = memo<Property>((props) => {
                         
                         {partnerName && (
                             <div className="flex items-center gap-2 pl-2 border-l border-gray-200 dark:border-gray-700">
-                                {partnerImageUrl ? <img src={partnerImageUrl} alt={partnerName} className="w-6 h-6 rounded-full object-cover" /> : null}
+                                {partnerImageUrl ? <img loading="lazy" decoding="async" src={partnerImageUrl} alt={partnerName} className="w-6 h-6 rounded-full object-cover" /> : null}
                                 <span className="text-xs font-medium text-gray-600 dark:text-gray-300 hidden md:inline truncate max-w-[100px]">{partnerName}</span>
                             </div>
                         )}

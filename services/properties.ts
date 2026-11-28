@@ -783,6 +783,78 @@ export const getProperties = async (cityIdOrOptions?: string | PropertyQueryOpti
 };
 
 /**
+ * Home-page "latest listings": fetches only the newest N public listings instead of the whole
+ * catalogue, and hydrates partner/project names for just those rows.
+ * Reuses the full public catalogue when it is already cached (e.g. after visiting /properties).
+ */
+export const getLatestPublicProperties = async (cityId?: string, limit = 4): Promise<Property[]> => {
+    const safeLimit = Math.max(1, Math.min(24, Math.floor(limit) || 4));
+    const byNewest = (a: Property, b: Property) =>
+        new Date(b.listingStartDate || b.createdAt || b.updatedAt || 0).getTime() -
+        new Date(a.listingStartDate || a.createdAt || a.updatedAt || 0).getTime();
+    const pickActive = (list: Property[]) =>
+        list.filter((p) => p.listingStatus === 'active').sort(byNewest).slice(0, safeLimit);
+
+    const fresh =
+        cachedPublicProperties &&
+        cachedPublicProperties.cityKey === 'all' &&
+        Date.now() - cachedPublicProperties.timestamp < PROPERTIES_CACHE_TTL;
+    if (fresh || isDemoModeEnabled() || isNeonCatalogEnabled()) {
+        return pickActive(await getProperties(cityId));
+    }
+
+    const cityKey = cityId && cityId !== 'all' && cityId !== 'hub' ? cityId.trim().toLowerCase() : null;
+    let query = supabasePublic
+        .from('properties')
+        .select('*')
+        .eq('listing_status', 'active')
+        .order('listing_start_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(safeLimit * 2); // headroom for rows hidden by visibility rules
+    if (cityKey) {
+        query = cityKey === 'heliopolis' ? query.or('city_id.eq.heliopolis,city_id.is.null') : query.eq('city_id', cityKey);
+    }
+    const { data, error } = await query;
+    if (error) {
+        throw createDbReadError(error, 'Failed to fetch latest properties.');
+    }
+
+    const rows = pickActive(
+        (data || []).map(mapPropertyFromDb).filter((p: Property) => isPropertyPubliclyVisible(p, { includeSold: false }))
+    );
+    if (rows.length === 0) return rows;
+
+    const partnerIds = [...new Set(rows.map((p) => p.partnerId).filter(Boolean))];
+    const projectIds = [...new Set(rows.map((p) => p.projectId).filter(Boolean))] as string[];
+    try {
+        const [partnersRes, projectsRes] = await Promise.all([
+            partnerIds.length
+                ? supabasePublic.from('partners').select('id,name_en,name_ar,image_url').in('id', partnerIds)
+                : Promise.resolve({ data: [] as any[] }),
+            projectIds.length
+                ? supabasePublic.from('projects').select('id,name_en,name_ar').in('id', projectIds)
+                : Promise.resolve({ data: [] as any[] }),
+        ]);
+        const partners = new Map<string, any>((partnersRes.data || []).map((r: any) => [r.id, r]));
+        const projects = new Map<string, any>((projectsRes.data || []).map((r: any) => [r.id, r]));
+        return rows.map((prop) => {
+            const partner = partners.get(prop.partnerId);
+            const project = prop.projectId ? projects.get(prop.projectId) : undefined;
+            return {
+                ...prop,
+                partnerName: partner ? partner.name_en || partner.name_ar : prop.partnerName,
+                partnerImageUrl: partner?.image_url ?? prop.partnerImageUrl,
+                projectName: project
+                    ? { en: project.name_en || project.name_ar, ar: project.name_ar || project.name_en }
+                    : prop.projectName,
+            };
+        });
+    } catch {
+        return rows;
+    }
+};
+
+/**
  * Fetches properties belonging to a specific partner.
  * - With `{ publicOnly: true }` (used on public PartnerProfilePage): returns only publicly visible listings.
  * - With `{ publicOnly: false }` (default for Partner Dashboard): returns all partner properties including drafts.

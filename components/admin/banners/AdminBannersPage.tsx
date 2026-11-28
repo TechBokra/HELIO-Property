@@ -101,7 +101,7 @@ const AdminBannersPage: React.FC = () => {
                             <TableRow key={banner.id}>
                                 <TableCell>
                                     <div className="w-32 h-16 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                                        <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
+                                        <img loading="lazy" decoding="async" src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
                                     </div>
                                 </TableCell>
                                 <TableCell>
@@ -141,7 +141,7 @@ const AdminBannersPage: React.FC = () => {
     const renderCard = (banner: Banner) => (
         <Card key={banner.id} className="overflow-hidden">
             <div className="relative h-32 w-full bg-gray-100 dark:bg-gray-800">
-                <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
+                <img loading="lazy" decoding="async" src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
                 <div className="absolute top-2 right-2">
                     <StatusBadge status={banner.status} />
                 </div>

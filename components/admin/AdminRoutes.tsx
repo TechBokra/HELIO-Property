@@ -73,6 +73,7 @@ const AdminRolesPage = React.lazy(() => import('./users/AdminRolesPage'));
 const RoutingRulesPage = React.lazy(() => import('./automation/RoutingRulesPage'));
 const AdminSettingsPage = React.lazy(() => import('./AdminSettingsPage'));
 const AdminExternalSettingsPage = React.lazy(() => import('./settings/AdminExternalSettingsPage'));
+const AdminTestDataPage = React.lazy(() => import('./settings/AdminTestDataPage'));
 const AdminProfilePage = React.lazy(() => import('./AdminProfilePage'));
 const AllNotificationsPage = React.lazy(() => import('../shared/AllNotificationsPage'));
 const AdminFinancePage = React.lazy(() => import('./finance/AdminFinancePage'));
@@ -556,6 +557,14 @@ const AdminRoutes: React.FC = () => {
                     element={
                         <ProtectedRoute permission={Permission.MANAGE_SETTINGS}>
                             <AdminExternalSettingsPage />
+                        </ProtectedRoute>
+                    } 
+                />
+                <Route 
+                    path="test-data" 
+                    element={
+                        <ProtectedRoute permission={Permission.MANAGE_SETTINGS}>
+                            <AdminTestDataPage />
                         </ProtectedRoute>
                     } 
                 />

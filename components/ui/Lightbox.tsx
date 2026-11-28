@@ -95,7 +95,7 @@ const Lightbox: React.FC<LightboxProps> = ({ images, startIndex, onClose }) => {
 
             <div className="relative w-full h-full flex items-center justify-center">
                 <div className="relative watermarked">
-                    <img
+                    <img loading="lazy" decoding="async"
                         src={images[currentIndex]}
                         alt={`View ${currentIndex + 1} of ${images.length}`}
                         className="max-w-[90vw] max-h-[90vh] object-contain select-none disable-image-interaction"

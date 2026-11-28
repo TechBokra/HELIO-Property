@@ -19,29 +19,20 @@ const PartnerCard: React.FC<{ partner: AdminPartner }> = ({ partner }) => {
         : (partner.description || localizedPartner?.description || partner.descriptionAr);
 
     if (!partnerName) return null;
+    const partnerImage = getResponsiveImageSources(partner.imageUrl);
 
     return (
         <Link to={`/partners/${partner.id}`} className="block h-full">
             <Card className="transform hover:-translate-y-2 transition-transform duration-300 group h-full flex flex-col overflow-hidden p-0 card-glow">
-                <picture>
-                    <source
-                        type="image/webp"
-                        srcSet={`${partner.imageUrl_small || partner.imageUrl}&fm=webp 480w, ${partner.imageUrl_medium || partner.imageUrl}&fm=webp 800w, ${
-                            partner.imageUrl_large || partner.imageUrl
-                        }&fm=webp 1200w`}
-                        sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
-                    />
-                    <img
-                        src={partner.imageUrl_large || partner.imageUrl}
-                        srcSet={`${partner.imageUrl_small || partner.imageUrl} 480w, ${partner.imageUrl_medium || partner.imageUrl} 800w, ${
-                            partner.imageUrl_large || partner.imageUrl
-                        } 1200w`}
-                        sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
-                        alt={partnerName}
-                        className="w-full h-48 object-cover"
-                        loading="lazy"
-                    />
-                </picture>
+                <img
+                    src={partnerImage.src}
+                    srcSet={partnerImage.srcSet || undefined}
+                    sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 22vw"
+                    alt={partnerName}
+                    className="w-full h-48 object-cover"
+                    loading="lazy"
+                    decoding="async"
+                />
                 <CardContent className="p-6 flex flex-col flex-grow">
                     <h3 className="text-xl font-bold text-amber-500 mb-2 group-hover:text-amber-400 transition-colors">
                         {partnerName}
@@ -57,6 +48,7 @@ const PartnerCard: React.FC<{ partner: AdminPartner }> = ({ partner }) => {
 
 import { siteContentData as fallbackData } from '../../data/content';
 import { ArrowPathIcon } from '../ui/Icons';
+import { getResponsiveImageSources } from '../../utils/imageUtils';
 
 const Partners: React.FC = () => {
     const { language } = useLanguage();

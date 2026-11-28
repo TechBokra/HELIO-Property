@@ -11,7 +11,11 @@ const mapNotificationFromDb = (row: any): Notification => ({
     createdAt: row.created_at
 });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const getNotificationsByUserId = async (userId: string): Promise<Notification[]> => {
+    // Demo/local ids (e.g. 'admin-user') are not database users; querying them only yields 400s.
+    if (!UUID_RE.test(userId)) return [];
     const { data, error } = await supabase
         .from('notifications')
         .select('*')
@@ -23,6 +27,7 @@ export const getNotificationsByUserId = async (userId: string): Promise<Notifica
 };
 
 export const markNotificationsAsRead = async (userId: string, notificationIds: string[]): Promise<boolean> => {
+    if (!UUID_RE.test(userId)) return false;
     const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })

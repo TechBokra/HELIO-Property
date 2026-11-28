@@ -249,7 +249,7 @@ const PartnerProfilePage: React.FC = () => {
             
             <section className="py-20 bg-gray-50 dark:bg-gray-800">
                 <div className="container mx-auto px-6 text-center">
-                    <img src={displayPartner.imageUrl} alt={displayPartner.name} className="w-32 h-32 rounded-full object-cover mx-auto mb-6 border-4 border-white dark:border-gray-700 shadow-lg"/>
+                    <img loading="lazy" decoding="async" src={displayPartner.imageUrl} alt={displayPartner.name} className="w-32 h-32 rounded-full object-cover mx-auto mb-6 border-4 border-white dark:border-gray-700 shadow-lg"/>
                     <h1 className="text-4xl md:text-5xl font-bold text-amber-500">{displayPartner.name}</h1>
                     {isFinishingProvider && (
                         <div className="mt-3 flex flex-wrap justify-center gap-2 text-sm">
