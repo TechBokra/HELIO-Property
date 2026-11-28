@@ -55,8 +55,30 @@ export const resolveSupabaseConfig = (
     return { supabaseUrl: validUrl, supabaseAnonKey: validKey };
 };
 
+/**
+ * The site is pinned to the Helio property project. Vercel had stale VITE_SUPABASE_URL /
+ * VITE_SUPABASE_ANON_KEY values pointing at a project that no longer exists, which made every
+ * request fail with "Failed to fetch". Env values are only honoured when they point at the
+ * same project, or when VITE_SUPABASE_ALLOW_OVERRIDE=true is set deliberately (e.g. staging).
+ */
+const PINNED_PROJECT_REF = 'xyyvgpchkznznwbxbgrp';
+
+const projectRefFromUrl = (url?: string): string | null => {
+    try {
+        return url ? new URL(url.trim()).hostname.split('.')[0] : null;
+    } catch {
+        return null;
+    }
+};
+
 export const getSupabaseClientConfig = (): { supabaseUrl: string; supabaseAnonKey: string } => {
-    return resolveSupabaseConfig(getEnv('VITE_SUPABASE_URL'), getEnv('VITE_SUPABASE_ANON_KEY'));
+    const envUrl = getEnv('VITE_SUPABASE_URL');
+    const envKey = getEnv('VITE_SUPABASE_ANON_KEY');
+    const allowOverride = getEnv('VITE_SUPABASE_ALLOW_OVERRIDE') === 'true';
+    if (!allowOverride && projectRefFromUrl(envUrl) !== PINNED_PROJECT_REF) {
+        return { supabaseUrl: FALLBACK_URL, supabaseAnonKey: FALLBACK_KEY };
+    }
+    return resolveSupabaseConfig(envUrl, envKey);
 };
 
 // Production MUST NOT depend on localStorage for Supabase credentials or security decisions
