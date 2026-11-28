@@ -17,7 +17,11 @@ SET description_ar = b.description_ar,
     profile_kind = b.profile_kind,
     allowed_cities = b.allowed_cities
 FROM _migration_backup.partners_20261128 b
-WHERE b.id = p.id;
+WHERE b.id = p.id
+  -- only the partners the seed touched; leave everyone else's later edits alone
+  AND b.email IN ('mega@heliopolis.com', 'dev@heliopolis.com', 'developer@example.com', 'sales@broker.com',
+                  'expert@decor.com', 'touch@contracting.com', 'art@decor.com', 'finish@decor.com',
+                  'mahmoud@arch.com', 'info@smarthomes.eg', 'green@valley.com', 'sara@design.com');
 
 -- Restore only the quotes list (other CMS edits made since are kept).
 UPDATE public.site_content s

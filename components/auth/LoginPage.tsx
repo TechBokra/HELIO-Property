@@ -85,7 +85,7 @@ const LoginPage: React.FC = () => {
              const msg = err.message || '';
              
              if (msg.includes('Invalid login credentials') || msg.includes('invalid_grant')) {
-                 setError(isAr ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password');
+                 setError((isAr ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password') + (msg && !/^invalid login credentials\.?$/i.test(msg) ? ` — ${msg}` : ''));
              } else if (msg.includes('Email not confirmed')) {
                  setError(isAr 
                     ? 'البريد الإلكتروني غير مفعل. يرجى مراجعة بريدك أو التواصل مع الإدارة.' 
@@ -114,7 +114,8 @@ const LoginPage: React.FC = () => {
             }
         } catch (err: any) {
             console.error("Quick login error:", err);
-            setError(isAr ? 'تعذر تسجيل الدخول بالحساب التجريبي' : 'Failed to login with demo account');
+            const detail = err?.message ? ` — ${err.message}` : '';
+            setError((isAr ? 'تعذر تسجيل الدخول بالحساب التجريبي' : 'Failed to login with demo account') + detail);
         } finally {
             setLoading(false);
         }
