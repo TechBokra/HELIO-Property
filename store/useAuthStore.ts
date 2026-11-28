@@ -250,12 +250,9 @@ export const useAuthStore = create<AuthState>()(
                     const { data, error } = await supabase.auth.signUp({
                         email,
                         password: pass,
+                        // Only `name` goes to the auth service; role/phone live in the profile row.
                         options: {
-                            data: {
-                                name,
-                                phone: phone || '',
-                                role: 'customer'
-                            }
+                            data: { name }
                         }
                     });
 

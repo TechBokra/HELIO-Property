@@ -374,18 +374,18 @@ async function runTests() {
         assert.match(result.body.error || '', /Invalid, expired, or revoked session token/i);
     });
 
-    await test('P0.2: Missing SUPABASE_SERVICE_ROLE_KEY rejects privileged access with 500 (no anon fallback)', async () => {
-        const prev = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    await test('P0.2: Missing NEON_DATABASE_URL rejects privileged access with 500 (no anon fallback)', async () => {
+        const prev = process.env.NEON_DATABASE_URL;
+        delete process.env.NEON_DATABASE_URL;
         try {
             const result = await handleAdminCredentialsRequest('Bearer valid.session.token', { action: 'reset_password' }, {
                 supabaseServiceKey: '',
                 supabaseUrl: 'https://dummy.supabase.co'
             });
             assert.strictEqual(result.status, 500);
-            assert.match(result.body.error || '', /SUPABASE_SERVICE_ROLE_KEY is required/i);
+            assert.match(result.body.error || '', /NEON_DATABASE_URL is required/i);
         } finally {
-            if (prev !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = prev;
+            if (prev !== undefined) process.env.NEON_DATABASE_URL = prev;
         }
     });
 
@@ -5146,18 +5146,28 @@ async function runTests() {
         assert.ok(!/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b/i.test(diagSql));
     });
 
-    await test('SUPA.2: Placeholder VITE_SUPABASE_* values fall back cleanly and Neon remains disabled unless explicitly enabled', async () => {
-        const { resolveSupabaseConfig } = await import('../lib/supabase');
+    await test('SUPA.2: Neon client routes through the site domain when deployed and directly in local/server contexts', async () => {
+        const { resolveNeonUrls, NEON_AUTH_URL, NEON_DATA_API_URL } = await import('../lib/supabase');
         const { getCatalogDataSource, setCatalogDataSourceOverride } = await import('../utils/catalogSource');
 
-        const fromPlaceholders = resolveSupabaseConfig('https://your-project.supabase.co', 'your-anon-key');
-        assert.ok(fromPlaceholders.supabaseUrl.includes('xyyvgpchkznznwbxbgrp.supabase.co'));
-        assert.ok(fromPlaceholders.supabaseAnonKey.startsWith('eyJ'));
+        // No window (server/test context): direct Neon endpoints.
+        const direct = resolveNeonUrls();
+        assert.strictEqual(direct.authUrl, NEON_AUTH_URL);
+        assert.strictEqual(direct.dataApiUrl, NEON_DATA_API_URL);
 
-        const validJwt = 'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig';
-        const fromReal = resolveSupabaseConfig('https://customref123.supabase.co ', ` ${validJwt} `);
-        assert.strictEqual(fromReal.supabaseUrl, 'https://customref123.supabase.co');
-        assert.strictEqual(fromReal.supabaseAnonKey, validJwt);
+        const g: any = globalThis as any;
+        const prevWindow = g.window;
+        try {
+            g.window = { location: { protocol: 'https:', hostname: 'helio-property.vercel.app', origin: 'https://helio-property.vercel.app' } };
+            const proxied = resolveNeonUrls();
+            assert.strictEqual(proxied.authUrl, 'https://helio-property.vercel.app/neon/auth');
+            assert.strictEqual(proxied.dataApiUrl, 'https://helio-property.vercel.app/neon/rest/v1');
+
+            g.window = { location: { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:3000' } };
+            assert.strictEqual(resolveNeonUrls().authUrl, NEON_AUTH_URL);
+        } finally {
+            g.window = prevWindow;
+        }
 
         setCatalogDataSourceOverride(null);
         assert.strictEqual(getCatalogDataSource(), 'supabase');
