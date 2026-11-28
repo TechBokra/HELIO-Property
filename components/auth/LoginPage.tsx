@@ -301,16 +301,19 @@ const LoginPage: React.FC = () => {
                             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 text-center">
                                 {isAr ? '⚡ تجربة سريعة بنقرة واحدة (حسابات تجريبية):' : '⚡ 1-Click Quick Demo Login:'}
                             </p>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => handleQuickLogin('admin@onlyhelio.com', 'password')}
-                                    disabled={loading}
-                                    className="p-2.5 text-xs font-semibold rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-950 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors text-right flex items-center justify-between shadow-xs ring-1 ring-amber-400/30"
-                                >
-                                    <span>👑 {isAr ? 'المدير العام (لوحة التحكم)' : 'Super Admin (Dashboard)'}</span>
-                                    <span className="text-[10px] opacity-80 font-mono">admin</span>
-                                </button>
+                            <div className={`grid gap-2 ${import.meta.env.DEV ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}>
+                                {/* Super-admin demo is dev-only: a public one-click admin would expose production data. */}
+                                {import.meta.env.DEV && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleQuickLogin('admin@onlyhelio.com', 'password')}
+                                        disabled={loading}
+                                        className="p-2.5 text-xs font-semibold rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-950 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors text-right flex items-center justify-between shadow-xs ring-1 ring-amber-400/30"
+                                    >
+                                        <span>👑 {isAr ? 'المدير العام (لوحة التحكم)' : 'Super Admin (Dashboard)'}</span>
+                                        <span className="text-[10px] opacity-80 font-mono">admin</span>
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => handleQuickLogin('mega@heliopolis.com', 'password')}

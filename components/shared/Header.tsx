@@ -96,7 +96,7 @@ export const Header = memo<HeaderProps>(({
         ? 'hidden'
         : isForcedDesktop
             ? 'flex items-center gap-6 text-sm xl:text-base'
-            : 'hidden xl:flex items-center gap-7 text-base';
+            : 'hidden xl:flex items-center gap-3.5 2xl:gap-6 text-sm 2xl:text-base min-w-0';
 
     const desktopUtilityClass = isForcedMobile
         ? 'hidden'
@@ -125,27 +125,27 @@ export const Header = memo<HeaderProps>(({
     return (
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm border-b border-gray-200">
             <div className="container mx-auto px-4 sm:px-6">
-                <div className="flex justify-between items-center h-16 lg:h-20">
-                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <div className="flex justify-between items-center gap-3 xl:gap-6 h-16 lg:h-20">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 shrink-0">
                         <Link to="/" target="_self" className="text-amber-500 hover:opacity-80 transition-opacity shrink-0" title={language === 'ar' ? 'الرئيسية' : 'Home'}>
                             <SiteIdentity />
                         </Link>
 
                         {/* Multi-City & Root Hub Subdomain Switcher */}
-                        <div className="flex items-center gap-1.5 bg-gray-100/90 border border-gray-200 rounded-lg px-2 py-1.5 max-w-[170px] sm:max-w-none">
+                        <div className="flex items-center gap-1.5 bg-gray-100/90 border border-gray-200 rounded-lg px-2 py-1.5 min-w-0 max-w-[150px] sm:max-w-[190px]">
                             <GlobeAltIcon className="w-4 h-4 text-amber-600 shrink-0" />
                             <select
                                 aria-label={language === 'ar' ? 'تبديل موقع المدينة' : 'Switch City Portal'}
                                 value={currentSelectorValue}
                                 onChange={(e) => handlePortalSwitch(e.target.value)}
-                                className="bg-transparent text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none cursor-pointer truncate"
+                                className="bg-transparent text-xs sm:text-sm font-semibold text-gray-800 focus:outline-none cursor-pointer truncate w-full min-w-0"
                             >
                                 <option value="hub">
-                                    {language === 'ar' ? '🌐 البوابة الأم (Only Property)' : '🌐 Root Hub (Only Property)'}
+                                    {language === 'ar' ? 'البوابة الأم' : 'Main portal'}
                                 </option>
                                 {activeCities.map((city) => (
                                     <option key={city.id} value={city.slug}>
-                                        {city.name[language]} ({city.slug})
+                                        {city.name[language] || city.name.ar || city.slug}
                                     </option>
                                 ))}
                             </select>
@@ -169,7 +169,7 @@ export const Header = memo<HeaderProps>(({
                         ))}
                     </nav>
 
-                    <div className="flex items-center gap-2 md:gap-4 shrink-0">
+                    <div className="flex items-center gap-2 md:gap-3 2xl:gap-4 shrink-0">
                         {currentUser && !previewViewport && (
                             <div className="flex items-center justify-center">
                                 <NotificationBell />
@@ -221,7 +221,7 @@ export const Header = memo<HeaderProps>(({
                                         <SmartActionLink
                                             to={headerCtaLink}
                                             fallback="/register"
-                                            className="text-gray-600 hover:text-amber-600 font-medium transition-colors whitespace-nowrap"
+                                            className={`${isForcedDesktop ? '' : 'hidden 2xl:inline'} text-gray-600 hover:text-amber-600 font-medium transition-colors whitespace-nowrap`}
                                         >
                                             {headerCtaLabel}
                                         </SmartActionLink>
