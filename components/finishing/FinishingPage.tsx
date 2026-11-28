@@ -25,6 +25,8 @@ import {
     providerKindLabel,
     type ProviderRequestContext,
 } from './marketplaceShared';
+import { useIncrementalList } from '../../hooks/useIncrementalList';
+import LoadMore from '../shared/LoadMore';
 
 const ProviderServiceCard: React.FC<{
     entry: FinishingDirectoryEntry;
@@ -152,6 +154,7 @@ const FinishingPage: React.FC = () => {
     );
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(searchParams.get('category'));
     const activeGroup = groups.find((g) => g.category.id === activeCategoryId) || groups[0];
+    const providerBatch = useIncrementalList(activeGroup?.entries || [], 9, activeGroup?.category.id);
 
     const cityName = (id: string) => {
         const city = cities.find((c) => c.id === id || c.slug === id);
@@ -312,8 +315,9 @@ const FinishingPage: React.FC = () => {
                                                 : 'There are no approved providers in this category yet.'}
                                         </p>
                                     ) : (
+                                        <>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                            {activeGroup.entries.map((entry) => (
+                                            {providerBatch.visibleItems.map((entry) => (
                                                 <ProviderServiceCard
                                                     key={entry.service.id}
                                                     entry={entry}
@@ -323,6 +327,8 @@ const FinishingPage: React.FC = () => {
                                                 />
                                             ))}
                                         </div>
+                                        <LoadMore hasMore={providerBatch.hasMore} onLoadMore={providerBatch.showMore} sentinelRef={providerBatch.sentinelRef} shown={providerBatch.shown} total={providerBatch.total} />
+                                        </>
                                     )}
                                 </div>
                             )}

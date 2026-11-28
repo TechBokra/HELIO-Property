@@ -19,6 +19,8 @@ import { useCityStore } from '../../store/useCityStore';
 import { isPropertyPubliclyVisible } from '../../utils/propertyUtils';
 import { getEffectivePropertySource, propertyQueryKeys } from '../../utils/propertyQueryKeys';
 import ErrorState from '../shared/ErrorState';
+import { useIncrementalList } from '../../hooks/useIncrementalList';
+import LoadMore from '../shared/LoadMore';
 
 interface ProjectCardProps {
     project: Project; 
@@ -133,6 +135,7 @@ const ProjectsPage: React.FC = () => {
       return { project, developer, unitsCount };
     });
   }, [projectsList, partners, properties]);
+  const projectBatch = useIncrementalList(projectsWithDetails, 9, view);
 
   const brandLabel = activeCity?.brandTitle?.[language] || 'ONLY HELIO';
 
@@ -201,7 +204,7 @@ const ProjectsPage: React.FC = () => {
             <div className="animate-fadeIn max-w-7xl mx-auto">
                 {view === 'grid' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {projectsWithDetails.map(({ project, developer, unitsCount }) => (
+                        {projectBatch.visibleItems.map(({ project, developer, unitsCount }) => (
                             <ProjectCard 
                                 key={project.id}
                                 project={project}
@@ -212,7 +215,7 @@ const ProjectsPage: React.FC = () => {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {projectsWithDetails.map(({ project, developer, unitsCount }) => (
+                        {projectBatch.visibleItems.map(({ project, developer, unitsCount }) => (
                             <ProjectListItem
                                 key={project.id}
                                 project={project}
@@ -222,6 +225,7 @@ const ProjectsPage: React.FC = () => {
                         ))}
                     </div>
                 )}
+                <LoadMore hasMore={projectBatch.hasMore} onLoadMore={projectBatch.showMore} sentinelRef={projectBatch.sentinelRef} shown={projectBatch.shown} total={projectBatch.total} />
             </div>
         )}
       </div>

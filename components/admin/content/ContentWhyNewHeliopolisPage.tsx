@@ -9,17 +9,12 @@ import { Input } from '../../ui/Input';
 import { Textarea } from '../../ui/Textarea';
 import { TrashIcon, ArrowUpIcon, ArrowDownIcon } from '../../ui/Icons';
 import { Checkbox } from '../../ui/Checkbox';
+import { uploadFile } from '../../../services/upload';
 
 type ContentFormContext = UseFormReturn<SiteContent>;
 
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
+// Images go to Cloudinary; storing base64 in the database bloats every page load.
+const uploadImage = (file: File): Promise<string> => uploadFile(file, { folder: 'cms' });
 
 const ContentWhyNewHeliopolisPage: React.FC = () => {
     const { register, control, setValue } = useOutletContext<ContentFormContext>();
@@ -30,8 +25,12 @@ const ContentWhyNewHeliopolisPage: React.FC = () => {
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
         if (e.target.files && e.target.files[0]) {
-            const base64 = await fileToBase64(e.target.files[0]);
-            setValue(`whyNewHeliopolis.images.${index}.src`, base64, { shouldDirty: true });
+            try {
+                const url = await uploadImage(e.target.files[0]);
+                setValue(`whyNewHeliopolis.images.${index}.src`, url, { shouldDirty: true });
+            } catch (err: any) {
+                window.alert(`تعذر رفع الصورة: ${err?.message || err}`);
+            }
         }
     };
 
@@ -80,7 +79,7 @@ const ContentWhyNewHeliopolisPage: React.FC = () => {
                                 <Button type="button" size="icon" variant="ghost" onClick={() => removeImage(index)}><TrashIcon className="w-4 h-4 text-red-500"/></Button>
                             </div>
                              <div className="flex gap-4 items-start">
-                                <img src={(field as any).src} alt="preview" className="w-36 h-24 object-cover rounded-md bg-gray-200 dark:bg-gray-700"/>
+                                <img loading="lazy" decoding="async" src={(field as any).src} alt="preview" className="w-36 h-24 object-cover rounded-md bg-gray-200 dark:bg-gray-700"/>
                                 <div className="flex-grow space-y-2">
                                      <div>
                                         <label className="text-xs">Upload Image</label>

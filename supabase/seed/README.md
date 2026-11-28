@@ -27,3 +27,8 @@ The equivalent single file is `supabase/migrations/20261128c_content_enrichment_
 
 ## Removing the sample content
 Run `remove_content_seed_20261128.sql` in the SQL editor. It deletes the seeded rows and restores the previous partner fields and quotes.
+
+## Update: site-wide test-data registry (supersedes the removal script)
+All test data is now tracked in `public.test_data_registry` (migration `20261128d_test_data_registry.sql`). That includes this seed, every demo/test account, and every existing request and transaction.
+
+The cleanup is done from **Admin › النظام › بيانات الاختبار**. You can also run it in SQL: `select purge_test_data('DELETE TEST DATA');`.

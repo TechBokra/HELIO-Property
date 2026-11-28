@@ -137,7 +137,7 @@ const SidebarContent: React.FC<Omit<DashboardSidebarProps, 'isOpen' | 'setIsOpen
                     <li>
                         <div className={`flex items-center transition-all duration-300 ${isCollapsed ? 'justify-center py-1' : 'px-2 py-2 bg-gray-50 rounded-lg'}`}>
                             <div className="relative shrink-0">
-                                <img 
+                                <img loading="lazy" decoding="async" 
                                     src={user.imageUrl || '/favicon.ico'} 
                                     alt={partnerName} 
                                     className="w-9 h-9 rounded-full object-cover border border-amber-500/30" 

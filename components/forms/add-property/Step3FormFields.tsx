@@ -136,7 +136,7 @@ export const Step3FormFields: React.FC<Step3FormFieldsProps> = (props) => {
                         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
                             {imagePreviews.map((preview: string, index: number) => (
                                 <div key={index} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100">
-                                    <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
+                                    <img loading="lazy" decoding="async" src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
                                     <button type="button" onClick={() => removeImage(index)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 focus:opacity-100">
                                         <CloseIcon className="w-3 h-3" />
                                     </button>

@@ -166,7 +166,7 @@ const AdminAnalyticsPage: React.FC = () => {
                                 <li key={partner.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 pb-3 last:pb-0">
                                      <Link to={`/admin/partners?edit=${partner.id}&highlight=${partner.id}`} className="flex items-center gap-3 group">
                                         <div className="font-mono text-gray-400 text-sm">0{index + 1}</div>
-                                        <img src={partner.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-gray-700" />
+                                        <img loading="lazy" decoding="async" src={partner.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-gray-700" />
                                         <div className="flex-grow min-w-0">
                                             <p className="font-semibold text-sm truncate text-gray-900 dark:text-white group-hover:text-amber-500 transition-colors">{language === 'ar' ? partner.nameAr : partner.name}</p>
                                             <p className="text-xs text-gray-500 capitalize">{partner.type}</p>
@@ -189,7 +189,7 @@ const AdminAnalyticsPage: React.FC = () => {
                                 <li key={property.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 pb-3 last:pb-0">
                                     <Link to={`/admin/properties/edit/${property.id}`} className="flex items-center gap-3 group">
                                         <div className="font-mono text-gray-400 text-sm">0{index + 1}</div>
-                                        <img src={property.imageUrl} alt="" className="w-10 h-10 rounded-md object-cover border border-gray-200 dark:border-gray-700" />
+                                        <img loading="lazy" decoding="async" src={property.imageUrl} alt="" className="w-10 h-10 rounded-md object-cover border border-gray-200 dark:border-gray-700" />
                                         <div className="flex-grow min-w-0">
                                             <p className="font-semibold text-sm truncate text-gray-900 dark:text-white group-hover:text-amber-500 transition-colors">{property.title[language]}</p>
                                             <p className="text-xs text-gray-500 truncate">{property.partnerName}</p>

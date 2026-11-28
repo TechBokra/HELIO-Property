@@ -93,7 +93,7 @@ const AdminInquiryManagementPage: React.FC = () => {
                             <TableRow key={p.id}>
                                 <TableCell>
                                     <div className="flex items-center gap-3">
-                                        <img src={p.imageUrl} alt={p.name} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+                                        <img loading="lazy" decoding="async" src={p.imageUrl} alt={p.name} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
                                         <div>
                                             <div className="font-bold text-gray-900 dark:text-white">{language === 'ar' ? p.nameAr : p.name}</div>
                                             <div className="text-xs text-gray-500">{t.adminDashboard.partnerTypes[p.type as keyof typeof t.adminDashboard.partnerTypes]}</div>
@@ -176,7 +176,7 @@ const AdminInquiryManagementPage: React.FC = () => {
             <Card key={p.id}>
                 <CardContent className="p-4 space-y-4">
                     <div className="flex items-center gap-3">
-                        <img src={p.imageUrl} alt={p.name} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+                        <img loading="lazy" decoding="async" src={p.imageUrl} alt={p.name} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
                         <div>
                             <div className="font-bold text-gray-900 dark:text-white">{language === 'ar' ? p.nameAr : p.name}</div>
                             <div className="text-xs text-gray-500">{t.adminDashboard.partnerTypes[p.type as keyof typeof t.adminDashboard.partnerTypes]}</div>

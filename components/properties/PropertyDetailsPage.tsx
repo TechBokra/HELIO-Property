@@ -433,7 +433,7 @@ const PropertyDetailsPage: React.FC = () => {
                                     <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
                                 ) : partner ? (
                                     <Link to={`/partners/${partner.id}`} className="flex items-center gap-4 group">
-                                        <img src={partner.imageUrl} alt={(language === 'ar' && (partner as any).nameAr) ? (partner as any).nameAr : partner.name} className="w-16 h-16 rounded-full object-cover"/>
+                                        <img loading="lazy" decoding="async" src={partner.imageUrl} alt={(language === 'ar' && (partner as any).nameAr) ? (partner as any).nameAr : partner.name} className="w-16 h-16 rounded-full object-cover"/>
                                         <div>
                                             <p className="text-sm text-gray-500 dark:text-gray-400">{t.propertyCard.by}</p>
                                             <p className="font-bold text-lg group-hover:text-amber-500 transition-colors">

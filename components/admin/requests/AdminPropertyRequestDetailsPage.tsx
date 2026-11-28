@@ -347,7 +347,7 @@ const AdminPropertyRequestDetailsPage: React.FC = () => {
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                                 {payload.images.map((img: string, idx: number) => (
                                     <div key={idx} className="relative aspect-video rounded-lg overflow-hidden border border-gray-200 shadow-sm group">
-                                        <img src={img} alt={`Request img ${idx}`} className="w-full h-full object-cover" />
+                                        <img loading="lazy" decoding="async" src={img} alt={`Request img ${idx}`} className="w-full h-full object-cover" />
                                         <a href={img} target="_blank" rel="noreferrer" className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                                             <span className="sr-only">View</span>
                                         </a>

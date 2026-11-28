@@ -305,7 +305,7 @@ const PaymentPage: React.FC = () => {
                                                 
                                                 {config?.instapay?.qrCodeUrl && (
                                                     <div className="mb-4 flex justify-center">
-                                                        <img src={config.instapay.qrCodeUrl} alt="InstaPay QR Code" className="w-48 h-48 object-contain border-4 border-white rounded-lg shadow-md" />
+                                                        <img loading="lazy" decoding="async" src={config.instapay.qrCodeUrl} alt="InstaPay QR Code" className="w-48 h-48 object-contain border-4 border-white rounded-lg shadow-md" />
                                                     </div>
                                                 )}
                                                 

@@ -321,7 +321,7 @@ const ServiceRequestPage: React.FC = () => {
                         )}
                     </div>
                     <div className="flex gap-4 items-start">
-                        <img src={workItem.imageUrl} alt={workItem.alt} className="w-24 h-24 object-cover rounded-lg flex-shrink-0 shadow-md" />
+                        <img loading="lazy" decoding="async" src={workItem.imageUrl} alt={workItem.alt} className="w-24 h-24 object-cover rounded-lg flex-shrink-0 shadow-md" />
                         <div className="space-y-1 text-sm flex-grow">
                             <h3 className="font-bold text-gray-900 dark:text-white text-base">{workItem.title[language]}</h3>
                             {resolvedCategoryName && <p className="text-xs text-gray-500 dark:text-gray-400">{resolvedCategoryName}</p>}

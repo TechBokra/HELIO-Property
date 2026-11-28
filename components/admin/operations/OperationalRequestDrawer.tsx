@@ -450,7 +450,7 @@ export const OperationalRequestDrawer: React.FC<OperationalRequestDrawerProps> =
                                         {(request.context.workItemId || request.context.workItemReference || request.context.workItemTitle || request.context.serviceId || request.context.serviceReference) && (
                                             <div className="p-2.5 bg-white rounded-lg border border-purple-200 flex items-center gap-3">
                                                 {request.context.workItemImage && (
-                                                    <img
+                                                    <img loading="lazy" decoding="async"
                                                         src={request.context.workItemImage}
                                                         alt={request.context.workItemTitle || 'Work item'}
                                                         className="w-12 h-12 rounded-lg object-cover border border-gray-200 shrink-0"

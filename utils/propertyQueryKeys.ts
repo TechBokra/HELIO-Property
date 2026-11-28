@@ -59,6 +59,9 @@ export const propertyQueryKeys = {
         source: PropertyDataSource = getEffectivePropertySource()
     ) => ['properties', 'public', 'list', source, normalizePropertyCityKey(cityId)] as const,
 
+    publicLatest: (cityId?: string | null, limit = 4, source: PropertyDataSource = getEffectivePropertySource()) =>
+        ['properties', 'public', 'list', source, normalizePropertyCityKey(cityId), 'latest', limit] as const,
+
     publicPaginatedRoot: () => ['properties', 'public', 'paginated'] as const,
     publicPaginated: (params: {
         cityId?: string | null;

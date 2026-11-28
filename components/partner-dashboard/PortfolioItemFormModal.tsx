@@ -188,7 +188,7 @@ const PortfolioItemFormModal: React.FC<PortfolioItemFormModalProps> = ({ itemToE
                     <div className="flex-grow overflow-y-auto p-6 space-y-4">
                         <FormField label={t_dash.workImageURL} id="imageUrl">
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                                {imagePreview && <img src={imagePreview} alt="Preview" className="w-20 h-20 rounded-md object-cover border flex-shrink-0" />}
+                                {imagePreview && <img loading="lazy" decoding="async" src={imagePreview} alt="Preview" className="w-20 h-20 rounded-md object-cover border flex-shrink-0" />}
                                 <div className="flex-1 w-full space-y-2">
                                     <input type="url" name="imageUrl" value={formData.imageUrl} onChange={handleChange} className={inputClasses} dir="ltr" placeholder="https://..." />
                                     <input

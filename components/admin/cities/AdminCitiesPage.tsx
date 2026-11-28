@@ -402,7 +402,7 @@ const AdminCitiesPage: React.FC = () => {
                                 } overflow-hidden shadow-xs flex flex-col`}
                             >
                                 <div className="h-40 relative bg-gray-900">
-                                    <img
+                                    <img loading="lazy" decoding="async"
                                         src={city.heroImageUrl || DEFAULT_CITY_HERO_IMAGE}
                                         alt={city.name[language]}
                                         referrerPolicy="no-referrer"

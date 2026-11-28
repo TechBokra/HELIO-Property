@@ -215,7 +215,7 @@ const AdminPartnersPage: React.FC = () => {
                             <TableCell><input type="checkbox" checked={selectedPartners.includes(p.id)} onChange={() => handleSelect(p.id)}/></TableCell>
                             <TableCell>
                                 <div className="flex items-center gap-3">
-                                    <img src={p.imageUrl} alt={p.name} className="w-10 h-10 rounded-full object-cover"/>
+                                    <img loading="lazy" decoding="async" src={p.imageUrl} alt={p.name} className="w-10 h-10 rounded-full object-cover"/>
                                     <div>
                                         <div className="font-medium text-gray-900 dark:text-white">{language === 'ar' ? p.nameAr : p.name}</div>
                                         <div className="text-xs text-gray-500">{p.email}</div>
@@ -269,7 +269,7 @@ const AdminPartnersPage: React.FC = () => {
                 />
             </div>
             <CardContent className="p-5 flex flex-col items-center text-center">
-                <img src={p.imageUrl} alt={p.name} className="w-16 h-16 rounded-full object-cover mb-3 border-2 border-gray-100 dark:border-gray-700"/>
+                <img loading="lazy" decoding="async" src={p.imageUrl} alt={p.name} className="w-16 h-16 rounded-full object-cover mb-3 border-2 border-gray-100 dark:border-gray-700"/>
                 <h3 className="font-bold text-gray-900 dark:text-white truncate w-full">{language === 'ar' ? p.nameAr : p.name}</h3>
                 <p className="text-xs text-gray-500 mb-3">{p.email}</p>
                 

@@ -97,7 +97,7 @@ const RequestPayloadViewer: React.FC<RequestPayloadViewerProps> = ({ request }) 
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                                 {r.images.map((img: string, idx: number) => (
                                     <a key={idx} href={img} target="_blank" rel="noreferrer" className="block aspect-video">
-                                        <img src={img} alt={`Property ${idx + 1}`} className="w-full h-full object-cover rounded-md border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity" />
+                                        <img loading="lazy" decoding="async" src={img} alt={`Property ${idx + 1}`} className="w-full h-full object-cover rounded-md border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity" />
                                     </a>
                                 ))}
                             </div>
@@ -151,7 +151,7 @@ const RequestPayloadViewer: React.FC<RequestPayloadViewerProps> = ({ request }) 
                             <p className="text-sm font-medium text-gray-500 mb-2">Reference Image</p>
                             <div className="w-full max-w-xs rounded-lg overflow-hidden border border-gray-200">
                                 <a href={l.referenceImage} target="_blank" rel="noreferrer">
-                                    <img src={l.referenceImage} alt="Ref" className="w-full object-cover" />
+                                    <img loading="lazy" decoding="async" src={l.referenceImage} alt="Ref" className="w-full object-cover" />
                                 </a>
                             </div>
                         </div>

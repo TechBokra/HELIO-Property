@@ -15,15 +15,10 @@ import { Textarea } from '../ui/Textarea';
 import { Checkbox } from '../ui/Checkbox';
 import { Select } from '../ui/Select';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { uploadFile } from '../../services/upload';
 
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
+// Images go to Cloudinary; storing base64 in the database bloats every page load.
+const uploadImage = (file: File): Promise<string> => uploadFile(file, { folder: 'cms' });
 
 const AdminSettingsPage: React.FC = () => {
     const { language, t } = useLanguage();
@@ -59,15 +54,23 @@ const AdminSettingsPage: React.FC = () => {
 
     const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            const base64 = await fileToBase64(e.target.files[0]);
-            setValue('logoUrl', base64, { shouldDirty: true });
+            try {
+                const url = await uploadImage(e.target.files[0]);
+                setValue('logoUrl', url, { shouldDirty: true });
+            } catch (err: any) {
+                window.alert(`تعذر رفع الصورة: ${err?.message || err}`);
+            }
         }
     };
 
     const handleQrCodeChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            const base64 = await fileToBase64(e.target.files[0]);
-            setValue('paymentConfiguration.instapay.qrCodeUrl', base64, { shouldDirty: true });
+            try {
+                const url = await uploadImage(e.target.files[0]);
+                setValue('paymentConfiguration.instapay.qrCodeUrl', url, { shouldDirty: true });
+            } catch (err: any) {
+                window.alert(`تعذر رفع الصورة: ${err?.message || err}`);
+            }
         }
     };
     
@@ -184,7 +187,7 @@ const AdminSettingsPage: React.FC = () => {
                                         <div className="md:col-span-2">
                                             <label htmlFor="logoUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Site Logo</label>
                                             <div className="flex items-center gap-4">
-                                                {watchLogoUrl ? <img src={watchLogoUrl} alt="Logo Preview" className="h-12 bg-gray-200 dark:bg-gray-700 p-1 rounded-md object-contain" /> : <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-md flex items-center justify-center"><PhotoIcon className="w-6 h-6 text-gray-400" /></div>}
+                                                {watchLogoUrl ? <img loading="lazy" decoding="async" src={watchLogoUrl} alt="Logo Preview" className="h-12 bg-gray-200 dark:bg-gray-700 p-1 rounded-md object-contain" /> : <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-md flex items-center justify-center"><PhotoIcon className="w-6 h-6 text-gray-400" /></div>}
                                                 <Input type="file" id="logoUrl" onChange={handleLogoChange} accept="image/*" className="p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100" />
                                             </div>
                                         </div>
@@ -259,7 +262,7 @@ const AdminSettingsPage: React.FC = () => {
                                          <div>
                                             <label className="block text-sm font-medium mb-1">QR Code Image</label>
                                             <div className="flex items-center gap-4">
-                                                 {watchQrCode ? <img src={watchQrCode} alt="QR Code" className="h-24 w-24 object-contain border rounded-md bg-white p-1" /> : <div className="h-24 w-24 bg-gray-100 rounded-md flex items-center justify-center text-gray-400 text-xs">No QR</div>}
+                                                 {watchQrCode ? <img loading="lazy" decoding="async" src={watchQrCode} alt="QR Code" className="h-24 w-24 object-contain border rounded-md bg-white p-1" /> : <div className="h-24 w-24 bg-gray-100 rounded-md flex items-center justify-center text-gray-400 text-xs">No QR</div>}
                                                 <Input type="file" accept="image/*" onChange={handleQrCodeChange} className="max-w-sm" />
                                             </div>
                                         </div>

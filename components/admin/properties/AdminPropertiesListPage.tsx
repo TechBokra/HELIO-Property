@@ -266,7 +266,7 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
                                         {refCode}
                                     </span>
                                 </TableCell>
-                                <TableCell><img src={prop.imageUrl} alt="" className="w-14 h-14 object-cover rounded-md" /></TableCell>
+                                <TableCell><img loading="lazy" decoding="async" src={prop.imageUrl} alt="" className="w-14 h-14 object-cover rounded-md" /></TableCell>
                                 <TableCell className="font-medium text-gray-900 dark:text-white max-w-xs">
                                     <div className="truncate">{prop.title?.[language] || prop.title?.en || prop.title?.ar || ''}</div>
                                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -367,7 +367,7 @@ const AdminPropertiesListPage: React.FC<AdminPropertiesListPageProps> = ({
         return (
             <Card key={prop.id} className={`overflow-hidden ${selectedProperties.includes(prop.id) ? 'ring-2 ring-amber-500' : ''}`}>
                  <div className="relative">
-                    <img src={prop.imageUrl} alt="" className="w-full h-32 object-cover" />
+                    <img loading="lazy" decoding="async" src={prop.imageUrl} alt="" className="w-full h-32 object-cover" />
                     <input type="checkbox" checked={selectedProperties.includes(prop.id)} onChange={() => handleSelect(prop.id)} className="absolute top-2 right-2 h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"/>
                     <div className="absolute bottom-2 left-2 flex gap-1">
                         <StatusBadge status={prop.listingStatus} className="shadow-sm" />

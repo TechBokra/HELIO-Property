@@ -313,7 +313,7 @@ const AdminDecorationRequestDetailsPage: React.FC = () => {
                                         </div>
                                         <div className="flex gap-4 items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                                             {resolvedWorkImage && (
-                                                <img
+                                                <img loading="lazy" decoding="async"
                                                     src={resolvedWorkImage}
                                                     alt={referenceItem?.alt || resolvedWorkTitle || 'Work item'}
                                                     className="w-20 h-20 object-cover rounded-lg shadow-xs shrink-0"

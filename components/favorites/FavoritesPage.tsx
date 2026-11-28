@@ -16,7 +16,7 @@ const PortfolioItemCard: React.FC<{ item: any }> = ({ item }) => {
     return (
         <Card className="group flex flex-col p-0 overflow-hidden transform hover:-translate-y-2 transition-transform duration-300">
             <div className="relative aspect-video bg-gray-100">
-                <img src={item.imageUrl} alt={item.alt} className="w-full h-full object-cover" />
+                <img loading="lazy" decoding="async" src={item.imageUrl} alt={item.alt} className="w-full h-full object-cover" />
             </div>
             <CardContent className="p-4 flex flex-col flex-grow">
                 <h3 className="font-bold text-gray-900 truncate mb-1">{item.title[language]}</h3>

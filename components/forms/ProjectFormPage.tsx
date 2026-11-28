@@ -224,7 +224,7 @@ const ProjectFormPage: React.FC = () => {
                 </div>
                  <FormField label={t_form.image} id="image">
                     <div className="flex items-center gap-4">
-                        {image && <img src={image} alt="Project preview" className="w-24 h-24 rounded-md object-cover border" />}
+                        {image && <img loading="lazy" decoding="async" src={image} alt="Project preview" className="w-24 h-24 rounded-md object-cover border" />}
                         <input type="file" id="image" accept="image/*" onChange={handleImageChange} className={`${inputClasses} p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100`} required={!projectId} />
                     </div>
                 </FormField>

@@ -70,7 +70,7 @@ const BannerDisplay: React.FC<BannerDisplayProps> = ({ location }) => {
     const BannerContent = ({ banner }: { banner: Banner }) => {
         const content = (
             <div className="relative w-full h-full">
-                <img 
+                <img loading="lazy" decoding="async" 
                     src={banner.imageUrl}
                     alt={banner.title}
                     className="w-full h-full object-cover"

@@ -8,17 +8,12 @@ import { Input } from '../../ui/Input';
 import { Textarea } from '../../ui/Textarea';
 import { TrashIcon, ArrowUpIcon, ArrowDownIcon, PhotoIcon, SparklesIcon } from '../../ui/Icons';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/Card';
+import { uploadFile } from '../../../services/upload';
 
 type ContentFormContext = UseFormReturn<SiteContent>;
 
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
+// Images go to Cloudinary; storing base64 in the database bloats every page load.
+const uploadImage = (file: File): Promise<string> => uploadFile(file, { folder: 'cms' });
 
 const ContentHeroPage: React.FC = () => {
     const { register, control, setValue, watch } = useOutletContext<ContentFormContext>();
@@ -26,8 +21,12 @@ const ContentHeroPage: React.FC = () => {
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
         if (e.target.files && e.target.files[0]) {
-            const base64 = await fileToBase64(e.target.files[0]);
-            setValue(`hero.images.${index}.src`, base64, { shouldDirty: true });
+            try {
+                const url = await uploadImage(e.target.files[0]);
+                setValue(`hero.images.${index}.src`, url, { shouldDirty: true });
+            } catch (err: any) {
+                window.alert(`تعذر رفع الصورة: ${err?.message || err}`);
+            }
         }
     };
 
@@ -168,7 +167,7 @@ const ContentHeroPage: React.FC = () => {
                                 <div className="w-full md:w-1/3 shrink-0">
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Preview (Slide {index + 1})</label>
                                     <div className="relative aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
-                                        <img 
+                                        <img loading="lazy" decoding="async" 
                                             src={watch(`hero.images.${index}.src`) || (field as any).src || 'https://via.placeholder.com/300x169?text=No+Image'} 
                                             alt="preview" 
                                             className="w-full h-full object-cover"

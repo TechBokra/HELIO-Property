@@ -123,7 +123,7 @@ export const PasswordManagementModal: React.FC<PasswordManagementModalProps> = (
                     {/* User Summary Card */}
                     <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                            <img 
+                            <img loading="lazy" decoding="async" 
                                 src={user.imageUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=120'} 
                                 alt={user.name} 
                                 className="w-12 h-12 rounded-full object-cover border border-amber-500/30"

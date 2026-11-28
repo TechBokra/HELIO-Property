@@ -17,7 +17,7 @@ const MapTooltip: React.FC<{ property: Property, language: Language }> = ({ prop
     return (
         <div className="bg-white rounded-lg shadow-xl overflow-hidden border border-gray-200 w-48 animate-fadeIn">
             <div className="h-24 bg-gray-200 relative">
-                 <img src={property.imageUrl_small || property.imageUrl} alt={property.title[language]} className="w-full h-full object-cover" />
+                 <img loading="lazy" decoding="async" src={property.imageUrl_small || property.imageUrl} alt={property.title[language]} className="w-full h-full object-cover" />
                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent h-1/2"></div>
             </div>
             <div className="p-2">

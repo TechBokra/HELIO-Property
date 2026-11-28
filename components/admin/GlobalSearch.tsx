@@ -110,7 +110,7 @@ const GlobalSearch: React.FC = () => {
                                 {searchResults.partners.map(p => (
                                     <li key={p.id}>
                                         <button onClick={() => handleNavigation(`/admin/partners?edit=${p.id}&highlight=${p.id}`)} className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3">
-                                            <img src={p.imageUrl} className="w-8 h-8 rounded-full object-cover"/>
+                                            <img loading="lazy" decoding="async" src={p.imageUrl} className="w-8 h-8 rounded-full object-cover"/>
                                             <div>
                                                 <p className="text-sm font-medium text-gray-800 dark:text-white">{language === 'ar' ? p.nameAr : p.name}</p>
                                                 <p className="text-xs text-gray-500">{p.email}</p>
@@ -129,7 +129,7 @@ const GlobalSearch: React.FC = () => {
                                 {searchResults.properties.map(p => (
                                     <li key={p.id}>
                                         <button onClick={() => handleNavigation(`/admin/properties/edit/${p.id}`)} className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3">
-                                             <img src={p.imageUrl} className="w-8 h-8 rounded-md object-cover"/>
+                                             <img loading="lazy" decoding="async" src={p.imageUrl} className="w-8 h-8 rounded-md object-cover"/>
                                              <div>
                                                 <p className="text-sm font-medium text-gray-800 dark:text-white">{p.title[language]}</p>
                                             </div>
@@ -147,7 +147,7 @@ const GlobalSearch: React.FC = () => {
                                 {searchResults.projects.map(p => (
                                     <li key={p.id}>
                                         <button onClick={() => handleNavigation(`/admin/projects/edit/${p.id}`)} className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3">
-                                             <img src={p.imageUrl} className="w-8 h-8 rounded-md object-cover"/>
+                                             <img loading="lazy" decoding="async" src={p.imageUrl} className="w-8 h-8 rounded-md object-cover"/>
                                              <div>
                                                 <p className="text-sm font-medium text-gray-800 dark:text-white">{p.name[language]}</p>
                                             </div>

@@ -219,7 +219,7 @@ const ContentFinishingPage: React.FC = () => {
                             </div>
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                                 {heroImageUrl && (
-                                    <img src={heroImageUrl} alt="Finishing Hero Preview" className="w-40 h-24 rounded-lg object-cover border border-gray-200 dark:border-gray-700 flex-shrink-0" />
+                                    <img loading="lazy" decoding="async" src={heroImageUrl} alt="Finishing Hero Preview" className="w-40 h-24 rounded-lg object-cover border border-gray-200 dark:border-gray-700 flex-shrink-0" />
                                 )}
                                 <div className="flex-1 w-full space-y-2">
                                     <Input {...register('finishingPage.heroImageUrl')} dir="ltr" className="font-mono text-xs" placeholder="https://..." />

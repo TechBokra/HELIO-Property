@@ -63,7 +63,7 @@ const EditContactMethodsModal: React.FC<EditContactMethodsModalProps> = ({ partn
             </ModalHeader>
             <ModalContent className="space-y-6 pt-4">
                 <div className="flex items-center gap-4 mb-2">
-                     <img src={partner.imageUrl} alt="" className="w-12 h-12 rounded-full border border-gray-200" />
+                     <img loading="lazy" decoding="async" src={partner.imageUrl} alt="" className="w-12 h-12 rounded-full border border-gray-200" />
                      <div>
                          <p className="font-bold text-gray-900 dark:text-white">{language === 'ar' ? partner.nameAr : partner.name}</p>
                          <p className="text-xs text-gray-500">Update contact routing numbers</p>

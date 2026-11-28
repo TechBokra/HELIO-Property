@@ -161,7 +161,7 @@ const AdminUsersPage: React.FC = () => {
                         <TableRow key={user.id}>
                             <TableCell>
                                 <div className="flex items-center gap-3">
-                                    <img src={user.imageUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover"/>
+                                    <img loading="lazy" decoding="async" src={user.imageUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover"/>
                                     <div>
                                         <div className="font-medium text-gray-900 dark:text-white">{language === 'ar' ? user.nameAr : user.name}</div>
                                         <div className="text-xs text-gray-500">{user.email}</div>
@@ -200,7 +200,7 @@ const AdminUsersPage: React.FC = () => {
     const renderCard = (user: AdminPartner) => (
         <Card key={user.id}>
             <CardContent className="p-4 flex items-center gap-4">
-                 <img src={user.imageUrl} alt={user.name} className="w-12 h-12 rounded-full object-cover flex-shrink-0"/>
+                 <img loading="lazy" decoding="async" src={user.imageUrl} alt={user.name} className="w-12 h-12 rounded-full object-cover flex-shrink-0"/>
                  <div className="flex-grow min-w-0">
                      <h3 className="font-bold text-gray-900 dark:text-white truncate">{language === 'ar' ? user.nameAr : user.name}</h3>
                      <p className="text-xs text-gray-500 truncate">{user.email}</p>

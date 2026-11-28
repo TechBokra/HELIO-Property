@@ -660,7 +660,7 @@ export const AdminMediaLibraryPage: React.FC = () => {
                                     <tr key={asset.id} className="hover:bg-gray-50/60 dark:hover:bg-gray-900/30 transition-colors">
                                         <td className="py-3 px-4">
                                             <div className="w-14 h-11 rounded-lg bg-gray-100 dark:bg-gray-900 overflow-hidden border border-gray-200 dark:border-gray-700">
-                                                <img
+                                                <img loading="lazy" decoding="async"
                                                     src={getOptimizedImageUrl(asset.url, 120, 70)}
                                                     alt={asset.filename}
                                                     className="w-full h-full object-cover"
@@ -763,7 +763,7 @@ export const AdminMediaLibraryPage: React.FC = () => {
                         <div className="p-6 overflow-y-auto space-y-6">
                             {/* Visual Preview */}
                             <div className="rounded-2xl overflow-hidden bg-gray-950 flex items-center justify-center max-h-72 border border-gray-800">
-                                <img
+                                <img loading="lazy" decoding="async"
                                     src={selectedAsset.url}
                                     alt={selectedAsset.filename}
                                     className="max-h-72 w-auto object-contain"
